@@ -1,0 +1,150 @@
+// sketchlog pybind11 bindings
+// Exposes the C++ hot path to Python while keeping the API familiar.
+
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/numpy.h>
+
+#include "sketchlog.hpp"
+#include "ddsketch.hpp"
+#include "hyperloglog.hpp"
+#include "countmin.hpp"
+
+#include <string>
+#include <vector>
+
+namespace py = pybind11;
+
+PYBIND11_MODULE(_sketchlog_cpp, m) {
+    m.doc() = "sketchlog C++ core — constant-memory streaming analytics engine";
+
+    // ═══════════════════════════════════════════════════════════════════
+    // DDSketch
+    // ═══════════════════════════════════════════════════════════════════
+
+    py::class_<sketchlog::DDSketch>(m, "DDSketch",
+        "Logarithmic quantile sketch. O(1) memory for any percentile.")
+        .def(py::init<double>(), py::arg("relative_accuracy") = 0.01)
+        .def("add", py::overload_cast<double>(&sketchlog::DDSketch::add),
+             py::arg("value"), "Add a single observation.")
+        .def("add_batch", [](sketchlog::DDSketch& self, py::array_t<double> values) {
+            auto buf = values.unchecked<1>();
+            for (py::ssize_t i = 0; i < buf.shape(0); i++) {
+                self.add(buf(i));
+            }
+        }, py::arg("values"), "Bulk-add values from a numpy array.")
+        .def("quantile", &sketchlog::DDSketch::quantile, py::arg("q"))
+        .def("min", &sketchlog::DDSketch::min)
+        .def("max", &sketchlog::DDSketch::max)
+        .def("count", &sketchlog::DDSketch::count)
+        .def("memory_bytes", &sketchlog::DDSketch::memory_bytes)
+        .def("merge", &sketchlog::DDSketch::merge, py::arg("other"))
+        .def("reset", &sketchlog::DDSketch::reset);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // HyperLogLog
+    // ═══════════════════════════════════════════════════════════════════
+
+    py::class_<sketchlog::HyperLogLog>(m, "HyperLogLog",
+        "Probabilistic cardinality estimator. O(1) memory.")
+        .def(py::init<uint8_t>(), py::arg("precision") = 14)
+        .def("add_string", [](sketchlog::HyperLogLog& self, const std::string& s) {
+            self.add_string(s.data(), s.size());
+        }, py::arg("item"), "Add a string item.")
+        .def("add_int", [](sketchlog::HyperLogLog& self, uint64_t id) {
+            self.add(id);
+        }, py::arg("id"), "Add a uint64 item.")
+        .def("estimate", &sketchlog::HyperLogLog::estimate)
+        .def("memory_bytes", &sketchlog::HyperLogLog::memory_bytes)
+        .def("precision", &sketchlog::HyperLogLog::precision)
+        .def("merge", &sketchlog::HyperLogLog::merge, py::arg("other"))
+        .def("reset", &sketchlog::HyperLogLog::reset);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // CountMinSketch
+    // ═══════════════════════════════════════════════════════════════════
+
+    py::class_<sketchlog::CountMinSketch>(m, "CountMinSketch",
+        "Probabilistic frequency estimator. Never underestimates.")
+        .def(py::init<size_t, size_t>(),
+             py::arg("width") = 2048, py::arg("depth") = 5)
+        .def("add_string", [](sketchlog::CountMinSketch& self,
+                               const std::string& s, int64_t count) {
+            self.add_string(s.data(), s.size(), count);
+        }, py::arg("item"), py::arg("count") = 1)
+        .def("add_int", [](sketchlog::CountMinSketch& self,
+                            uint64_t key, int64_t count) {
+            self.add(key, count);
+        }, py::arg("key"), py::arg("count") = 1)
+        .def("estimate_string", [](const sketchlog::CountMinSketch& self,
+                                    const std::string& s) -> int64_t {
+            return self.estimate_string(s.data(), s.size());
+        }, py::arg("item"))
+        .def("estimate_int", [](const sketchlog::CountMinSketch& self,
+                                 uint64_t key) -> int64_t {
+            return self.estimate(key);
+        }, py::arg("key"))
+        .def("total_count", &sketchlog::CountMinSketch::total_count)
+        .def("width", &sketchlog::CountMinSketch::width)
+        .def("depth", &sketchlog::CountMinSketch::depth)
+        .def("memory_bytes", &sketchlog::CountMinSketch::memory_bytes)
+        .def("merge", &sketchlog::CountMinSketch::merge, py::arg("other"))
+        .def("reset", &sketchlog::CountMinSketch::reset);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // StreamLog (main API)
+    // ═══════════════════════════════════════════════════════════════════
+
+    py::class_<sketchlog::StreamLog>(m, "StreamLog",
+        "Streaming approximate analytics engine in constant memory.\n\n"
+        "Tracks latency percentiles (DDSketch), event frequency (Count-Min),\n"
+        "and cardinality (HyperLogLog) over unlimited events using ~93 KB.")
+        .def(py::init<double, uint8_t, size_t, size_t>(),
+             py::arg("relative_accuracy") = 0.01,
+             py::arg("hll_precision") = 10,
+             py::arg("cms_width") = 2048,
+             py::arg("cms_depth") = 5)
+
+        // ─── Latency ─────────────────────────────────────────────────
+        .def("add_latency", &sketchlog::StreamLog::add_latency,
+             py::arg("value"), "Add a latency measurement.")
+        .def("add_batch", [](sketchlog::StreamLog& self,
+                              py::array_t<double> values) {
+            auto buf = values.unchecked<1>();
+            for (py::ssize_t i = 0; i < buf.shape(0); i++) {
+                self.add_latency(buf(i));
+            }
+        }, py::arg("values"),
+           "Bulk-add latency values from a numpy array. Much faster than loop.")
+        .def("percentile", &sketchlog::StreamLog::percentile, py::arg("q"))
+        .def("p50", &sketchlog::StreamLog::p50)
+        .def("p95", &sketchlog::StreamLog::p95)
+        .def("p99", &sketchlog::StreamLog::p99)
+        .def("p999", &sketchlog::StreamLog::p999)
+
+        // ─── Events ──────────────────────────────────────────────────
+        .def("add_event", &sketchlog::StreamLog::add_event,
+             py::arg("name"), py::arg("count") = 1)
+        .def("event_count", &sketchlog::StreamLog::event_count,
+             py::arg("name"))
+
+        // ─── Cardinality ─────────────────────────────────────────────
+        .def("add_unique", py::overload_cast<const std::string&>(
+             &sketchlog::StreamLog::add_unique), py::arg("item"))
+        .def("add_unique", py::overload_cast<uint64_t>(
+             &sketchlog::StreamLog::add_unique), py::arg("id"))
+        .def("unique_count", &sketchlog::StreamLog::unique_count)
+
+        // ─── System ──────────────────────────────────────────────────
+        .def("total_events", &sketchlog::StreamLog::total_events)
+        .def("memory_bytes", &sketchlog::StreamLog::memory_bytes)
+        .def("memory_kb", &sketchlog::StreamLog::memory_kb)
+        .def("reset", &sketchlog::StreamLog::reset)
+
+        .def("__repr__", [](const sketchlog::StreamLog& self) {
+            auto s = self.stats();
+            return "StreamLog(events=" + std::to_string(s.events) +
+                   ", memory=" + std::to_string(int(s.memory_kb * 100) / 100.0)
+                   .substr(0, 6) + " KB)";
+        });
+}
