@@ -1,0 +1,33 @@
+# Build
+build/
+*.o
+*.obj
+*.lib
+*.exe
+*.dll
+*.so
+*.dylib
+*.pyd
+CMakeCache.txt
+CMakeFiles/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.eggs/
+dist/
+*.whl
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
