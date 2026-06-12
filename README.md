@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="benchmarks/banner.png" alt="sketchlog" width="800">
+  <img src="benchmarks/hero.png" alt="sketchlog" width="600">
 </p>
 
 <p align="center">
