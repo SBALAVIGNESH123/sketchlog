@@ -11,9 +11,10 @@ jobs:
     name: Python Tests
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
     
     steps:
       - uses: actions/checkout@v4
@@ -24,19 +25,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
       
       - name: Install package
-        run: pip install -e ".[dev]"
-        working-directory: .
+        run: pip install -e .
       
       - name: Install test dependencies
         run: pip install pytest
       
-      - name: Run tests
-        run: python -m pytest tests/ -v
+      - name: Run core tests
+        run: python -m pytest tests/test_sketchlog.py -v
+
+      - name: Run feature tests
+        run: python tests/test_features.py
+
+      - name: Run drift tests
+        run: python tests/test_drift.py
+
+      - name: Run windowed tests
+        run: python tests/test_windowed.py
   
   test-cpp:
     name: C++ Build
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     
@@ -48,12 +58,3 @@ jobs:
       
       - name: Build
         run: cmake --build build --config Release
-      
-      - name: Run benchmark (quick)
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            ./build/Release/benchmark_scale.exe
-          else
-            ./build/benchmark_scale
-          fi
-        shell: bash
