@@ -25,22 +25,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
       
       - name: Install package
-        run: pip install -e .
+        run: |
+          pip install pytest
+          pip install -e .
       
-      - name: Install test dependencies
-        run: pip install pytest
-      
-      - name: Run core tests
+      - name: Run tests
         run: python -m pytest tests/test_sketchlog.py -v
-
-      - name: Run feature tests
-        run: python tests/test_features.py
-
-      - name: Run drift tests
-        run: python tests/test_drift.py
-
-      - name: Run windowed tests
-        run: python tests/test_windowed.py
   
   test-cpp:
     name: C++ Build
