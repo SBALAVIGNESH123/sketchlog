@@ -5,7 +5,7 @@ import time
 import subprocess
 import gc
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "python")))
 
 try:
     import numpy as np
@@ -126,9 +126,13 @@ def main():
             print(f"\\n--- {dist} @ {size:,} events ---")
             
             # Get exact
-            exact_output = subprocess.check_output([sys.executable, __file__, "run_worker", "exact", dist, str(size)], text=True)
-            exact_json = exact_output.split("JSON_START")[1].split("JSON_END")[0].strip()
-            exact_res = json.loads(exact_json)
+            try:
+                exact_output = subprocess.check_output([sys.executable, __file__, "run_worker", "exact", dist, str(size)], text=True, timeout=120)
+                exact_json = exact_output.split("JSON_START")[1].split("JSON_END")[0].strip()
+                exact_res = json.loads(exact_json)
+            except Exception as e:
+                print(f"    Failed exact calculation: {e}")
+                continue
             
             for cand in candidates:
                 print(f"    Running {cand}...", end="", flush=True)
@@ -145,6 +149,7 @@ def main():
                         "size": size,
                         "dist": dist,
                         "candidate": cand,
+                        "status": "OK",
                         "err50": err50,
                         "err95": err95,
                         "err99": err99,
@@ -152,13 +157,17 @@ def main():
                         "throughput": res["throughput"]
                     })
                     print(f" Done. {cand:>12}: {res['throughput']:>12,.0f} ops/s | mem: {res['mem_bytes']/1024:>7.1f} KB | err99: {err99*100:>5.2f}%", flush=True)
+                except subprocess.TimeoutExpired:
+                    print(f" TIMEOUT (60s)", flush=True)
+                    results.append({
+                        "size": size, "dist": dist, "candidate": cand,
+                        "status": "TIMEOUT", "err50": None, "err95": None, "err99": None, "mem_kb": None, "throughput": None
+                    })
                 except Exception as e:
                     print(f" FAILED ({e})", flush=True)
                     results.append({
-                        "size": size,
-                        "dist": dist,
-                        "candidate": cand,
-                        "err50": 0, "err95": 0, "err99": 0, "mem_kb": 0, "throughput": 0
+                        "size": size, "dist": dist, "candidate": cand,
+                        "status": "FAILED", "err50": None, "err95": None, "err99": None, "mem_kb": None, "throughput": None
                     })
 
     # Write BENCHMARKS.md
@@ -169,16 +178,21 @@ def main():
         f.write("## 1M Events\n\n")
         f.write("| Distribution | Candidate | p50 Error | p95 Error | p99 Error | Memory (KB) | Throughput (ops/s) |\n")
         f.write("|--------------|-----------|-----------|-----------|-----------|-------------|--------------------|\n")
+        def format_row(r):
+            if r["status"] != "OK":
+                return f"| {r['dist']} | {r['candidate']} | {r['status']} | {r['status']} | {r['status']} | {r['status']} | {r['status']} |\n"
+            return f"| {r['dist']} | {r['candidate']} | {r['err50']*100:.2f}% | {r['err95']*100:.2f}% | {r['err99']*100:.2f}% | {r['mem_kb']:.1f} | {r['throughput']:,.0f} |\n"
+
         for r in results:
             if r["size"] == 1_000_000:
-                f.write(f"| {r['dist']} | {r['candidate']} | {r['err50']*100:.2f}% | {r['err95']*100:.2f}% | {r['err99']*100:.2f}% | {r['mem_kb']:.1f} | {r['throughput']:,.0f} |\n")
+                f.write(format_row(r))
                 
         f.write("\n## 10M Events\n\n")
         f.write("| Distribution | Candidate | p50 Error | p95 Error | p99 Error | Memory (KB) | Throughput (ops/s) |\n")
         f.write("|--------------|-----------|-----------|-----------|-----------|-------------|--------------------|\n")
         for r in results:
             if r["size"] == 10_000_000:
-                f.write(f"| {r['dist']} | {r['candidate']} | {r['err50']*100:.2f}% | {r['err95']*100:.2f}% | {r['err99']*100:.2f}% | {r['mem_kb']:.1f} | {r['throughput']:,.0f} |\n")
+                f.write(format_row(r))
 
 if __name__ == "__main__":
     main()
