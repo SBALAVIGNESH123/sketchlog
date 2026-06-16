@@ -1,6 +1,5 @@
-import time
 import threading
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 from wsgiref.simple_server import make_server, WSGIRequestHandler
 
 if TYPE_CHECKING:

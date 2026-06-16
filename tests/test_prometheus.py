@@ -1,4 +1,4 @@
-import pytest
+
 import time
 import urllib.request
 from sketchlog import ThreadSafeStreamLog
