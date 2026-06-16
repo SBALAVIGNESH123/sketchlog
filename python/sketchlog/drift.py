@@ -41,6 +41,7 @@ Guarantees:
 """
 
 import time as _time
+from typing import Any, Dict, List, Tuple, Union
 import threading
 from collections import defaultdict
 
@@ -60,8 +61,7 @@ class DriftSketch:
     Does NOT detect causality or reconstruct event sequences.
     """
     
-    def __init__(self, window="5m", relative_accuracy=0.01,
-                 hll_precision=8, cms_width=256, cms_depth=3):
+    def __init__(self, window: Union[str, int, float] = "5m", relative_accuracy: float = 0.01, hll_precision: int = 8, cms_width: int = 256, cms_depth: int = 3) -> None:
         """
         Args:
             window: Time window for drift comparison (e.g., "5m", "30s", "1h")
@@ -85,13 +85,13 @@ class DriftSketch:
         self._event_counts = defaultdict(int)
         self._lock = threading.Lock()
     
-    def _get_or_create(self, name):
+    def _get_or_create(self, name: str) -> None:
         if name not in self._current:
             self._current[name] = StreamLog(**self._sk_kwargs)
             self._previous[name] = StreamLog(**self._sk_kwargs)
             self._window_start[name] = _time.monotonic()
     
-    def _maybe_rotate(self, name):
+    def _maybe_rotate(self, name: str) -> None:
         """Rotate window if expired. Previous becomes frozen snapshot."""
         now = _time.monotonic()
         if now - self._window_start[name] >= self._window_seconds:
@@ -281,7 +281,7 @@ class DriftSketch:
         with self._lock:
             return list(self._current.keys())
     
-    def memory_bytes(self):
+    def memory_bytes(self) -> int:
         """Total memory across all dimensions (current + previous)."""
         with self._lock:
             return sum(self._current[n].memory_bytes() + self._previous[n].memory_bytes()
