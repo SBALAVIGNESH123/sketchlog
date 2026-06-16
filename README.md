@@ -40,7 +40,30 @@ No storage. No database. No history. Just 93 KB of state.
 ## Why this exists
 
 If you run production systems, you've seen this failure mode: traffic grows,
-metrics explode, memory spikes, pipelines break. Prometheus grows with
+metrics explode, memory spikes, pipelines break.
+
+## FastAPI / Starlette Middleware
+
+Track request latency, endpoint hits, and status codes across your entire API without configuring separate prometheus clients or statsd servers.
+
+```python
+from fastapi import FastAPI
+from sketchlog import StreamLog
+from sketchlog.integrations.fastapi import SketchLogMiddleware
+
+app = FastAPI()
+log = StreamLog()
+
+# Pass the log instance explicitly
+app.add_middleware(SketchLogMiddleware, streamlog=log)
+
+@app.get("/api/users")
+def get_users():
+    return {"status": "ok"}
+```
+
+## Prometheus Exporter
+Prometheus grows with
 time-series count. Pandas grows with event count. Log pipelines grow with
 retention cost. The pattern is always the same — memory is coupled to volume.
 
