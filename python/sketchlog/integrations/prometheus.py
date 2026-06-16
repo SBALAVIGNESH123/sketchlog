@@ -34,14 +34,10 @@ class PrometheusExporter:
     def _generate_metrics(self) -> str:
         """Generates Prometheus-formatted metrics."""
         
-        lock = getattr(self.log, "lock", None)
-        if lock is not None:
-            with lock:
-                stats = self.log.stats()
-                p95 = self.log.p95()
-        else:
-            stats = self.log.stats()
-            p95 = self.log.p95()
+        from sketchlog import StreamLog
+        snapshot = StreamLog.from_json(self.log.to_json())
+        stats = snapshot.stats()
+        p95 = snapshot.p95()
             
         lines = [
             "# HELP sketchlog_latency Approximate latency percentiles from DDSketch",
