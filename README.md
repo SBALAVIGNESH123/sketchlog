@@ -299,6 +299,24 @@ restored = StreamLog.from_json(payload)
 ```
 
 
+## Prometheus Exporter
+
+Easily expose sketch metrics to Prometheus using the built-in HTTP exporter. It exports p50/p95/p99 quantiles, unique counts, total events, and memory usage.
+
+```python
+from sketchlog import ThreadSafeStreamLog
+from sketchlog.integrations.prometheus import PrometheusExporter
+
+log = ThreadSafeStreamLog()
+exporter = PrometheusExporter(log)
+
+# Starts a background HTTP server on port 9090
+exporter.start(port=9090)
+
+# Add metrics in your main thread
+log.add_latency(42.0)
+```
+
 ## FastAPI / Starlette Middleware
 
 Track request latency, endpoint hits, and status codes across your entire API without configuring separate prometheus clients or statsd servers.
@@ -318,9 +336,6 @@ app.add_middleware(SketchLogMiddleware, log=log)
 def get_users():
     return {"status": "ok"}
 ```
-
-
-
 ## API reference
 
 ```python
