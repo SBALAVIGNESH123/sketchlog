@@ -4,7 +4,7 @@ from typing import Optional, TYPE_CHECKING
 from wsgiref.simple_server import make_server, WSGIRequestHandler
 
 if TYPE_CHECKING:
-    from sketchlog import StreamLog
+    from sketchlog import ThreadSafeStreamLog
 
 class _NoLoggingWSGIRequestHandler(WSGIRequestHandler):
     def log_message(self, format, *args):
@@ -18,40 +18,38 @@ class PrometheusExporter:
     state of a StreamLog instance into the Prometheus text-based format.
     
     Usage:
-        from sketchlog import StreamLog
+        from sketchlog import ThreadSafeStreamLog
         from sketchlog.integrations.prometheus import PrometheusExporter
         
-        log = StreamLog()
+        log = ThreadSafeStreamLog()
         exporter = PrometheusExporter(log)
         exporter.start(port=9090)
     """
     
-    def __init__(self, streamlog: "StreamLog"):
+    def __init__(self, streamlog: "ThreadSafeStreamLog"):
         self.log = streamlog
         self._server = None
         self._thread = None
-        self._last_time = time.monotonic()
-        self._last_events = self.log.total_events
     
     def _generate_metrics(self) -> str:
         """Generates Prometheus-formatted metrics."""
-        now = time.monotonic()
-        elapsed = max(now - self._last_time, 0.001)
-        current_events = self.log.total_events
-        rate = (current_events - self._last_events) / elapsed
         
-        self._last_time = now
-        self._last_events = current_events
-        
-        stats = self.log.stats()
-        
+        lock = getattr(self.log, "lock", None)
+        if lock is not None:
+            with lock:
+                stats = self.log.stats()
+                p95 = self.log.p95()
+        else:
+            stats = self.log.stats()
+            p95 = self.log.p95()
+            
         lines = [
-            "# HELP sketchlog_latency_seconds Approximate latency percentiles from DDSketch",
-            "# TYPE sketchlog_latency_seconds gauge",
-            f'sketchlog_latency_seconds{{quantile="0.5"}} {stats.latency_p50}',
-            f'sketchlog_latency_seconds{{quantile="0.95"}} {self.log.p95()}',
-            f'sketchlog_latency_seconds{{quantile="0.99"}} {stats.latency_p99}',
-            f'sketchlog_latency_seconds{{quantile="0.999"}} {stats.latency_p999}',
+            "# HELP sketchlog_latency Approximate latency percentiles from DDSketch",
+            "# TYPE sketchlog_latency gauge",
+            f'sketchlog_latency{{quantile="0.5"}} {stats.latency_p50}',
+            f'sketchlog_latency{{quantile="0.95"}} {p95}',
+            f'sketchlog_latency{{quantile="0.99"}} {stats.latency_p99}',
+            f'sketchlog_latency{{quantile="0.999"}} {stats.latency_p999}',
             "",
             "# HELP sketchlog_unique_count Estimated number of unique items from HyperLogLog",
             "# TYPE sketchlog_unique_count gauge",
@@ -63,11 +61,7 @@ class PrometheusExporter:
             "",
             "# HELP sketchlog_memory_kb Constant memory usage in KB across all sketches",
             "# TYPE sketchlog_memory_kb gauge",
-            f'sketchlog_memory_kb {stats.memory_kb}',
-            "",
-            "# HELP sketchlog_ingest_rate Current ingestion rate (events/sec)",
-            "# TYPE sketchlog_ingest_rate gauge",
-            f'sketchlog_ingest_rate {rate:.2f}'
+            f'sketchlog_memory_kb {stats.memory_kb}'
         ]
         return "\n".join(lines) + "\n"
 
