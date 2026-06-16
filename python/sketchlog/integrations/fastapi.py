@@ -24,6 +24,8 @@ class SketchLogMiddleware:
     def __init__(self, app: Any, streamlog: StreamLog = None, log: StreamLog = None):
         self.app = app
         self.log = log or streamlog
+        if self.log is None:
+            raise ValueError("Either 'log' or 'streamlog' must be provided")
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
         if scope["type"] != "http":

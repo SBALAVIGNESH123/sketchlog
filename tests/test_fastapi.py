@@ -1,9 +1,8 @@
-import pytest
+import asyncio
 from sketchlog import StreamLog
 from sketchlog.integrations.fastapi import SketchLogMiddleware
 
-@pytest.mark.asyncio
-async def test_fastapi_middleware():
+def test_fastapi_middleware():
     log = StreamLog()
     
     # Mock ASGI app
@@ -26,7 +25,10 @@ async def test_fastapi_middleware():
     async def mock_send(message):
         messages.append(message)
         
-    await middleware(scope, mock_receive, mock_send)
+    async def run_test():
+        await middleware(scope, mock_receive, mock_send)
+        
+    asyncio.run(run_test())
     
     # Check that metrics were recorded
     assert log.total_events > 0
