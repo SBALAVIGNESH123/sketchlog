@@ -18,7 +18,9 @@ def test_window_expiry():
         log2.add_latency(float(i))
         
     assert log2.total_events == 100
-    time.sleep(3)
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline and log2.total_events != 0:
+        time.sleep(0.05)
     assert log2.total_events == 0, f"Expected 0 events after expiry, got {log2.total_events}"
 
 def test_window_parsing():

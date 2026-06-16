@@ -78,7 +78,9 @@ def test_thread_safety():
             ds_mt.add(name, float(i))
             
     threads = [threading.Thread(target=writer, args=(f"t{i}",)) for i in range(4)]
-    for t in threads: t.start()
-    for t in threads: t.join()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
     
     assert ds_mt.summary()["total_events"] == 800

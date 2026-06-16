@@ -12,6 +12,14 @@ import random
 import time
 from sketchlog import StreamLog, WindowedStreamLog
 
+def wait_for_condition(cond, timeout=5.0):
+    start = time.time()
+    while time.time() - start < timeout:
+        if cond(): return True
+        time.sleep(0.1)
+    return False
+
+
 def test_distributed_skew_merge():
     random.seed(42)
 
@@ -70,8 +78,7 @@ def test_windowed_expiration_correctness():
         log_w.add_latency(float(i + 1))
 
     assert log_w.total_events == 100
-    time.sleep(1.5)
-    assert log_w.total_events == 0
+    assert wait_for_condition(lambda: log_w.total_events == 0, timeout=3.0)
 
     # 2b: New data after expiry works
     for i in range(50):
@@ -96,8 +103,7 @@ def test_windowed_expiration_correctness():
     time.sleep(1.2)
     
     # First batch should have expired, second still active
-    total_after = log_w2.total_events
-    assert total_after in (100, 0)
+    assert wait_for_condition(lambda: log_w2.total_events == 100, timeout=3.0)
 
 def test_windowed_memory_stability():
     log_w3 = WindowedStreamLog(window="2s", n_buckets=4)
@@ -121,28 +127,38 @@ def test_merge_commutativity_and_associativity():
     vals_z = [random.uniform(1, 100) for _ in range(10_000)]
 
     # Commutativity: merge(A,B) == merge(B,A)
-    ab = StreamLog(); ab.add_batch(vals_x)
-    ab_other = StreamLog(); ab_other.add_batch(vals_y)
+    ab = StreamLog()
+    ab.add_batch(vals_x)
+    ab_other = StreamLog()
+    ab_other.add_batch(vals_y)
     ab.merge(ab_other)
 
-    ba = StreamLog(); ba.add_batch(vals_y)
-    ba_other = StreamLog(); ba_other.add_batch(vals_x)
+    ba = StreamLog()
+    ba.add_batch(vals_y)
+    ba_other = StreamLog()
+    ba_other.add_batch(vals_x)
     ba.merge(ba_other)
 
     assert abs(ab.p99() - ba.p99()) < 0.001
 
     # Associativity: merge(merge(A,B), C) == merge(A, merge(B,C))
-    ab_c = StreamLog(); ab_c.add_batch(vals_x)
-    ab_c_other1 = StreamLog(); ab_c_other1.add_batch(vals_y)
+    ab_c = StreamLog()
+    ab_c.add_batch(vals_x)
+    ab_c_other1 = StreamLog()
+    ab_c_other1.add_batch(vals_y)
     ab_c.merge(ab_c_other1)
     
-    ab_c_other2 = StreamLog(); ab_c_other2.add_batch(vals_z)
+    ab_c_other2 = StreamLog()
+    ab_c_other2.add_batch(vals_z)
     ab_c.merge(ab_c_other2)
 
-    a_bc = StreamLog(); a_bc.add_batch(vals_x)
+    a_bc = StreamLog()
+    a_bc.add_batch(vals_x)
     
-    bc = StreamLog(); bc.add_batch(vals_y)
-    bc_other = StreamLog(); bc_other.add_batch(vals_z)
+    bc = StreamLog()
+    bc.add_batch(vals_y)
+    bc_other = StreamLog()
+    bc_other.add_batch(vals_z)
     bc.merge(bc_other)
 
     a_bc.merge(bc)

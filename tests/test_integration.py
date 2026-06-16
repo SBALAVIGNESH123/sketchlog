@@ -1,5 +1,6 @@
 """Quick integration test for C++ backend."""
 import sketchlog
+import pytest
 
 def test_integration_version_and_flags():
     assert sketchlog.__version__
@@ -12,13 +13,15 @@ def test_python_streamlog():
     assert log.p99() > 0.0
 
 def test_cpp_streamlog():
-    if sketchlog.HAS_CPP:
-        import numpy as np
-        cpp_log = sketchlog._cpp.StreamLog()
-        cpp_log.add_batch(np.array([1.0, 2.0, 3.0, 4.0, 5.0]))
-        assert cpp_log.total_events() == 5
-        assert cpp_log.p99() > 0.0
-        assert cpp_log.memory_kb() > 0.0
+    if not sketchlog.HAS_CPP:
+        pytest.skip("C++ backend not available")
+        
+    import numpy as np
+    cpp_log = sketchlog._cpp.StreamLog()
+    cpp_log.add_batch(np.array([1.0, 2.0, 3.0, 4.0, 5.0]))
+    assert cpp_log.total_events() == 5
+    assert cpp_log.p99() > 0.0
+    assert cpp_log.memory_kb() > 0.0
 
 def test_all_features_intact():
     log2 = sketchlog.StreamLog()

@@ -25,8 +25,10 @@ def test_concurrency_profiling(n_threads):
             log.add_latency(float(i % 1000) + 1.0)
     
     threads = [threading.Thread(target=worker) for _ in range(n_threads)]
-    for t in threads: t.start()
-    for t in threads: t.join()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
     
     expected = n_threads * EVENTS_PER_THREAD
     assert log.total_events == expected
@@ -36,13 +38,15 @@ def test_chaos_windowing():
     log_chaos = WindowedStreamLog(window="2s", n_buckets=4)
 
     # Burst 1
-    for i in range(5000): log_chaos.add_latency(float(i + 1))
+    for i in range(5000):
+        log_chaos.add_latency(float(i + 1))
     assert log_chaos.total_events == 5000
 
     time.sleep(1.0)
 
     # Burst 2
-    for i in range(3000): log_chaos.add_latency(float(i + 10000))
+    for i in range(3000):
+        log_chaos.add_latency(float(i + 10000))
     assert log_chaos.total_events == 8000
 
     # Full silence
@@ -50,7 +54,8 @@ def test_chaos_windowing():
     assert log_chaos.total_events == 0
 
     # Reactivation
-    for i in range(2000): log_chaos.add_latency(float(i + 50000))
+    for i in range(2000):
+        log_chaos.add_latency(float(i + 50000))
     assert log_chaos.total_events == 2000
     assert log_chaos.p99() > 50000
 
@@ -76,7 +81,7 @@ def test_adversarial_cms_hash_collision_stress():
     assert underestimates == 0
 
     log_adv = StreamLog(cms_width=512, cms_depth=4)
-    adversarial_keys = [f"aaaa{chr(65 + i % 26)}" for i in range(100)]
+    adversarial_keys = [f"aaaa{i}" for i in range(100)]
     for key in adversarial_keys:
         log_adv.add_event(key, 1000)
 
@@ -90,7 +95,8 @@ def test_adversarial_cms_hash_collision_stress():
 def test_pathological_burst_insertion():
     # Identical values
     log_same = StreamLog()
-    for _ in range(100_000): log_same.add_latency(42.0)
+    for _ in range(100_000):
+        log_same.add_latency(42.0)
     assert abs(log_same.p99() - 42.0) / 42.0 < 0.02
     assert log_same.memory_bytes() < 100_000
 
@@ -106,7 +112,8 @@ def test_pathological_burst_insertion():
 
     # Monotonic stream
     log_mono = StreamLog()
-    for i in range(100_000): log_mono.add_latency(float(i + 1))
+    for i in range(100_000):
+        log_mono.add_latency(float(i + 1))
     assert log_mono.memory_bytes() < 200_000
 
 @pytest.mark.slow

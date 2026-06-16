@@ -25,7 +25,8 @@ def test_batch_vs_scalar_equivalence():
 
 def test_memory_breakdown_transparency():
     log = StreamLog()
-    for _ in range(100): log.add_latency(10.0)
+    for _ in range(100):
+        log.add_latency(10.0)
     
     mem = log.memory_breakdown()
     assert "total_bytes" in mem

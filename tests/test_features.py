@@ -7,9 +7,9 @@ from sketchlog import StreamLog, ThreadSafeStreamLog
 
 def test_serialization():
     log = StreamLog()
-    random.seed(42)
+    rnd = random.Random(42)
     for _ in range(100_000):
-        log.add_latency(random.lognormvariate(2, 1))
+        log.add_latency(rnd.lognormvariate(2, 1))
     for i in range(5000):
         log.add_unique(str(i))
     log.add_event("api_call", 1000)
@@ -48,17 +48,17 @@ def test_thread_safety():
         
     assert ts.total_events == 80_000, f"Expected 80000, got {ts.total_events}"
 
-def test_save_load():
+def test_save_load(tmp_path):
     log = StreamLog()
-    random.seed(42)
+    rnd = random.Random(42)
     for _ in range(10_000):
-        log.add_latency(random.lognormvariate(2, 1))
+        log.add_latency(rnd.lognormvariate(2, 1))
         
-    path = os.path.join(tempfile.gettempdir(), "test_sketch.json")
+    path = str(tmp_path / "test_sketch.json")
     log.save(path)
     loaded = StreamLog.load(path)
     
     assert abs(log.p99() - loaded.p99()) < 0.001
+    assert abs(log.p99() - loaded.p99()) < 0.001
     
-    if os.path.exists(path):
-        os.remove(path)
+
