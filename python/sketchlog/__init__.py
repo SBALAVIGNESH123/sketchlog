@@ -29,7 +29,13 @@ For multi-threaded use:
     # safe to call from any thread
 """
 
-__version__ = "0.3.0"
+__version__ = "0.1.0"
+
+__all__ = [
+    "StreamLog",
+    "ThreadSafeStreamLog",
+    "WindowedStreamLog"
+]
 
 # ── C++ backend auto-detection ───────────────────────────────────────────
 # If the compiled C++ extension is available, we expose it as _cpp module.
