@@ -21,12 +21,12 @@ class SketchLogMiddleware:
         
         app.add_middleware(SketchLogMiddleware, streamlog=log)
     """
-    def __init__(self, app: Any, streamlog: StreamLog):
+    def __init__(self, app: Any, streamlog: StreamLog = None, log: StreamLog = None):
         self.app = app
-        self.log = streamlog
+        self.log = log or streamlog
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
-        if scope["type"] not in ("http", "websocket"):
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
