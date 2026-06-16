@@ -319,23 +319,7 @@ def get_users():
     return {"status": "ok"}
 ```
 
-## Prometheus Exporter
 
-Easily expose sketch metrics to Prometheus using the built-in HTTP exporter. It exports p50/p95/p99 quantiles, unique counts, total events, memory usage, and ingest rate.
-
-```python
-from sketchlog import StreamLog
-from sketchlog.integrations.prometheus import PrometheusExporter
-
-log = StreamLog()
-exporter = PrometheusExporter(log)
-
-# Starts a background HTTP server on port 9090
-exporter.start(port=9090)
-
-# Add metrics in your main thread
-log.add_latency(42.0)
-```
 
 ## API reference
 
