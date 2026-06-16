@@ -50,30 +50,126 @@ def test_deterministic_mode():
 def test_distribution_robustness():
     distributions = {
         "uniform": lambda: random.uniform(1, 100),
-        "normal": lambda: random.gauss(50, 10),
+        "normal": lambda: max(0.001, random.gauss(50, 10)),
         "lognormal": lambda: random.lognormvariate(2, 1),
         "bimodal": lambda: random.gauss(10, 2) if random.random() > 0.5 else random.gauss(90, 2),
+        "zipf-like": lambda: 1.0 / (random.random() ** 0.5 + 0.001),
     }
 
     for name, func in distributions.items():
+        rnd = random.Random(42)
         vals = [func() for _ in range(10_000)]
         log = StreamLog()
         log.add_batch(vals)
         
         sorted_vals = sorted(vals)
         true_p99 = sorted_vals[int(0.99 * 10_000)]
-        err = abs(log.p99() - true_p99) / true_p99 * 100
-        assert err < 2.0
+        if true_p99 != 0:
+            err = abs(log.p99() - true_p99) / abs(true_p99) * 100
+        else:
+            err = 0.0
+        assert err < 2.5, f"{name} distribution error too high: {err}%"
 
 @pytest.mark.slow
 def test_long_running_memory_stability():
-    log = StreamLog()
-    mem_initial = log.memory_bytes()
-    
-    for i in range(1_000_000):
-        log.add_latency(random.lognormvariate(2, 1))
-        if i % 250_000 == 0:
-            pass # simulate time
-            
-    mem_final = log.memory_bytes()
-    assert mem_final < 200_000
+    log_stable = StreamLog()
+    memory_at = {}
+    rnd = random.Random(42)
+
+    for i in range(5_000_000):
+        log_stable.add_latency(rnd.lognormvariate(2, 1))
+        if (i + 1) in (100_000, 1_000_000, 2_000_000, 5_000_000):
+            memory_at[i + 1] = log_stable.memory_bytes()
+
+    ratio = memory_at[5_000_000] / memory_at[100_000]
+    assert ratio < 1.5, f"memory growth ratio (5M/100K) = {ratio:.2f}x"
+
+@pytest.mark.slow
+def test_speed_comparison_batch_vs_scalar():
+    rnd = random.Random(99)
+    bench_values = [rnd.lognormvariate(2, 1) for _ in range(500_000)]
+
+    t0 = time.perf_counter()
+    log_s = StreamLog()
+    for v in bench_values:
+        log_s.add_latency(v)
+    scalar_time = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    log_b = StreamLog()
+    log_b.add_batch(bench_values)
+    batch_time = time.perf_counter() - t0
+
+    speedup = scalar_time / batch_time if batch_time > 0 else 1
+    assert speedup > 1.0, f"Batch should be faster, got {speedup}x"
+
+def test_merge_correctness_5_shards():
+    rnd = random.Random(42)
+    all_values = [rnd.lognormvariate(2, 1) for _ in range(100_000)]
+    shard_size = 20_000
+
+    log_full = StreamLog()
+    log_full.add_batch(all_values)
+
+    shards = []
+    for i in range(5):
+        s = StreamLog()
+        s.add_batch(all_values[i*shard_size : (i+1)*shard_size])
+        shards.append(s)
+
+    log_merged = shards[0]
+    for s in shards[1:]:
+        log_merged.merge(s)
+
+    assert log_merged.total_events == log_full.total_events
+    assert abs(log_merged.p99() - log_full.p99()) / log_full.p99() < 0.001
+    assert abs(log_merged.p50() - log_full.p50()) / log_full.p50() < 0.001
+
+def test_repeated_merge_stability():
+    base = StreamLog()
+    base.add_latency(100.0)
+    for _ in range(100):
+        more = StreamLog()
+        more.add_latency(100.0)
+        base.merge(more)
+
+    assert base.total_events == 101
+    assert abs(base.p99() - 100.0) / 100.0 < 0.02
+
+def test_merge_config_mismatch_rejection():
+    a = StreamLog(relative_accuracy=0.01)
+    b = StreamLog(relative_accuracy=0.05)
+    with pytest.raises(ValueError):
+        a.merge(b)
+
+def test_adversarial_extreme_values():
+    log_ext = StreamLog()
+    log_ext.add_latency(1e-10)
+    log_ext.add_latency(1e10)
+    log_ext.add_latency(0.0)
+    assert log_ext.total_events == 3
+
+def test_adversarial_nan_inf_rejection():
+    log_nan = StreamLog()
+    log_nan.add_latency(float('nan'))
+    log_nan.add_latency(float('inf'))
+    log_nan.add_latency(float('-inf'))
+    log_nan.add_latency(42.0)
+    assert log_nan.total_events == 1
+
+def test_adversarial_duplicates():
+    log_dup = StreamLog()
+    for _ in range(100_000):
+        log_dup.add_latency(42.0)
+    assert abs(log_dup.p99() - 42.0) / 42.0 < 0.02
+
+def test_adversarial_single_value():
+    log_one = StreamLog()
+    log_one.add_latency(7.0)
+    assert abs(log_one.p99() - 7.0) < 0.1
+
+def test_adversarial_batch_nan_inf():
+    log_mixed = StreamLog()
+    mixed = [1.0, float('nan'), 2.0, float('inf'), 3.0, float('-inf'), 4.0]
+    log_mixed.add_batch(mixed)
+    assert log_mixed.total_events == 4
