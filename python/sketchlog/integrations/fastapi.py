@@ -1,5 +1,5 @@
 import time
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 from sketchlog import StreamLog
 
 class SketchLogMiddleware:
@@ -21,11 +21,12 @@ class SketchLogMiddleware:
         
         app.add_middleware(SketchLogMiddleware, streamlog=log)
     """
-    def __init__(self, app: Any, streamlog: StreamLog = None, log: StreamLog = None):
+    def __init__(self, app: Any, streamlog: Optional[StreamLog] = None, log: Optional[StreamLog] = None):
         self.app = app
-        self.log = log or streamlog
-        if self.log is None:
+        _log = log or streamlog
+        if _log is None:
             raise ValueError("Either 'log' or 'streamlog' must be provided")
+        self.log: StreamLog = _log
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
         if scope["type"] != "http":

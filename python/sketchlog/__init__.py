@@ -43,12 +43,13 @@ __all__ = [
 # etc.), but users can access the raw C++ engine for maximum throughput.
 
 try:
-    import _sketchlog_cpp as _cpp
+    import _sketchlog_cpp as _cpp  # type: ignore
     HAS_CPP = True
 except ImportError:
     _cpp = None
     HAS_CPP = False
 
+from typing import Any, Dict, Iterable, List, Optional, Union, Tuple
 import json
 import math
 import struct
@@ -113,7 +114,7 @@ class DDSketch:
         else:
             self._zero_count += count
     
-    def add_batch(self, values):
+    def add_batch(self, values: Iterable[float]) -> None:
         """Bulk-add values. 2-5x faster than individual add() calls."""
         pos = self._positive
         neg = self._negative
@@ -190,12 +191,12 @@ class DDSketch:
     def max(self):
         return self._max if self._count > 0 else 0.0
     
-    def memory_bytes(self):
+    def memory_bytes(self) -> int:
         # Approximate: dict overhead + entries
         n_buckets = len(self._positive) + len(self._negative)
         return 64 + n_buckets * 24  # ~24 bytes per dict entry
     
-    def reset(self):
+    def reset(self) -> None:
         self._positive.clear()
         self._negative.clear()
         self._zero_count = 0
@@ -291,10 +292,10 @@ class HyperLogLog:
         
         return raw
     
-    def memory_bytes(self):
+    def memory_bytes(self) -> int:
         return 32 + self._m
     
-    def reset(self):
+    def reset(self) -> None:
         self._registers = bytearray(self._m)
 
 
@@ -371,10 +372,10 @@ class CountMinSketch:
     def total_count(self):
         return self._total
     
-    def memory_bytes(self):
+    def memory_bytes(self) -> int:
         return 64 + self._width * self._depth * 8
     
-    def reset(self):
+    def reset(self) -> None:
         self._table = [[0] * self._width for _ in range(self._depth)]
         self._total = 0
 
@@ -398,8 +399,7 @@ class StreamLog:
         log.memory_breakdown()        # per-sketch memory transparency
     """
     
-    def __init__(self, relative_accuracy=0.01, hll_precision=10,
-                 cms_width=2048, cms_depth=5, deterministic=False):
+    def __init__(self, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5, deterministic: bool = False) -> None:
         self._latency = DDSketch(relative_accuracy)
         self._events = CountMinSketch(cms_width, cms_depth)
         self._uniques = HyperLogLog(hll_precision)
@@ -408,14 +408,14 @@ class StreamLog:
     
     # ─── Latency ─────────────────────────────────────────────────────
     
-    def add_latency(self, value):
+    def add_latency(self, value: float) -> None:
         """Add a latency measurement."""
         count_before = self._latency._count
         self._latency.add(value)
         if self._latency._count > count_before:
             self._total += 1
     
-    def add_batch(self, values):
+    def add_batch(self, values: Iterable[float]) -> None:
         """Bulk-add latency values. 2-5x faster than individual add_latency().
         
         Args:
@@ -425,40 +425,40 @@ class StreamLog:
         self._latency.add_batch(values)
         self._total += self._latency._count - count_before
     
-    def percentile(self, q):
+    def percentile(self, q: float) -> float:
         """Get any percentile (0.0 to 1.0)."""
         return self._latency.quantile(q)
     
-    def p50(self):
+    def p50(self) -> float:
         """Median latency."""
         return self.percentile(0.50)
     
-    def p95(self):
+    def p95(self) -> float:
         """95th percentile latency."""
         return self.percentile(0.95)
     
-    def p99(self):
+    def p99(self) -> float:
         """99th percentile latency."""
         return self.percentile(0.99)
     
-    def p999(self):
+    def p999(self) -> float:
         """99.9th percentile latency."""
         return self.percentile(0.999)
     
     # ─── Events ──────────────────────────────────────────────────────
     
-    def add_event(self, name, count=1):
+    def add_event(self, name: Union[str, bytes], count: int = 1) -> None:
         """Record an event occurrence."""
         self._events.add(name, count)
         self._total += count
     
-    def event_count(self, name):
+    def event_count(self, name: Union[str, bytes]) -> int:
         """Estimated count for an event type."""
         return self._events.estimate(name)
     
     # ─── Cardinality ─────────────────────────────────────────────────
     
-    def add_unique(self, item):
+    def add_unique(self, item: Union[str, bytes, int]) -> None:
         """Track a unique item.
         
         Note: does not increment total_events. Cardinality tracking
@@ -466,7 +466,7 @@ class StreamLog:
         """
         self._uniques.add(item)
     
-    def unique_count(self):
+    def unique_count(self) -> int:
         """Estimated number of unique items."""
         est = self._uniques.estimate()
         return max(0, int(est + 0.5))
@@ -474,21 +474,21 @@ class StreamLog:
     # ─── System ──────────────────────────────────────────────────────
     
     @property
-    def total_events(self):
+    def total_events(self) -> int:
         """Total events processed."""
         return self._total
     
-    def memory_bytes(self):
+    def memory_bytes(self) -> int:
         """Total memory used by all sketches."""
         return (self._latency.memory_bytes() + 
                 self._events.memory_bytes() + 
                 self._uniques.memory_bytes())
     
-    def memory_kb(self):
+    def memory_kb(self) -> float:
         """Total memory in KB."""
         return self.memory_bytes() / 1024.0
     
-    def memory_breakdown(self):
+    def memory_breakdown(self) -> Dict[str, Any]:
         """Per-sketch memory breakdown. Engineers love transparency.
         
         Returns:
@@ -512,7 +512,7 @@ class StreamLog:
             'total_kb': round(total / 1024, 2),
         }
     
-    def stats(self):
+    def stats(self) -> Any:
         """Full stats snapshot."""
         return Stats(
             events=self._total,
@@ -524,7 +524,7 @@ class StreamLog:
             unique_count=self.unique_count()
         )
     
-    def reset(self):
+    def reset(self) -> None:
         """Reset all sketches."""
         self._latency.reset()
         self._events.reset()
@@ -533,7 +533,7 @@ class StreamLog:
     
     # ─── Serialization ───────────────────────────────────────────────
     
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         """Serialize to dict for JSON storage."""
         return {
             'version': 1,
@@ -560,17 +560,17 @@ class StreamLog:
             }
         }
     
-    def to_json(self):
+    def to_json(self) -> str:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict())
     
-    def save(self, path):
+    def save(self, path: str) -> None:
         """Save to file."""
         with open(path, 'w') as f:
             json.dump(self.to_dict(), f)
     
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data: Dict[str, Any]) -> "StreamLog":
         """Restore from dict."""
         latency_data = data['latency']
         log = cls(
@@ -598,19 +598,19 @@ class StreamLog:
         return log
     
     @classmethod
-    def from_json(cls, json_str):
+    def from_json(cls, json_str: str) -> "StreamLog":
         """Restore from JSON string."""
         return cls.from_dict(json.loads(json_str))
     
     @classmethod
-    def load(cls, path):
+    def load(cls, path: str) -> "StreamLog":
         """Load from file."""
         with open(path, 'r') as f:
             return cls.from_dict(json.load(f))
     
     # ─── Merge ────────────────────────────────────────────────────────
     
-    def merge(self, other):
+    def merge(self, other: "StreamLog") -> None:
         """Merge another StreamLog into this one.
         
         Mathematically correct for all three sketches:
@@ -673,68 +673,68 @@ class StreamLog:
 class ThreadSafeStreamLog:
     """Thread-safe StreamLog. Safe to use from multiple threads."""
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         self._log = StreamLog(*args, **kwargs)
         self._lock = threading.Lock()
     
-    def add_latency(self, value):
+    def add_latency(self, value: float) -> None:
         with self._lock:
             self._log.add_latency(value)
     
-    def add_event(self, name, count=1):
+    def add_event(self, name: Union[str, bytes], count: int = 1) -> None:
         with self._lock:
             self._log.add_event(name, count)
     
-    def add_unique(self, item):
+    def add_unique(self, item: Union[str, bytes, int]) -> None:
         with self._lock:
             self._log.add_unique(item)
     
-    def p50(self):
+    def p50(self) -> float:
         with self._lock:
             return self._log.p50()
     
-    def p95(self):
+    def p95(self) -> float:
         with self._lock:
             return self._log.p95()
     
-    def p99(self):
+    def p99(self) -> float:
         with self._lock:
             return self._log.p99()
     
-    def p999(self):
+    def p999(self) -> float:
         with self._lock:
             return self._log.p999()
     
-    def percentile(self, q):
+    def percentile(self, q: float) -> float:
         with self._lock:
             return self._log.percentile(q)
     
-    def event_count(self, name):
+    def event_count(self, name: Union[str, bytes]) -> int:
         with self._lock:
             return self._log.event_count(name)
     
-    def unique_count(self):
+    def unique_count(self) -> int:
         with self._lock:
             return self._log.unique_count()
     
     @property
-    def total_events(self):
+    def total_events(self) -> int:
         with self._lock:
             return self._log.total_events
     
-    def memory_bytes(self):
+    def memory_bytes(self) -> int:
         with self._lock:
             return self._log.memory_bytes()
     
-    def memory_kb(self):
+    def memory_kb(self) -> float:
         with self._lock:
             return self._log.memory_kb()
     
-    def stats(self):
+    def stats(self) -> Any:
         with self._lock:
             return self._log.stats()
     
-    def reset(self):
+    def reset(self) -> None:
         with self._lock:
             self._log.reset()
     
@@ -747,7 +747,7 @@ class ThreadSafeStreamLog:
 # WindowedStreamLog — Sliding time window metrics
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _parse_window(window):
+def _parse_window(window: Union[str, int, float]) -> float:
     """Parse window string like '5m', '1h', '30s' to seconds."""
     if isinstance(window, (int, float)):
         result = float(window)
@@ -784,13 +784,11 @@ class WindowedStreamLog:
         log = WindowedStreamLog(window=300)    # 300 seconds
     """
     
-    def __init__(self, window="5m", n_buckets=6,
-                 relative_accuracy=0.01, hll_precision=10,
-                 cms_width=2048, cms_depth=5):
+    def __init__(self, window: Union[str, int, float] = "5m", n_buckets: int = 6, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5) -> None:
         self._window_seconds = _parse_window(window)
         self._n_buckets = n_buckets
         self._bucket_duration = self._window_seconds / n_buckets
-        self._sk_kwargs = dict(
+        self._sk_kwargs: Dict[str, Any] = dict(
             relative_accuracy=relative_accuracy,
             hll_precision=hll_precision,
             cms_width=cms_width,
@@ -828,19 +826,19 @@ class WindowedStreamLog:
     
     # ─── Write ────────────────────────────────────────────────────────
     
-    def add_latency(self, value):
+    def add_latency(self, value: float) -> None:
         """Add a latency measurement to the current time bucket."""
         with self._lock:
             self._rotate()
             self._buckets[self._current_bucket].add_latency(value)
     
-    def add_event(self, name, count=1):
+    def add_event(self, name: Union[str, bytes], count: int = 1) -> None:
         """Record an event in the current time bucket."""
         with self._lock:
             self._rotate()
             self._buckets[self._current_bucket].add_event(name, count)
     
-    def add_unique(self, item):
+    def add_unique(self, item: Union[str, bytes, int]) -> None:
         """Track a unique item in the current time bucket."""
         with self._lock:
             self._rotate()
@@ -848,7 +846,7 @@ class WindowedStreamLog:
     
     # ─── Read (merged across active buckets) ─────────────────────────
     
-    def percentile(self, q):
+    def percentile(self, q: float) -> float:
         """Get percentile across the entire active window."""
         with self._lock:
             self._rotate()
@@ -861,19 +859,19 @@ class WindowedStreamLog:
                 merged.merge(bucket)
             return merged.percentile(q)
     
-    def p50(self):
+    def p50(self) -> float:
         return self.percentile(0.50)
     
-    def p95(self):
+    def p95(self) -> float:
         return self.percentile(0.95)
     
-    def p99(self):
+    def p99(self) -> float:
         return self.percentile(0.99)
     
-    def p999(self):
+    def p999(self) -> float:
         return self.percentile(0.999)
     
-    def unique_count(self):
+    def unique_count(self) -> int:
         """Estimated unique items in the active window."""
         with self._lock:
             self._rotate()
@@ -885,7 +883,7 @@ class WindowedStreamLog:
                 merged.merge(bucket)
             return merged.unique_count()
     
-    def event_count(self, name):
+    def event_count(self, name: Union[str, bytes]) -> int:
         """Estimated count for an event type in the active window."""
         with self._lock:
             self._rotate()
@@ -898,25 +896,25 @@ class WindowedStreamLog:
             return merged.event_count(name)
     
     @property
-    def total_events(self):
+    def total_events(self) -> int:
         """Total events across all active buckets."""
         with self._lock:
             self._rotate()
             return sum(b.total_events for b in self._active_buckets())
     
-    def memory_bytes(self):
+    def memory_bytes(self) -> int:
         """Total memory across all buckets (not just active ones)."""
         with self._lock:
             return sum(b.memory_bytes() for b in self._buckets)
     
-    def memory_kb(self):
+    def memory_kb(self) -> float:
         return self.memory_bytes() / 1024.0
     
     @property
-    def window_seconds(self):
+    def window_seconds(self) -> float:
         return self._window_seconds
     
-    def stats(self):
+    def stats(self) -> Any:
         """Stats snapshot for the active window."""
         with self._lock:
             self._rotate()
@@ -939,7 +937,7 @@ class WindowedStreamLog:
                 unique_count=s.unique_count,
             )
     
-    def reset(self):
+    def reset(self) -> None:
         """Reset all buckets."""
         with self._lock:
             for b in self._buckets:

@@ -1,5 +1,5 @@
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Any
 from wsgiref.simple_server import make_server, WSGIRequestHandler
 
 if TYPE_CHECKING:
@@ -27,8 +27,8 @@ class PrometheusExporter:
     
     def __init__(self, streamlog: "ThreadSafeStreamLog"):
         self.log = streamlog
-        self._server = None
-        self._thread = None
+        self._server: Optional[Any] = None
+        self._thread: Optional[threading.Thread] = None
     
     def _generate_metrics(self) -> str:
         """Generates Prometheus-formatted metrics."""
@@ -86,7 +86,8 @@ class PrometheusExporter:
             
         self._server = make_server(host, port, self._wsgi_app, handler_class=_NoLoggingWSGIRequestHandler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
-        self._thread.start()
+        if self._thread is not None:
+            self._thread.start()
 
     def stop(self) -> None:
         """Stop the exporter server."""
