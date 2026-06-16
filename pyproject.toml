@@ -32,3 +32,6 @@ Issues = "https://github.com/SBALAVIGNESH123/sketchlog/issues"
 
 [tool.setuptools.packages.find]
 where = ["python"]
+
+[tool.setuptools.package-data]
+sketchlog = ["py.typed"]

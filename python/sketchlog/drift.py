@@ -41,7 +41,7 @@ Guarantees:
 """
 
 import time as _time
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union, DefaultDict
 import threading
 from collections import defaultdict
 
@@ -72,17 +72,17 @@ class DriftSketch:
         """
         self._window_seconds = _parse_window(window)
         self._window_str = window
-        self._sk_kwargs = dict(
+        self._sk_kwargs: Dict[str, Any] = dict(
             relative_accuracy=relative_accuracy,
             hll_precision=hll_precision,
             cms_width=cms_width,
             cms_depth=cms_depth,
         )
         
-        self._current = {}       # name -> StreamLog (active window)
-        self._previous = {}      # name -> StreamLog (frozen previous window)
-        self._window_start = {}  # name -> monotonic time
-        self._event_counts = defaultdict(int)
+        self._current: Dict[str, StreamLog] = {}       # name -> StreamLog (active window)
+        self._previous: Dict[str, StreamLog] = {}      # name -> StreamLog (frozen previous window)
+        self._window_start: Dict[str, float] = {}  # name -> monotonic time
+        self._event_counts: DefaultDict[str, int] = defaultdict(int)
         self._lock = threading.Lock()
     
     def _get_or_create(self, name: str) -> None:

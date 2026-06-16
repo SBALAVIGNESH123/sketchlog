@@ -37,7 +37,7 @@ __version__ = "0.3.0"
 # etc.), but users can access the raw C++ engine for maximum throughput.
 
 try:
-    import _sketchlog_cpp as _cpp
+    import _sketchlog_cpp as _cpp  # type: ignore
     HAS_CPP = True
 except ImportError:
     _cpp = None
@@ -782,7 +782,7 @@ class WindowedStreamLog:
         self._window_seconds = _parse_window(window)
         self._n_buckets = n_buckets
         self._bucket_duration = self._window_seconds / n_buckets
-        self._sk_kwargs = dict(
+        self._sk_kwargs: Dict[str, Any] = dict(
             relative_accuracy=relative_accuracy,
             hll_precision=hll_precision,
             cms_width=cms_width,
