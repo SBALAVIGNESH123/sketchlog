@@ -1,0 +1,107 @@
+import time
+import threading
+from typing import Optional, TYPE_CHECKING
+from wsgiref.simple_server import make_server, WSGIRequestHandler
+
+if TYPE_CHECKING:
+    from sketchlog import StreamLog
+
+class _NoLoggingWSGIRequestHandler(WSGIRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+class PrometheusExporter:
+    """
+    Exposes StreamLog metrics to Prometheus.
+    
+    Provides a lightweight HTTP server that formats the current
+    state of a StreamLog instance into the Prometheus text-based format.
+    
+    Usage:
+        from sketchlog import StreamLog
+        from sketchlog.integrations.prometheus import PrometheusExporter
+        
+        log = StreamLog()
+        exporter = PrometheusExporter(log)
+        exporter.start(port=9090)
+    """
+    
+    def __init__(self, streamlog: "StreamLog"):
+        self.log = streamlog
+        self._server = None
+        self._thread = None
+        self._last_time = time.monotonic()
+        self._last_events = self.log.total_events
+    
+    def _generate_metrics(self) -> str:
+        """Generates Prometheus-formatted metrics."""
+        now = time.monotonic()
+        elapsed = max(now - self._last_time, 0.001)
+        current_events = self.log.total_events
+        rate = (current_events - self._last_events) / elapsed
+        
+        self._last_time = now
+        self._last_events = current_events
+        
+        stats = self.log.stats()
+        
+        lines = [
+            "# HELP sketchlog_latency_seconds Approximate latency percentiles from DDSketch",
+            "# TYPE sketchlog_latency_seconds gauge",
+            f'sketchlog_latency_seconds{{quantile="0.5"}} {stats.latency_p50}',
+            f'sketchlog_latency_seconds{{quantile="0.95"}} {self.log.p95()}',
+            f'sketchlog_latency_seconds{{quantile="0.99"}} {stats.latency_p99}',
+            f'sketchlog_latency_seconds{{quantile="0.999"}} {stats.latency_p999}',
+            "",
+            "# HELP sketchlog_unique_count Estimated number of unique items from HyperLogLog",
+            "# TYPE sketchlog_unique_count gauge",
+            f'sketchlog_unique_count {stats.unique_count}',
+            "",
+            "# HELP sketchlog_total_events Total number of events processed",
+            "# TYPE sketchlog_total_events counter",
+            f'sketchlog_total_events {stats.events}',
+            "",
+            "# HELP sketchlog_memory_kb Constant memory usage in KB across all sketches",
+            "# TYPE sketchlog_memory_kb gauge",
+            f'sketchlog_memory_kb {stats.memory_kb}',
+            "",
+            "# HELP sketchlog_ingest_rate Current ingestion rate (events/sec)",
+            "# TYPE sketchlog_ingest_rate gauge",
+            f'sketchlog_ingest_rate {rate:.2f}'
+        ]
+        return "\n".join(lines) + "\n"
+
+    def _wsgi_app(self, environ, start_response):
+        if environ.get("PATH_INFO") == "/metrics":
+            status = '200 OK'
+            metrics = self._generate_metrics().encode('utf-8')
+            headers = [
+                ('Content-Type', 'text/plain; version=0.0.4; charset=utf-8'),
+                ('Content-Length', str(len(metrics)))
+            ]
+            start_response(status, headers)
+            return [metrics]
+        
+        status = '404 Not Found'
+        headers = [('Content-Type', 'text/plain')]
+        start_response(status, headers)
+        return [b"Not Found\n"]
+
+    def start(self, port: int = 9090, host: str = "0.0.0.0") -> None:
+        """Start the Prometheus exporter HTTP server on a background thread."""
+        if self._server is not None:
+            return
+            
+        self._server = make_server(host, port, self._wsgi_app, handler_class=_NoLoggingWSGIRequestHandler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Stop the exporter server."""
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+            if self._thread is not None:
+                self._thread.join()
+            self._server = None
+            self._thread = None
