@@ -262,6 +262,8 @@ class HyperLogLog:
     def add(self, value):
         """Add a value (int or bytes or string)."""
         if isinstance(value, int):
+            if value < 0 or value > 0xFFFFFFFFFFFFFFFF:
+                raise ValueError("HyperLogLog integer out of range for 64-bit unsigned")
             h = self._hash_bytes(value.to_bytes(8, byteorder='little', signed=False))
         elif isinstance(value, (bytes, bytearray)):
             h = self._hash_bytes(value)
@@ -307,6 +309,11 @@ class CountMinSketch:
     """Estimate frequency of items in constant memory."""
     
     def __init__(self, width=2048, depth=5):
+        if width <= 0:
+            raise ValueError(f"CountMinSketch width must be > 0, got {width}")
+        if depth <= 0:
+            raise ValueError(f"CountMinSketch depth must be > 0, got {depth}")
+            
         self._width = width
         self._depth = depth
         self._table = [[0] * width for _ in range(depth)]
@@ -469,6 +476,8 @@ class StreamLog:
         Note: does not increment total_events. Cardinality tracking
         is separate from event counting by design.
         """
+        if isinstance(item, int) and (item < 0 or item > 0xFFFFFFFFFFFFFFFF):
+            raise ValueError("Unique integer out of range for 64-bit unsigned")
         self._uniques.add(item)
     
     def unique_count(self) -> int:
@@ -790,6 +799,11 @@ class WindowedStreamLog:
     """
     
     def __init__(self, window: Union[str, int, float] = "5m", n_buckets: int = 6, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5) -> None:
+        if n_buckets <= 0:
+            raise ValueError(f"WindowedStreamLog n_buckets must be > 0, got {n_buckets}")
+        if not window and window != 0:
+            raise ValueError("WindowedStreamLog window string cannot be empty")
+            
         self._window_seconds = _parse_window(window)
         self._n_buckets = n_buckets
         self._bucket_duration = self._window_seconds / n_buckets
