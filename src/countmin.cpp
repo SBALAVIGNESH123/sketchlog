@@ -74,6 +74,9 @@ uint64_t CountMinSketch::fnv1a(const void* data, size_t len) noexcept {
 // ════════════════════════════════════════════════════════════════════════
 
 void CountMinSketch::add(uint64_t key, int64_t count) {
+    if (count <= 0) {
+        throw std::invalid_argument("Event count must be strictly positive");
+    }
     for (size_t row = 0; row < depth_; ++row) {
         uint64_t col = murmur_finalizer(key ^ hash_seeds_[row]) % width_;
         table_[row * width_ + col] += count;

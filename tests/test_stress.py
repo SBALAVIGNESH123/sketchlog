@@ -172,3 +172,20 @@ def test_adversarial_batch_nan_inf():
     mixed = [1.0, float('nan'), 2.0, float('inf'), 3.0, float('-inf'), 4.0]
     log_mixed.add_batch(mixed)
     assert log_mixed.total_events == 4
+
+def test_adversarial_negative_event_counts():
+    from sketchlog import CountMinSketch
+    c = CountMinSketch()
+    with pytest.raises(ValueError):
+        c.add('x', -5)
+    with pytest.raises(ValueError):
+        c.add('x', 0)
+        
+    log = StreamLog()
+    with pytest.raises(ValueError):
+        log.add_event('y', -10)
+    with pytest.raises(ValueError):
+        log.add_event('y', 0)
+        
+    assert c.total_count == 0
+    assert log.total_events == 0
