@@ -57,7 +57,6 @@ def test_distribution_robustness():
     }
 
     for name, func in distributions.items():
-        rnd = random.Random(42)
         vals = [func() for _ in range(10_000)]
         log = StreamLog()
         log.add_batch(vals)

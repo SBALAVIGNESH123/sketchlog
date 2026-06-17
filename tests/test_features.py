@@ -1,8 +1,6 @@
 """Test all new features: serialization, merge, thread safety, save/load."""
 import random
-import tempfile
 import threading
-import os
 from sketchlog import StreamLog, ThreadSafeStreamLog
 
 def test_serialization():
@@ -58,7 +56,6 @@ def test_save_load(tmp_path):
     log.save(path)
     loaded = StreamLog.load(path)
     
-    assert abs(log.p99() - loaded.p99()) < 0.001
     assert abs(log.p99() - loaded.p99()) < 0.001
     
 
