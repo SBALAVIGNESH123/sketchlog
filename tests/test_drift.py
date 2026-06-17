@@ -108,16 +108,21 @@ def test_empty_sketch_no_deadlock():
     assert out["repr"].startswith("DriftSketch")
     assert out["summary"]["total_events"] == 0
 
-def test_idle_window_gaps():
-    import time
+def test_idle_window_gaps(monkeypatch):
+    import sketchlog.drift as drift_mod
+
+    # Setup mock time
+    current_time = 1000.0
+    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+
     ds = DriftSketch(window=0.1)
 
     # First window
     for _ in range(10):
         ds.add("latency", 10.0)
 
-    # Sleep past more than 2 windows
-    time.sleep(0.25)
+    # Advance time past more than 2 windows
+    current_time += 0.25
 
     # Next window
     ds.add("latency", 100.0)
