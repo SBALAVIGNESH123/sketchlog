@@ -1,4 +1,6 @@
 #include "sketchlog.hpp"
+#include <stdexcept>
+
 
 namespace sketchlog {
 
