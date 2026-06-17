@@ -805,7 +805,7 @@ class WindowedStreamLog:
         self._bucket_start_times = [_time.monotonic()] * n_buckets
         self._current_bucket = 0
         self._start_time = _time.monotonic()
-        self._lock = threading.Lock()  # thread-safe by default
+        self._lock = threading.RLock()  # thread-safe and reentrant
     
     def _rotate(self):
         """Advance to current time bucket, resetting expired buckets."""
