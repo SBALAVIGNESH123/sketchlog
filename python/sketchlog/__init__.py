@@ -825,7 +825,7 @@ class WindowedStreamLog:
         active = []
         for i in range(self._n_buckets):
             age = now - self._bucket_start_times[i]
-            if age <= self._window_seconds and self._buckets[i].total_events > 0:
+            if age <= self._window_seconds and (self._buckets[i].total_events > 0 or self._buckets[i].unique_count() > 0):
                 active.append(self._buckets[i])
         return active
     

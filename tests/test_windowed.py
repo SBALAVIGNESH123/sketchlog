@@ -64,3 +64,11 @@ def test_empty_window_no_deadlock():
     # Should not deadlock
     r = repr(log)
     assert r.startswith("WindowedStreamLog")
+
+def test_windowed_unique_only():
+    from sketchlog import WindowedStreamLog
+    log = WindowedStreamLog(window="10s")
+    log.add_unique("u1")
+    log.add_unique("u2")
+    assert log.total_events == 0
+    assert log.unique_count() == 2
