@@ -83,7 +83,7 @@ class DriftSketch:
         self._previous: Dict[str, StreamLog] = {}      # name -> StreamLog (frozen previous window)
         self._window_start: Dict[str, float] = {}  # name -> monotonic time
         self._event_counts: DefaultDict[str, int] = defaultdict(int)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
     
     def _get_or_create(self, name: str) -> None:
         if name not in self._current:

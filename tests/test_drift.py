@@ -91,3 +91,19 @@ def test_add_batch_generator():
     ds.add_batch("generator_dim", (float(i) for i in range(10)))
     assert ds.summary()["total_events"] == 10
     assert ds.summary()["metrics"][0]["events"] == 10
+
+def test_empty_sketch_no_deadlock():
+    ds = DriftSketch()
+    out = {}
+
+    def _worker():
+        out["repr"] = repr(ds)
+        out["summary"] = ds.summary()
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout=1.0)
+
+    assert not t.is_alive(), "repr()/summary() deadlocked"
+    assert out["repr"].startswith("DriftSketch")
+    assert out["summary"]["total_events"] == 0
