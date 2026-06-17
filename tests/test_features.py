@@ -99,26 +99,25 @@ def test_hyperloglog_rho_calculation():
     assert HyperLogLog._rho(0, 14) == 51
 
 def test_nan_and_inf_handling():
-    import math
     from sketchlog import StreamLog
     from sketchlog.drift import DriftSketch
-    
-    # 1. Test C++ StreamLog bindings
+
+    # 1. Test Python StreamLog
     log = StreamLog()
     log.add_latency(float('nan'))
     log.add_latency(float('inf'))
     log.add_latency(float('-inf'))
-    
+
     assert log.stats().events == 0
-    
+
     # 2. Test DriftSketch
     ds = DriftSketch()
     ds.add('dim', float('nan'))
     ds.add('dim', float('inf'))
     ds.add('dim', float('-inf'))
-    
+
     assert ds.summary()["metrics"][0]["events"] == 0
-    
+
     # 3. Test DriftSketch batch
     ds.add_batch('dim', [float('nan'), 42.0, float('inf'), float('-inf')])
     assert ds.summary()["metrics"][0]["events"] == 1
