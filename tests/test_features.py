@@ -81,3 +81,19 @@ def test_constructor_validation():
         
     with pytest.raises(ValueError):
         HyperLogLog().add(2**64)
+
+def test_hyperloglog_rho_calculation():
+    from sketchlog import HyperLogLog
+    
+    # Highest bit set (clz = 0 -> rho = 1)
+    assert HyperLogLog._rho(1 << 63, 10) == 1
+    
+    # Second highest bit set (clz = 1 -> rho = 2)
+    assert HyperLogLog._rho(1 << 62, 10) == 2
+    
+    # Lowest bit set (clz = 63 -> rho = 64)
+    assert HyperLogLog._rho(1, 10) == 64
+    
+    # Zero (clz = 64 -> rho = 64 - p + 1)
+    assert HyperLogLog._rho(0, 10) == 55
+    assert HyperLogLog._rho(0, 14) == 51

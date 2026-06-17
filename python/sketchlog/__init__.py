@@ -248,16 +248,11 @@ class HyperLogLog:
         return self._murmur_finalizer(h)
     
     @staticmethod
-    def _rho(w, max_width):
+    def _rho(w, p):
         """Count leading zeros + 1."""
         if w == 0:
-            return max_width + 1
-        count = 0
-        mask = 1 << (max_width - 1)
-        while (w & mask) == 0:
-            count += 1
-            mask >>= 1
-        return count + 1
+            return 64 - p + 1
+        return 64 - w.bit_length() + 1
     
     def add(self, value):
         """Add a value (int or bytes or string)."""
@@ -274,7 +269,7 @@ class HyperLogLog:
         
         idx = h >> (64 - self._p)
         w = (h << self._p) & 0xFFFFFFFFFFFFFFFF
-        rho = self._rho(w, 64 - self._p)
+        rho = self._rho(w, self._p)
         if rho > self._registers[idx]:
             self._registers[idx] = min(rho, 255)
     
