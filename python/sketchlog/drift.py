@@ -127,6 +127,9 @@ class DriftSketch:
     
     def add_batch(self, dimension, values):
         """Bulk-add observations to a dimension."""
+        if not hasattr(values, "__len__"):
+            values = list(values)
+            
         with self._lock:
             self._get_or_create(dimension)
             self._maybe_rotate(dimension)
