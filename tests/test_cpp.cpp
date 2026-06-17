@@ -26,6 +26,20 @@ void test_constructor_validation() {
     } catch (const std::invalid_argument&) { caught = true; }
     assert(caught && "Should throw on width 0");
 
+    // HyperLogLog precision lower bound
+    caught = false;
+    try {
+        HyperLogLog hll(3);
+    } catch (const std::invalid_argument&) { caught = true; }
+    assert(caught && "Should throw on precision < 4");
+
+    // HyperLogLog precision upper bound
+    caught = false;
+    try {
+        HyperLogLog hll(19);
+    } catch (const std::invalid_argument&) { caught = true; }
+    assert(caught && "Should throw on precision > 18");
+
     std::cout << "test_constructor_validation passed\n";
 }
 
@@ -37,7 +51,7 @@ void test_nan_and_inf_handling() {
 
     Stats s = log.stats();
     assert(s.events == 0 && "Events should be 0 after adding NaN/Inf");
-    
+
     std::cout << "test_nan_and_inf_handling passed\n";
 }
 
@@ -56,7 +70,7 @@ void test_negative_zero_counts() {
         log.add_event("event2", -5);
     } catch (const std::invalid_argument&) { caught = true; }
     assert(caught && "Should throw on negative count");
-    
+
     std::cout << "test_negative_zero_counts passed\n";
 }
 
@@ -67,14 +81,14 @@ void test_cardinality() {
     log.add_unique("c");
 
     assert(log.unique_count() == 3 && "Should accurately estimate small cardinalities");
-    
+
     std::cout << "test_cardinality passed\n";
 }
 
 void test_merge_mismatch() {
     CountMinSketch c1(100, 5);
     CountMinSketch c2(200, 5);
-    
+
     bool caught = false;
     try {
         c1.merge(c2);
@@ -99,7 +113,7 @@ int main() {
     test_negative_zero_counts();
     test_cardinality();
     test_merge_mismatch();
-    
+
     std::cout << "All tests passed successfully.\n";
     return 0;
 }
