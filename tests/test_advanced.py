@@ -16,7 +16,8 @@ from sketchlog import StreamLog, WindowedStreamLog
 def wait_for_condition(cond, timeout=5.0):
     start = time.time()
     while time.time() - start < timeout:
-        if cond(): return True
+        if cond():
+            return True
         time.sleep(0.1)
     return False
 

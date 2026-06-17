@@ -51,11 +51,8 @@ def test_save_load(tmp_path):
     rnd = random.Random(42)
     for _ in range(10_000):
         log.add_latency(rnd.lognormvariate(2, 1))
-        
-    path = str(tmp_path / "test_sketch.json")
+    path = tmp_path / "sketch.json"
     log.save(path)
     loaded = StreamLog.load(path)
     
     assert abs(log.p99() - loaded.p99()) < 0.001
-    
-
