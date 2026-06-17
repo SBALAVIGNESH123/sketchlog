@@ -49,6 +49,11 @@ class SketchLogMiddleware:
         finally:
             elapsed_ms = (time.monotonic() - start_time) * 1000.0
             
+            # Prefer route template (e.g. /users/{user_id}) over raw path
+            route = scope.get("route")
+            if route and hasattr(route, "path"):
+                path = route.path
+
             # Record latency
             self.log.add_latency(elapsed_ms)
             
