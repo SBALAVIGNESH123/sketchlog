@@ -56,3 +56,28 @@ def test_save_load(tmp_path):
     loaded = StreamLog.load(path)
     
     assert abs(log.p99() - loaded.p99()) < 0.001
+
+def test_constructor_validation():
+    import pytest
+    from sketchlog import CountMinSketch, WindowedStreamLog, StreamLog, HyperLogLog
+    
+    with pytest.raises(ValueError):
+        CountMinSketch(width=0)
+        
+    with pytest.raises(ValueError):
+        CountMinSketch(depth=-1)
+        
+    with pytest.raises(ValueError):
+        WindowedStreamLog(n_buckets=0)
+        
+    with pytest.raises(ValueError):
+        WindowedStreamLog(window="")
+        
+    with pytest.raises(ValueError):
+        WindowedStreamLog(window="   ")
+        
+    with pytest.raises(ValueError):
+        StreamLog().add_unique(-1)
+        
+    with pytest.raises(ValueError):
+        HyperLogLog().add(2**64)
