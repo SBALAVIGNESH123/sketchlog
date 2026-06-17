@@ -3,3 +3,7 @@ include README.md
 include GUARANTEES.md
 recursive-include python/sketchlog *.py
 recursive-include benchmarks *.png
+include CMakeLists.txt
+recursive-include src *.cpp
+recursive-include cpp *.cpp
+recursive-include include *.hpp
