@@ -1,32 +1,34 @@
 """Quick integration test for C++ backend."""
-import sys
-sys.path.insert(0, "python")
-
 import sketchlog
-print(f"Version: {sketchlog.__version__}")
-print(f"C++ backend: {sketchlog.HAS_CPP}")
+import pytest
 
-# Pure Python API
-log = sketchlog.StreamLog()
-log.add_batch([1.0, 2.0, 3.0, 4.0, 5.0])
-print(f"Python StreamLog: p99={log.p99():.2f}, events={log.total_events}")
+def test_integration_version_and_flags():
+    assert sketchlog.__version__
+    assert hasattr(sketchlog, "HAS_CPP")
 
-# C++ direct access
-if sketchlog.HAS_CPP:
+def test_python_streamlog():
+    log = sketchlog.StreamLog()
+    log.add_batch([1.0, 2.0, 3.0, 4.0, 5.0])
+    assert log.total_events == 5
+    assert log.p99() > 0.0
+
+def test_cpp_streamlog():
+    if not sketchlog.HAS_CPP:
+        pytest.skip("C++ backend not available")
+        
     import numpy as np
     cpp_log = sketchlog._cpp.StreamLog()
     cpp_log.add_batch(np.array([1.0, 2.0, 3.0, 4.0, 5.0]))
-    print(f"C++ StreamLog:    p99={cpp_log.p99():.2f}, events={cpp_log.total_events()}")
-    print(f"C++ memory:       {cpp_log.memory_kb():.1f} KB")
+    assert cpp_log.total_events() == 5
+    assert cpp_log.p99() > 0.0
+    assert cpp_log.memory_kb() > 0.0
 
-print()
-print("All features intact:")
-log2 = sketchlog.StreamLog()
-for i in range(10000):
-    log2.add_latency(float(i))
-print(f"  memory_breakdown keys: {list(log2.memory_breakdown().keys())[:3]}...")
-print(f"  deterministic flag: {sketchlog.StreamLog(deterministic=True)._deterministic}")
-print(f"  WindowedStreamLog: {type(sketchlog.WindowedStreamLog(window='5m')).__name__}")
-print(f"  ThreadSafeStreamLog: {type(sketchlog.ThreadSafeStreamLog()).__name__}")
-print()
-print("INTEGRATION OK")
+def test_all_features_intact():
+    log2 = sketchlog.StreamLog()
+    for i in range(1000):
+        log2.add_latency(float(i))
+    
+    assert "total_bytes" in log2.memory_breakdown()
+    assert sketchlog.StreamLog(deterministic=True)._deterministic is True
+    assert isinstance(sketchlog.WindowedStreamLog(window='5m'), sketchlog.WindowedStreamLog)
+    assert isinstance(sketchlog.ThreadSafeStreamLog(), sketchlog.ThreadSafeStreamLog)

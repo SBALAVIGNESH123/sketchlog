@@ -29,8 +29,11 @@ jobs:
           pip install pytest
           pip install -e .
       
-      - name: Run tests
-        run: python -m pytest tests/test_sketchlog.py -v
+      - name: Run fast tests
+        run: python -m pytest tests/ -v -m "not slow"
+        
+      - name: Run slow tests
+        run: python -m pytest tests/ -v -m "slow"
   
   type-check:
     name: Type Check
