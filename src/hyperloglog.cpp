@@ -15,15 +15,20 @@ namespace sketchlog {
 // Construction / reset
 // ---------------------------------------------------------------------------
 
-HyperLogLog::HyperLogLog(uint8_t precision)
-    : p_{precision}
-    , m_{static_cast<uint32_t>(1u << precision)}
-    , registers_(static_cast<size_t>(1u << precision), uint8_t{0})
-{
-    if (p_ < 4 || p_ > 18) {
-        throw std::invalid_argument(
-            "HyperLogLog: precision must be in [4, 18]");
+namespace {
+    uint8_t validate_precision(uint8_t p) {
+        if (p < 4 || p > 18) {
+            throw std::invalid_argument("HyperLogLog: precision must be in [4, 18]");
+        }
+        return p;
     }
+}
+
+HyperLogLog::HyperLogLog(uint8_t precision)
+    : p_{validate_precision(precision)}
+    , m_{static_cast<uint32_t>(1ull << p_)}
+    , registers_(static_cast<size_t>(1ull << p_), uint8_t{0})
+{
 }
 
 void HyperLogLog::reset() {
