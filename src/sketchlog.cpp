@@ -15,8 +15,11 @@ StreamLog::StreamLog(double relative_accuracy, uint8_t hll_precision,
 // ─── Latency ────────────────────────────────────────────────────────────────
 
 void StreamLog::add_latency(double value) {
+    uint64_t count_before = latency_.count();
     latency_.add(value);
-    total_events_++;
+    if (latency_.count() > count_before) {
+        total_events_++;
+    }
 }
 
 double StreamLog::percentile(double q) const {
