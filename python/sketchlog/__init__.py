@@ -801,7 +801,7 @@ class WindowedStreamLog:
     def __init__(self, window: Union[str, int, float] = "5m", n_buckets: int = 6, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5) -> None:
         if n_buckets <= 0:
             raise ValueError(f"WindowedStreamLog n_buckets must be > 0, got {n_buckets}")
-        if not window and window != 0:
+        if isinstance(window, str) and not window.strip():
             raise ValueError("WindowedStreamLog window string cannot be empty")
             
         self._window_seconds = _parse_window(window)

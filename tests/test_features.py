@@ -74,6 +74,9 @@ def test_constructor_validation():
         WindowedStreamLog(window="")
         
     with pytest.raises(ValueError):
+        WindowedStreamLog(window="   ")
+        
+    with pytest.raises(ValueError):
         StreamLog().add_unique(-1)
         
     with pytest.raises(ValueError):
