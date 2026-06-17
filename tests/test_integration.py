@@ -23,6 +23,21 @@ def test_cpp_streamlog():
     assert cpp_log.p99() > 0.0
     assert cpp_log.memory_kb() > 0.0
 
+def test_cpp_nan_and_inf_handling():
+    if not sketchlog.HAS_CPP:
+        pytest.skip("C++ backend not available")
+
+    import numpy as np
+    cpp_log = sketchlog._cpp.StreamLog()
+    cpp_log.add_latency(float('nan'))
+    cpp_log.add_latency(float('inf'))
+    cpp_log.add_latency(float('-inf'))
+
+    assert cpp_log.total_events() == 0
+
+    cpp_log.add_batch(np.array([float('nan'), 42.0, float('inf'), float('-inf')]))
+    assert cpp_log.total_events() == 1
+
 def test_all_features_intact():
     log2 = sketchlog.StreamLog()
     for i in range(1000):
