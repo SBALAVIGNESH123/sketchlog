@@ -52,3 +52,15 @@ def test_events_and_uniques():
         
     assert log4.event_count("api_call") >= 1000
     assert log4.unique_count() > 950  # HyperLogLog approximation
+
+def test_empty_window_no_deadlock():
+    from sketchlog import WindowedStreamLog
+    log = WindowedStreamLog(window="1m")
+    
+    # Should not deadlock
+    stats = log.stats()
+    assert stats.events == 0
+    
+    # Should not deadlock
+    r = repr(log)
+    assert r.startswith("WindowedStreamLog")
