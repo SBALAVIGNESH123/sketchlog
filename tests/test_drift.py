@@ -91,3 +91,13 @@ def test_add_batch_generator():
     ds.add_batch("generator_dim", (float(i) for i in range(10)))
     assert ds.summary()["total_events"] == 10
     assert ds.summary()["metrics"][0]["events"] == 10
+
+def test_empty_sketch_no_deadlock():
+    ds = DriftSketch()
+    # Should not deadlock
+    r = repr(ds)
+    assert r.startswith("DriftSketch")
+    
+    # Should not deadlock
+    s = ds.summary()
+    assert s["total_events"] == 0
