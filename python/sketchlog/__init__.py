@@ -345,6 +345,9 @@ class CountMinSketch:
     
     def add(self, item, count=1):
         """Add an item (str or int)."""
+        if count <= 0:
+            raise ValueError("Event count must be strictly positive")
+            
         if isinstance(item, int):
             key = item
         else:
@@ -449,6 +452,8 @@ class StreamLog:
     
     def add_event(self, name: Union[str, bytes], count: int = 1) -> None:
         """Record an event occurrence."""
+        if count <= 0:
+            raise ValueError("Event count must be strictly positive")
         self._events.add(name, count)
         self._total += count
     

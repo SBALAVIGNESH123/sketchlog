@@ -32,6 +32,9 @@ double StreamLog::latency_max() const {
 // ─── Events ─────────────────────────────────────────────────────────────────
 
 void StreamLog::add_event(const std::string& name, int64_t count) {
+    if (count <= 0) {
+        throw std::invalid_argument("Event count must be strictly positive");
+    }
     events_.add_string(name.c_str(), name.size(), count);
     total_events_ += count;
 }
