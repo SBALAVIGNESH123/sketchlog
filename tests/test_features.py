@@ -115,9 +115,10 @@ def test_nan_and_inf_handling():
     ds = DriftSketch()
     ds.add('dim', float('nan'))
     ds.add('dim', float('inf'))
+    ds.add('dim', float('-inf'))
     
     assert ds.summary()["metrics"][0]["events"] == 0
     
     # 3. Test DriftSketch batch
-    ds.add_batch('dim', [float('nan'), 42.0, float('inf')])
+    ds.add_batch('dim', [float('nan'), 42.0, float('inf'), float('-inf')])
     assert ds.summary()["metrics"][0]["events"] == 1

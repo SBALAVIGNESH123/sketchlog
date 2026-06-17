@@ -123,9 +123,9 @@ class DriftSketch:
             self._get_or_create(dimension)
             self._maybe_rotate(dimension)
             sketch = self._current[dimension]
-            count_before = sketch.stats().events
+            count_before = sketch.total_events
             sketch.add_latency(value)
-            if sketch.stats().events > count_before:
+            if sketch.total_events > count_before:
                 self._event_counts[dimension] += 1
     
     def add_batch(self, dimension, values):
@@ -137,9 +137,9 @@ class DriftSketch:
             self._get_or_create(dimension)
             self._maybe_rotate(dimension)
             sketch = self._current[dimension]
-            count_before = sketch.stats().events
+            count_before = sketch.total_events
             sketch.add_batch(values)
-            self._event_counts[dimension] += (sketch.stats().events - count_before)
+            self._event_counts[dimension] += (sketch.total_events - count_before)
     
     # ─── Drift Detection ─────────────────────────────────────────────
     
