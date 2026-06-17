@@ -84,3 +84,10 @@ def test_thread_safety():
         t.join()
     
     assert ds_mt.summary()["total_events"] == 800
+
+def test_add_batch_generator():
+    ds = DriftSketch()
+    # Using a generator expression
+    ds.add_batch("generator_dim", (float(i) for i in range(10)))
+    assert ds.summary()["total_events"] == 10
+    assert ds.summary()["metrics"][0]["events"] == 10
