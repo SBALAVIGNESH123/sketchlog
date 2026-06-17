@@ -94,10 +94,16 @@ def test_add_batch_generator():
 
 def test_empty_sketch_no_deadlock():
     ds = DriftSketch()
-    # Should not deadlock
-    r = repr(ds)
-    assert r.startswith("DriftSketch")
-    
-    # Should not deadlock
-    s = ds.summary()
-    assert s["total_events"] == 0
+    out = {}
+
+    def _worker():
+        out["repr"] = repr(ds)
+        out["summary"] = ds.summary()
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout=1.0)
+
+    assert not t.is_alive(), "repr()/summary() deadlocked"
+    assert out["repr"].startswith("DriftSketch")
+    assert out["summary"]["total_events"] == 0
