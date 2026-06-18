@@ -804,9 +804,11 @@ class WindowedStreamLog:
         if n_buckets <= 0:
             raise ValueError(f"WindowedStreamLog n_buckets must be > 0, got {n_buckets}")
 
+        import math
         self._window_seconds = _parse_window(window)
         self._n_buckets = n_buckets
-        self._bucket_duration = self._window_seconds / n_buckets
+        self._window_ns = math.ceil(self._window_seconds * 1_000_000_000)
+        self._bucket_duration_ns = self._window_ns // n_buckets
         self._sk_kwargs: Dict[str, Any] = dict(
             relative_accuracy=relative_accuracy,
             hll_precision=hll_precision,
@@ -816,38 +818,38 @@ class WindowedStreamLog:
         
         # Create N sub-sketches
         self._buckets = [StreamLog(**self._sk_kwargs) for _ in range(n_buckets)]
-        self._bucket_start_times = [_time.monotonic()] * n_buckets
+        self._bucket_start_times = [_time.monotonic_ns()] * n_buckets
         self._current_bucket = 0
-        self._start_time = _time.monotonic()
+        self._start_time = _time.monotonic_ns()
         self._lock = threading.RLock()  # thread-safe and reentrant
     
     def _rotate(self):
         """Advance to current time bucket, resetting expired buckets."""
-        now = _time.monotonic()
+        now = _time.monotonic_ns()
         elapsed = now - self._bucket_start_times[self._current_bucket]
 
         # Optimization: if we've been idle for the entire window length
-        if elapsed >= self._window_seconds:
+        if elapsed >= self._window_ns:
             for i in range(self._n_buckets):
                 self._buckets[i].reset()
                 self._bucket_start_times[i] = now
             return
 
-        while elapsed >= self._bucket_duration:
+        while elapsed >= self._bucket_duration_ns:
             prev_start = self._bucket_start_times[self._current_bucket]
             # Move to next bucket
             self._current_bucket = (self._current_bucket + 1) % self._n_buckets
             self._buckets[self._current_bucket].reset()
-            self._bucket_start_times[self._current_bucket] = prev_start + self._bucket_duration
-            elapsed -= self._bucket_duration
+            self._bucket_start_times[self._current_bucket] = prev_start + self._bucket_duration_ns
+            elapsed -= self._bucket_duration_ns
     
     def _active_buckets(self):
         """Return list of non-expired buckets."""
-        now = _time.monotonic()
+        now = _time.monotonic_ns()
         active = []
         for i in range(self._n_buckets):
             age = now - self._bucket_start_times[i]
-            if age <= self._window_seconds and (self._buckets[i].total_events > 0 or self._buckets[i].unique_count() > 0):
+            if age <= self._window_ns and (self._buckets[i].total_events > 0 or self._buckets[i].unique_count() > 0):
                 active.append(self._buckets[i])
         return active
     
