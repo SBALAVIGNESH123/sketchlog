@@ -62,3 +62,21 @@ def test_cpp_hyperloglog_add_int_uses_little_endian_bytes(value):
     # If the internal hash for add_int was different, this would likely increment the estimate.
     cpp_hll.add_string(value.to_bytes(8, byteorder="little", signed=False))
     assert cpp_hll.estimate() == estimate_before
+
+
+def test_cpp_nan_and_inf_handling_for_accuracy():
+    if not sketchlog.HAS_CPP:
+        pytest.skip("C++ backend not available")
+
+    with pytest.raises(ValueError, match=r"relative_accuracy must be in \(0, 1\)"):
+        sketchlog._cpp.DDSketch(float("nan"))
+
+    with pytest.raises(ValueError, match=r"relative_accuracy must be in \(0, 1\)"):
+        sketchlog._cpp.StreamLog(relative_accuracy=float("nan"))
+
+    with pytest.raises(ValueError, match=r"relative_accuracy must be in \(0, 1\)"):
+        sketchlog._cpp.DDSketch(float("inf"))
+
+    with pytest.raises(ValueError, match=r"relative_accuracy must be in \(0, 1\)"):
+        sketchlog._cpp.StreamLog(relative_accuracy=float("-inf"))
+
