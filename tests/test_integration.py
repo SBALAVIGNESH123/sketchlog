@@ -47,3 +47,20 @@ def test_all_features_intact():
     assert sketchlog.StreamLog(deterministic=True)._deterministic is True
     assert isinstance(sketchlog.WindowedStreamLog(window='5m'), sketchlog.WindowedStreamLog)
     assert isinstance(sketchlog.ThreadSafeStreamLog(), sketchlog.ThreadSafeStreamLog)
+
+def test_cpp_hyperloglog_add_int_parity():
+    if not sketchlog.HAS_CPP:
+        pytest.skip("C++ backend not available")
+
+    # Python HyperLogLog hashes ints natively.
+    py_hll = sketchlog.HyperLogLog(precision=14)
+    py_hll.add(42)
+    py_hll.add(99999)
+
+    # C++ HyperLogLog
+    cpp_hll = sketchlog._cpp.HyperLogLog(14)
+    cpp_hll.add_int(42)
+    cpp_hll.add_int(99999)
+
+    # Both should evaluate to the exact same estimate since they hash exactly the same way.
+    assert py_hll.estimate() == cpp_hll.estimate()

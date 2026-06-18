@@ -52,7 +52,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             self.add_string(s.data(), s.size());
         }, py::arg("item"), "Add a string item.")
         .def("add_int", [](sketchlog::HyperLogLog& self, uint64_t id) {
-            self.add(id);
+            self.add(&id, sizeof(id));
         }, py::arg("id"), "Add a uint64 item.")
         .def("estimate", &sketchlog::HyperLogLog::estimate)
         .def("memory_bytes", &sketchlog::HyperLogLog::memory_bytes)
