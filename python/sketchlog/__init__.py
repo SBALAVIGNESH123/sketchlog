@@ -808,7 +808,7 @@ class WindowedStreamLog:
         self._window_seconds = _parse_window(window)
         self._n_buckets = n_buckets
         self._window_ns = math.ceil(self._window_seconds * 1_000_000_000)
-        self._bucket_duration_ns = self._window_ns // n_buckets
+        self._bucket_duration_ns = (self._window_ns + n_buckets - 1) // n_buckets
         self._sk_kwargs: Dict[str, Any] = dict(
             relative_accuracy=relative_accuracy,
             hll_precision=hll_precision,
@@ -829,7 +829,7 @@ class WindowedStreamLog:
         elapsed = now - self._bucket_start_times[self._current_bucket]
 
         # Optimization: if we've been idle for the entire window length
-        if elapsed >= self._window_ns:
+        if elapsed >= self._n_buckets * self._bucket_duration_ns:
             for i in range(self._n_buckets):
                 self._buckets[i].reset()
                 self._bucket_start_times[i] = now
