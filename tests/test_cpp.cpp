@@ -1,3 +1,4 @@
+#undef NDEBUG
 #include <iostream>
 #include <cassert>
 #include <cmath>
@@ -137,3 +138,4 @@ int main() {
     std::cout << "All tests passed successfully.\n";
     return 0;
 }
+
