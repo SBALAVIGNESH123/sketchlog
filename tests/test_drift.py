@@ -113,7 +113,7 @@ def test_idle_window_gaps(monkeypatch):
 
     # Setup mock time
     current_time = 1000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
 
     ds = DriftSketch(window=0.1)
 
@@ -140,7 +140,7 @@ def test_consecutive_boundaries(monkeypatch):
     import sketchlog.drift as drift_mod
 
     current_time = 1000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
 
     ds = DriftSketch(window=0.1)
     ds.add("latency", 10.0)
@@ -167,7 +167,7 @@ def test_pre_boundary_gap(monkeypatch):
     import sketchlog.drift as drift_mod
 
     current_time = 1000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
 
     ds = DriftSketch(window=0.1)
     ds.add("latency", 10.0)
@@ -189,7 +189,7 @@ def test_large_monotonic_clock(monkeypatch):
 
     # About 116 days of uptime
     current_time = 10_000_000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
 
     ds = DriftSketch(window=0.1)
     ds.add("latency", 10.0)
@@ -206,19 +206,10 @@ def test_large_monotonic_clock(monkeypatch):
 
 def test_tiny_window_no_advance(monkeypatch):
     import sketchlog.drift as drift_mod
+    import pytest
 
     current_time = 20_000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
 
-    ds = DriftSketch(window=5e-10)
-
-    ds.add("latency", 10.0)
-    # Adding again without advancing the clock
-    ds.add("latency", 20.0)
-
-    summary = ds.summary()
-    metric = summary["metrics"][0]
-
-    # Both events should be in the current window since time did not advance
-    assert metric["events"] == 2
-    assert metric["previous_p99"] == 0.0
+    with pytest.raises(ValueError, match="is too small"):
+        ds = DriftSketch(window=5e-10)

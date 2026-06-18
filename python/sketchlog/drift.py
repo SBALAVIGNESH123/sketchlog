@@ -41,7 +41,6 @@ Guarantees:
 """
 
 import time as _time
-import math
 from typing import Any, Dict, List, Tuple, Union, DefaultDict
 import threading
 from collections import defaultdict
@@ -72,6 +71,9 @@ class DriftSketch:
             cms_depth: CMS depth per dimension
         """
         self._window_seconds = _parse_window(window)
+        self._window_ns = int(self._window_seconds * 1_000_000_000)
+        if self._window_ns == 0:
+            raise ValueError(f"Window {self._window_seconds}s is too small (sub-nanosecond resolution).")
         self._window_str = window
         self._sk_kwargs: Dict[str, Any] = dict(
             relative_accuracy=relative_accuracy,
@@ -82,7 +84,7 @@ class DriftSketch:
 
         self._current: Dict[str, StreamLog] = {}       # name -> StreamLog (active window)
         self._previous: Dict[str, StreamLog] = {}      # name -> StreamLog (frozen previous window)
-        self._window_start: Dict[str, float] = {}  # name -> monotonic time
+        self._window_start: Dict[str, int] = {}    # name -> monotonic time (ns)
         self._event_counts: DefaultDict[str, int] = defaultdict(int)
         self._lock = threading.RLock()
 
@@ -90,33 +92,23 @@ class DriftSketch:
         if name not in self._current:
             self._current[name] = StreamLog(**self._sk_kwargs)
             self._previous[name] = StreamLog(**self._sk_kwargs)
-            self._window_start[name] = _time.monotonic()
+            self._window_start[name] = _time.monotonic_ns()
 
     def _maybe_rotate(self, name: str) -> None:
         """Rotate window if expired. Previous becomes frozen snapshot."""
-        now = _time.monotonic()
-        elapsed = now - self._window_start[name]
+        now_ns = _time.monotonic_ns()
+        elapsed_ns = now_ns - self._window_start[name]
 
-        quotient = elapsed / self._window_seconds
-        windows_elapsed = int(quotient)
+        if elapsed_ns >= self._window_ns:
+            windows_elapsed = elapsed_ns // self._window_ns
 
-        # If 'now' is practically at the next boundary but float subtraction made quotient
-        # slightly < integer, snap it up. We use a tolerance scaled by math.ulp(now)
-        # to correctly handle subtraction error at large monotonic clock values,
-        # bounded strictly by half the window size to support extremely small windows.
-        next_boundary = self._window_start[name] + (windows_elapsed + 1) * self._window_seconds
-        tolerance = min(math.ulp(max(now, next_boundary)) * 10, self._window_seconds / 2.0)
-        if next_boundary - now <= tolerance:
-            windows_elapsed += 1
-
-        if windows_elapsed >= 1:
             if windows_elapsed >= 2:
                 self._previous[name] = StreamLog(**self._sk_kwargs)  # empty
             else:
                 self._previous[name] = self._current[name]  # freeze
 
             self._current[name] = StreamLog(**self._sk_kwargs)  # fresh
-            self._window_start[name] += windows_elapsed * self._window_seconds
+            self._window_start[name] += windows_elapsed * self._window_ns
 
     def rotate_all(self):
         """Force window rotation for all dimensions.
@@ -129,7 +121,7 @@ class DriftSketch:
             for name in list(self._current.keys()):
                 self._previous[name] = self._current[name]
                 self._current[name] = StreamLog(**self._sk_kwargs)
-                self._window_start[name] = _time.monotonic()
+                self._window_start[name] = _time.monotonic_ns()
 
     def add(self, dimension, value):
         """Add a metric observation to a named dimension.
