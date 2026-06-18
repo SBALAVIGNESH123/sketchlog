@@ -2,9 +2,9 @@ import sketchlog
 from sketchlog import WindowedStreamLog
 import math
 
-def test_rotate_float_precision_catchup():
+def test_rotate_float_precision_catchup(monkeypatch):
     now_ns = 0
-    sketchlog._time.monotonic_ns = lambda: now_ns
+    monkeypatch.setattr(sketchlog._time, "monotonic_ns", lambda: now_ns)
     
     # window=5.0s, n_buckets=6
     # window_ns = 5000000000, bucket_duration_ns = 833333333
@@ -20,9 +20,9 @@ def test_rotate_float_precision_catchup():
     log.add_event("y")
     assert log._current_bucket == 4
 
-def test_retention_until_expiry_boundary():
+def test_retention_until_expiry_boundary(monkeypatch):
     now_ns = 0
-    sketchlog._time.monotonic_ns = lambda: now_ns
+    monkeypatch.setattr(sketchlog._time, "monotonic_ns", lambda: now_ns)
     
     log = WindowedStreamLog(window=5.0, n_buckets=6)
     log.add_event("a") # bucket 0, start time 0
@@ -38,9 +38,9 @@ def test_retention_until_expiry_boundary():
     now_ns = 4_999_999_998
     assert log.event_count("a") == 0
 
-def test_full_window_idle_reset_and_reuse():
+def test_full_window_idle_reset_and_reuse(monkeypatch):
     now_ns = 0
-    sketchlog._time.monotonic_ns = lambda: now_ns
+    monkeypatch.setattr(sketchlog._time, "monotonic_ns", lambda: now_ns)
     
     log = WindowedStreamLog(window=5.0, n_buckets=6)
     log.add_event("a")
@@ -56,9 +56,9 @@ def test_full_window_idle_reset_and_reuse():
     assert log.event_count("a") == 0
     assert log.event_count("b") > 0
 
-def test_ring_wraparound():
+def test_ring_wraparound(monkeypatch):
     now_ns = 0
-    sketchlog._time.monotonic_ns = lambda: now_ns
+    monkeypatch.setattr(sketchlog._time, "monotonic_ns", lambda: now_ns)
     
     log = WindowedStreamLog(window=5.0, n_buckets=6)
     
