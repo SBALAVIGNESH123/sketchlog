@@ -162,3 +162,24 @@ def test_consecutive_boundaries(monkeypatch):
     # So previous window should have the ~30.0 observation, current ~40.0.
     assert 29.0 < metric["previous_p99"] < 31.0
     assert 39.0 < metric["current_p99"] < 41.0
+
+def test_pre_boundary_gap(monkeypatch):
+    import sketchlog.drift as drift_mod
+
+    current_time = 1000.0
+    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+
+    ds = DriftSketch(window=0.1)
+    ds.add("latency", 10.0)
+
+    # Add an observation just below the next boundary.
+    # It should fall into the second window (windows_elapsed=1),
+    # so previous_p99 should be 10.0 and current_p99 should be 20.0.
+    current_time = 1000.1999995
+    ds.add("latency", 20.0)
+
+    summary = ds.summary()
+    metric = summary["metrics"][0]
+
+    assert 9.0 < metric["previous_p99"] < 11.0
+    assert 19.0 < metric["current_p99"] < 21.0

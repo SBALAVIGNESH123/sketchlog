@@ -95,8 +95,13 @@ class DriftSketch:
         """Rotate window if expired. Previous becomes frozen snapshot."""
         now = _time.monotonic()
         elapsed = now - self._window_start[name]
-        if elapsed >= self._window_seconds - 1e-6:
-            windows_elapsed = int((elapsed + 1e-6) / self._window_seconds)
+
+        quotient = elapsed / self._window_seconds
+        windows_elapsed = int(quotient)
+        if (quotient - windows_elapsed) > (1.0 - 1e-9):
+            windows_elapsed += 1
+
+        if windows_elapsed >= 1:
             if windows_elapsed >= 2:
                 self._previous[name] = StreamLog(**self._sk_kwargs)  # empty
             else:
