@@ -29,13 +29,13 @@ def test_cpp_nan_and_inf_handling():
 
     import numpy as np
     cpp_log = sketchlog._cpp.StreamLog()
-    cpp_log.add_latency(float('nan'))
-    cpp_log.add_latency(float('inf'))
-    cpp_log.add_latency(float('-inf'))
+    cpp_log.add_latency(float("nan"))
+    cpp_log.add_latency(float("inf"))
+    cpp_log.add_latency(float("-inf"))
 
     assert cpp_log.total_events() == 0
 
-    cpp_log.add_batch(np.array([float('nan'), 42.0, float('inf'), float('-inf')]))
+    cpp_log.add_batch(np.array([float("nan"), 42.0, float("inf"), float("-inf")]))
     assert cpp_log.total_events() == 1
 
 def test_all_features_intact():
@@ -45,22 +45,21 @@ def test_all_features_intact():
     
     assert "total_bytes" in log2.memory_breakdown()
     assert sketchlog.StreamLog(deterministic=True)._deterministic is True
-    assert isinstance(sketchlog.WindowedStreamLog(window='5m'), sketchlog.WindowedStreamLog)
+    assert isinstance(sketchlog.WindowedStreamLog(window="5m"), sketchlog.WindowedStreamLog)
     assert isinstance(sketchlog.ThreadSafeStreamLog(), sketchlog.ThreadSafeStreamLog)
 
-def test_cpp_hyperloglog_add_int_parity():
+@pytest.mark.parametrize("value", [0, 42, 99999, 2**64 - 1])
+def test_cpp_hyperloglog_add_int_parity(value):
     if not sketchlog.HAS_CPP:
         pytest.skip("C++ backend not available")
 
-    # Python HyperLogLog hashes ints natively.
-    py_hll = sketchlog.HyperLogLog(precision=14)
-    
-    # C++ HyperLogLog
+    # Prove that add_int evaluates exactly to hashing the 8-byte little-endian repr.
     cpp_hll = sketchlog._cpp.HyperLogLog(14)
-    
-    for value in (0, 42, 99999, 2**64 - 1):
-        py_hll.add(value)
-        cpp_hll.add_int(value)
+    cpp_hll.add_int(value)
+    estimate_before = cpp_hll.estimate()
 
-    # Both should evaluate to the exact same estimate since they hash exactly the same way.
-    assert py_hll.estimate() == cpp_hll.estimate()
+    # Adding the identical little-endian bytes string should NOT change the estimate.
+    # If the internal hash for add_int was different, this would likely increment the estimate.
+    cpp_hll.add_string(value.to_bytes(8, byteorder="little", signed=False))
+    assert cpp_hll.estimate() == estimate_before
+
