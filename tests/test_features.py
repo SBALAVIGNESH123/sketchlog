@@ -46,16 +46,21 @@ def test_thread_safety():
         
     assert ts.total_events == 80_000, f"Expected 80000, got {ts.total_events}"
 
-def test_save_load(tmp_path):
-    log = StreamLog()
-    rnd = random.Random(42)
-    for _ in range(10_000):
-        log.add_latency(rnd.lognormvariate(2, 1))
-    path = tmp_path / "sketch.json"
-    log.save(path)
-    loaded = StreamLog.load(path)
+def test_save_load():
+    import tempfile
+    from pathlib import Path
     
-    assert abs(log.p99() - loaded.p99()) < 0.001
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        log = StreamLog()
+        rnd = random.Random(42)
+        for _ in range(10_000):
+            log.add_latency(rnd.lognormvariate(2, 1))
+        path = tmp_path / "sketch.json"
+        log.save(str(path))
+        loaded = StreamLog.load(str(path))
+        
+        assert abs(log.p99() - loaded.p99()) < 0.001
 
 def test_constructor_validation():
     import pytest
