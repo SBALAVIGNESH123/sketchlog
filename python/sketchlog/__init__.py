@@ -762,11 +762,18 @@ def _parse_window(window: Union[str, int, float]) -> float:
         result = float(window)
     else:
         window = window.strip().lower()
+        if not window:
+            raise ValueError("Window string cannot be empty or whitespace")
         units = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
         if window[-1] in units:
             result = float(window[:-1]) * units[window[-1]]
         else:
             result = float(window)
+
+    import math
+    if math.isnan(result) or math.isinf(result):
+        raise ValueError(f"Window must be finite, got {result}")
+
     if result <= 0:
         raise ValueError(f"Window must be positive, got {result}")
     return result
@@ -796,9 +803,7 @@ class WindowedStreamLog:
     def __init__(self, window: Union[str, int, float] = "5m", n_buckets: int = 6, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5) -> None:
         if n_buckets <= 0:
             raise ValueError(f"WindowedStreamLog n_buckets must be > 0, got {n_buckets}")
-        if isinstance(window, str) and not window.strip():
-            raise ValueError("WindowedStreamLog window string cannot be empty")
-            
+
         self._window_seconds = _parse_window(window)
         self._n_buckets = n_buckets
         self._bucket_duration = self._window_seconds / n_buckets
@@ -820,13 +825,21 @@ class WindowedStreamLog:
         """Advance to current time bucket, resetting expired buckets."""
         now = _time.monotonic()
         elapsed = now - self._bucket_start_times[self._current_bucket]
-        
+
+        # Optimization: if we've been idle for the entire window length
+        if elapsed >= self._window_seconds:
+            for i in range(self._n_buckets):
+                self._buckets[i].reset()
+                self._bucket_start_times[i] = now
+            return
+
         while elapsed >= self._bucket_duration:
+            prev_start = self._bucket_start_times[self._current_bucket]
             # Move to next bucket
             self._current_bucket = (self._current_bucket + 1) % self._n_buckets
             self._buckets[self._current_bucket].reset()
-            self._bucket_start_times[self._current_bucket] = now
-            elapsed = now - self._bucket_start_times[self._current_bucket]
+            self._bucket_start_times[self._current_bucket] = prev_start + self._bucket_duration
+            elapsed -= self._bucket_duration
     
     def _active_buckets(self):
         """Return list of non-expired buckets."""
