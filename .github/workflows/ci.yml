@@ -43,6 +43,25 @@ jobs:
       - name: Run slow tests
         run: python -m pytest tests/ -v -m "slow"
 
+  test-opentelemetry:
+    name: OpenTelemetry Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package with extras
+        run: |
+          pip install pytest numpy
+          pip install .[opentelemetry]
+
+      - name: Run OpenTelemetry tests
+        run: python -m pytest tests/test_opentelemetry.py -v
+
   type-check:
     name: Type Check
     runs-on: ubuntu-latest
