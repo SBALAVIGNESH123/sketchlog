@@ -10,11 +10,8 @@ def test_rotate_float_precision_catchup(monkeypatch):
     log = WindowedStreamLog(window=5.0, n_buckets=6)
 
     # Advance to exactly 3 * 833333333.333 -> 2.5s -> 2500000000ns
-    # With new ceiling division: bucket_duration_ns = 833333334
-    # 2500000000 // 833333334 = 2 (so it is in bucket 2)
-    # Wait, the test specifically checked catchup for exact float cancellation.
-    # At 2_500_000_000, elapsed = 2500000000. 3 * 833333334 = 2500000002.
-    # So 2 rotations happen. current_bucket is 2.
+    # With ceiling division: bucket_duration_ns = 833333334
+    # 2500000000 // 833333334 = 2 (bucket 2)
     now_ns = 2_500_000_000
     log.add_event("x")
     assert log._current_bucket == 2
