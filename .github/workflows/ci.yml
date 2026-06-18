@@ -32,7 +32,7 @@ jobs:
       - name: Install package
         run: |
           pip install pytest numpy
-          pip install -e .
+          pip install .
 
       - name: Verify C++ extension loaded
         run: python -c "import sketchlog; assert sketchlog.HAS_CPP, 'C++ extension failed to load'"
