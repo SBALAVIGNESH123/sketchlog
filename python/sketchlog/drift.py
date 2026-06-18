@@ -102,9 +102,11 @@ class DriftSketch:
 
         # If 'now' is practically at the next boundary but float subtraction made quotient
         # slightly < integer, snap it up. We use a tolerance scaled by math.ulp(now)
-        # to correctly handle subtraction error at large monotonic clock values.
+        # to correctly handle subtraction error at large monotonic clock values,
+        # bounded strictly by half the window size to support extremely small windows.
         next_boundary = self._window_start[name] + (windows_elapsed + 1) * self._window_seconds
-        if next_boundary - now <= max(math.ulp(now) * 10, 1e-9):
+        tolerance = min(math.ulp(max(now, next_boundary)) * 10, self._window_seconds / 2.0)
+        if next_boundary - now <= tolerance:
             windows_elapsed += 1
 
         if windows_elapsed >= 1:

@@ -203,3 +203,22 @@ def test_large_monotonic_clock(monkeypatch):
 
     assert 9.0 < metric["previous_p99"] < 11.0
     assert 19.0 < metric["current_p99"] < 21.0
+
+def test_tiny_window_no_advance(monkeypatch):
+    import sketchlog.drift as drift_mod
+
+    current_time = 20_000.0
+    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+
+    ds = DriftSketch(window=5e-10)
+
+    ds.add("latency", 10.0)
+    # Adding again without advancing the clock
+    ds.add("latency", 20.0)
+
+    summary = ds.summary()
+    metric = summary["metrics"][0]
+
+    # Both events should be in the current window since time did not advance
+    assert metric["events"] == 2
+    assert metric["previous_p99"] == 0.0
