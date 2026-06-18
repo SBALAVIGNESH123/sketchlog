@@ -49,11 +49,11 @@ def test_all_features_intact():
     assert isinstance(sketchlog.ThreadSafeStreamLog(), sketchlog.ThreadSafeStreamLog)
 
 @pytest.mark.parametrize("value", [0, 42, 99999, 2**64 - 1])
-def test_cpp_hyperloglog_add_int_parity(value):
+def test_cpp_hyperloglog_add_int_uses_little_endian_bytes(value):
     if not sketchlog.HAS_CPP:
         pytest.skip("C++ backend not available")
 
-    # Prove that add_int evaluates exactly to hashing the 8-byte little-endian repr.
+    # Verifies that add_int evaluates exactly to hashing the 8-byte little-endian repr.
     cpp_hll = sketchlog._cpp.HyperLogLog(14)
     cpp_hll.add_int(value)
     estimate_before = cpp_hll.estimate()
@@ -62,4 +62,3 @@ def test_cpp_hyperloglog_add_int_parity(value):
     # If the internal hash for add_int was different, this would likely increment the estimate.
     cpp_hll.add_string(value.to_bytes(8, byteorder="little", signed=False))
     assert cpp_hll.estimate() == estimate_before
-
