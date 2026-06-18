@@ -18,10 +18,19 @@ try:
     HAS_OPENTELEMETRY = True
 except ImportError:
     HAS_OPENTELEMETRY = False
-    Meter = Any  # type: ignore
-    CallbackOptions = Any  # type: ignore
-    Observation = Any  # type: ignore
-    MeterProvider = Any  # type: ignore
+    class _DummyType:
+        def __call__(self, *args: Any, **kwargs: Any) -> Any: return None
+        def __getattr__(self, name: str) -> Any: return None
+    
+    Meter = _DummyType()  # type: ignore
+    CallbackOptions = _DummyType()  # type: ignore
+    Observation = _DummyType()  # type: ignore
+    MeterProvider = _DummyType()  # type: ignore
+    SDKMeterProvider = _DummyType()  # type: ignore
+    PeriodicExportingMetricReader = _DummyType()  # type: ignore
+    ConsoleMetricExporter = _DummyType()  # type: ignore
+    set_meter_provider = _DummyType()  # type: ignore
+
 
 if TYPE_CHECKING:
     from sketchlog import StreamLog, WindowedStreamLog, ThreadSafeStreamLog
@@ -33,7 +42,7 @@ class OpenTelemetryAdapter:
     Instead of actively pushing state to OTel, this registers callbacks that OTel's 
     MetricReader periodically invokes, ensuring zero memory duplication and correct temporality.
     """
-    def __init__(self, streamlog: Any, meter: Meter, export_events: Optional[Iterable[str]] = None):
+    def __init__(self, streamlog: Any, meter: 'Any', export_events: Optional[Iterable[str]] = None):
         if not HAS_OPENTELEMETRY:
             raise ImportError("opentelemetry-api and opentelemetry-sdk must be installed")
         
@@ -112,28 +121,28 @@ class OpenTelemetryAdapter:
                 
         return self.log.stats(), self.log.p95(), self.log
 
-    def _observe_latency(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
+    def _observe_latency(self, options: 'Any') -> 'Iterable[Any]':
         stats, p95, _ = self._get_stats()
         yield Observation(stats.latency_p50, {"quantile": "0.5"})
         yield Observation(p95, {"quantile": "0.95"})
         yield Observation(stats.latency_p99, {"quantile": "0.99"})
         yield Observation(stats.latency_p999, {"quantile": "0.999"})
 
-    def _observe_unique_count(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
+    def _observe_unique_count(self, options: 'Any') -> 'Iterable[Any]':
         stats, _, _ = self._get_stats()
         yield Observation(stats.unique_count)
 
-    def _observe_events(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
+    def _observe_events(self, options: 'Any') -> 'Iterable[Any]':
         stats, _, _ = self._get_stats()
         yield Observation(stats.events)
 
-    def _observe_event_frequencies(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
+    def _observe_event_frequencies(self, options: 'Any') -> 'Iterable[Any]':
         _, _, snapshot_log = self._get_stats()
         for event_name in self.export_events:
             count = snapshot_log.event_count(event_name)
             yield Observation(count, {"event": event_name})
 
-    def _observe_memory_kb(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
+    def _observe_memory_kb(self, options: 'Any') -> 'Iterable[Any]':
         stats, _, _ = self._get_stats()
         yield Observation(stats.memory_kb)
 
@@ -144,7 +153,7 @@ class SketchLogOTelPublisher:
     
     If no exporter is provided, defaults to OTLPMetricExporter (HTTP).
     """
-    def __init__(self, streamlog: Any, exporter=None, export_interval_millis: int = 60000, export_events: Optional[Iterable[str]] = None):
+    def __init__(self, streamlog: Any, exporter: 'Any'=None, export_interval_millis: int = 60000, export_events: Optional[Iterable[str]] = None):
         if not HAS_OPENTELEMETRY:
             raise ImportError("opentelemetry packages are required for this feature")
 
