@@ -13,7 +13,7 @@ namespace sketchlog {
 // ════════════════════════════════════════════════════════════════════════
 
 /*static*/ double DDSketch::validate_alpha(double alpha) {
-    if (alpha <= 0.0 || alpha >= 1.0)
+    if (!std::isfinite(alpha) || alpha <= 0.0 || alpha >= 1.0)
         throw std::invalid_argument("DDSketch: relative_accuracy must be in (0, 1)");
     return alpha;
 }
