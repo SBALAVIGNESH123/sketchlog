@@ -46,16 +46,21 @@ def test_thread_safety():
         
     assert ts.total_events == 80_000, f"Expected 80000, got {ts.total_events}"
 
-def test_save_load(tmp_path):
-    log = StreamLog()
-    rnd = random.Random(42)
-    for _ in range(10_000):
-        log.add_latency(rnd.lognormvariate(2, 1))
-    path = tmp_path / "sketch.json"
-    log.save(path)
-    loaded = StreamLog.load(path)
+def test_save_load():
+    import tempfile
+    from pathlib import Path
     
-    assert abs(log.p99() - loaded.p99()) < 0.001
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        log = StreamLog()
+        rnd = random.Random(42)
+        for _ in range(10_000):
+            log.add_latency(rnd.lognormvariate(2, 1))
+        path = tmp_path / "sketch.json"
+        log.save(str(path))
+        loaded = StreamLog.load(str(path))
+
+        assert abs(log.p99() - loaded.p99()) < 0.001
 
 def test_constructor_validation():
     import pytest
@@ -121,3 +126,18 @@ def test_nan_and_inf_handling():
     # 3. Test DriftSketch batch
     ds.add_batch('dim', [float('nan'), 42.0, float('inf'), float('-inf')])
     assert ds.summary()["metrics"][0]["events"] == 1
+
+def test_window_parsing_validation():
+    import pytest
+    from sketchlog import WindowedStreamLog
+    from sketchlog.drift import DriftSketch
+
+    invalid_windows = [
+        float("nan"), float("inf"), float("-inf"),
+        "nan", "inf", "-inf", "", "   "
+    ]
+
+    for cls in (WindowedStreamLog, DriftSketch):
+        for w in invalid_windows:
+            with pytest.raises(ValueError):
+                cls(window=w)
