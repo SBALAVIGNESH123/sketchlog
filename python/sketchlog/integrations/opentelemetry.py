@@ -17,10 +17,10 @@ try:
     HAS_OPENTELEMETRY = True
 except ImportError:
     HAS_OPENTELEMETRY = False
-    class Meter: pass
-    class CallbackOptions: pass
-    class Observation: pass
-    class MeterProvider: pass
+    Meter = Any  # type: ignore
+    CallbackOptions = Any  # type: ignore
+    Observation = Any  # type: ignore
+    MeterProvider = Any  # type: ignore
 
 if TYPE_CHECKING:
     from sketchlog import StreamLog, WindowedStreamLog, ThreadSafeStreamLog
@@ -113,7 +113,7 @@ class SketchLogOTelPublisher:
 
         if exporter is None:
             try:
-                from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+                from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter  # type: ignore
                 exporter = OTLPMetricExporter()
             except ImportError:
                 # Fallback to console if otlp package is missing, useful for testing
