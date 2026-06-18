@@ -54,13 +54,13 @@ def test_cpp_hyperloglog_add_int_parity():
 
     # Python HyperLogLog hashes ints natively.
     py_hll = sketchlog.HyperLogLog(precision=14)
-    py_hll.add(42)
-    py_hll.add(99999)
-
+    
     # C++ HyperLogLog
     cpp_hll = sketchlog._cpp.HyperLogLog(14)
-    cpp_hll.add_int(42)
-    cpp_hll.add_int(99999)
+    
+    for value in (0, 42, 99999, 2**64 - 1):
+        py_hll.add(value)
+        cpp_hll.add_int(value)
 
     # Both should evaluate to the exact same estimate since they hash exactly the same way.
     assert py_hll.estimate() == cpp_hll.estimate()
