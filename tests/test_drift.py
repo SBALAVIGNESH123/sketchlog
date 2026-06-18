@@ -135,3 +135,30 @@ def test_idle_window_gaps(monkeypatch):
     # Drift should not compare against the stale 10.0 from 3 windows ago
     drifts = ds.drift()
     assert len(drifts) == 0
+
+def test_consecutive_boundaries(monkeypatch):
+    import sketchlog.drift as drift_mod
+
+    current_time = 1000.0
+    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+
+    ds = DriftSketch(window=0.1)
+    ds.add("latency", 10.0)
+
+    current_time = 1000.1
+    ds.add("latency", 20.0)
+
+    current_time = 1000.2
+    ds.add("latency", 30.0)
+
+    current_time = 1000.3
+    ds.add("latency", 40.0)
+
+    summary = ds.summary()
+    metric = summary["metrics"][0]
+
+    # Due to floating point math, 1000.3 - 1000.2 might be slightly less than 0.1
+    # We test that our tolerance correctly identifies the window boundary.
+    # So previous window should have the ~30.0 observation, current ~40.0.
+    assert 29.0 < metric["previous_p99"] < 31.0
+    assert 39.0 < metric["current_p99"] < 41.0
