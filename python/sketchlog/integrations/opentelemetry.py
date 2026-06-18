@@ -1,3 +1,4 @@
+
 from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 try:
@@ -32,12 +33,13 @@ class OpenTelemetryAdapter:
     Instead of actively pushing state to OTel, this registers callbacks that OTel's 
     MetricReader periodically invokes, ensuring zero memory duplication and correct temporality.
     """
-    def __init__(self, streamlog: Any, meter: Meter):
+    def __init__(self, streamlog: Any, meter: Meter, export_events: Optional[Iterable[str]] = None):
         if not HAS_OPENTELEMETRY:
             raise ImportError("opentelemetry-api and opentelemetry-sdk must be installed")
         
         self.log = streamlog
         self.meter = meter
+        self.export_events = list(export_events) if export_events else []
 
         # We need to know if the log is Windowed or not, because for Windowed, total_events
         # represents events IN THE CURRENT WINDOW (gauge), not a cumulative total.
@@ -68,36 +70,71 @@ class OpenTelemetryAdapter:
                 callbacks=[self._observe_events],
                 description="Number of events in the current window"
             )
+            if self.export_events:
+                self.meter.create_observable_gauge(
+                    name="sketchlog.events.frequency",
+                    callbacks=[self._observe_event_frequencies],
+                    description="Frequency of specific events in the current window"
+                )
         else:
             self.meter.create_observable_counter(
                 name="sketchlog.events.total",
                 callbacks=[self._observe_events],
                 description="Total number of events processed"
             )
+            if self.export_events:
+                self.meter.create_observable_counter(
+                    name="sketchlog.events.frequency",
+                    callbacks=[self._observe_event_frequencies],
+                    description="Total frequency of specific events"
+                )
 
     def _get_stats(self):
+        from sketchlog import WindowedStreamLog, Stats, StreamLog
+        
+        # Take a consistent snapshot for WindowedStreamLog without deadlocking
+        if isinstance(self.log, WindowedStreamLog):
+            with self.log._lock:
+                self.log._rotate()
+                active = self.log._active_buckets()
+                if not active:
+                    return Stats(0, self.log.memory_bytes(), self.log.memory_kb(), 0.0, 0.0, 0.0, 0), 0.0, self.log
+                merged = StreamLog(**self.log._sk_kwargs)
+                for bucket in active:
+                    merged.merge(bucket)
+                
+                # We need to return merged to access event counts safely for the snapshot
+                return merged.stats(), merged.p95(), merged
+
         if hasattr(self.log, "_lock") and hasattr(self.log, "_log"):
             with self.log._lock:
-                return self.log._log.stats(), self.log._log.p95()
-        return self.log.stats(), self.log.p95()
+                return self.log._log.stats(), self.log._log.p95(), self.log._log
+                
+        return self.log.stats(), self.log.p95(), self.log
 
     def _observe_latency(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
-        stats, p95 = self._get_stats()
+        stats, p95, _ = self._get_stats()
         yield Observation(stats.latency_p50, {"quantile": "0.5"})
         yield Observation(p95, {"quantile": "0.95"})
         yield Observation(stats.latency_p99, {"quantile": "0.99"})
         yield Observation(stats.latency_p999, {"quantile": "0.999"})
 
     def _observe_unique_count(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
-        stats, _ = self._get_stats()
+        stats, _, _ = self._get_stats()
         yield Observation(stats.unique_count)
 
     def _observe_events(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
-        stats, _ = self._get_stats()
+        stats, _, _ = self._get_stats()
         yield Observation(stats.events)
 
+    def _observe_event_frequencies(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
+        _, _, snapshot_log = self._get_stats()
+        for event_name in self.export_events:
+            count = snapshot_log.event_count(event_name)
+            yield Observation(count, {"event": event_name})
+
     def _observe_memory_kb(self, options: 'CallbackOptions') -> 'Iterable[Observation]':
-        stats, _ = self._get_stats()
+        stats, _, _ = self._get_stats()
         yield Observation(stats.memory_kb)
 
 
@@ -107,7 +144,7 @@ class SketchLogOTelPublisher:
     
     If no exporter is provided, defaults to OTLPMetricExporter (HTTP).
     """
-    def __init__(self, streamlog: Any, exporter=None, export_interval_millis: int = 60000):
+    def __init__(self, streamlog: Any, exporter=None, export_interval_millis: int = 60000, export_events: Optional[Iterable[str]] = None):
         if not HAS_OPENTELEMETRY:
             raise ImportError("opentelemetry packages are required for this feature")
 
@@ -132,7 +169,7 @@ class SketchLogOTelPublisher:
             pass # Global provider might already be set by another part of the application
             
         self.meter = self.provider.get_meter("sketchlog")
-        self.adapter = OpenTelemetryAdapter(streamlog, self.meter)
+        self.adapter = OpenTelemetryAdapter(streamlog, self.meter, export_events=export_events)
 
     def shutdown(self):
         """Forces a flush and shuts down the periodic reader."""

@@ -18,8 +18,9 @@ def test_opentelemetry_adapter_streamlog():
     log.add_batch([1.0, 2.0, 3.0, 4.0, 5.0])
     log.add_unique("user1")
     log.add_unique("user2")
+    log.add_event("login", 3)
 
-    adapter = OpenTelemetryAdapter(log, meter)
+    adapter = OpenTelemetryAdapter(log, meter, export_events=["login", "checkout"])
 
     # Force a collect
     metrics_data = reader.get_metrics_data()
@@ -33,6 +34,7 @@ def test_opentelemetry_adapter_streamlog():
     assert "sketchlog.unique_count" in metrics
     assert "sketchlog.events.total" in metrics
     assert "sketchlog.memory_kb" in metrics
+    assert "sketchlog.events.frequency" in metrics
 
     # Check unique count
     uc_metric = metrics["sketchlog.unique_count"]
@@ -42,7 +44,7 @@ def test_opentelemetry_adapter_streamlog():
     # Check events
     ev_metric = metrics["sketchlog.events.total"]
     ev_data = list(ev_metric.data.data_points)[0]
-    assert ev_data.value == 5
+    assert ev_data.value == 8
 
     # Check quantiles
     lat_metric = metrics["sketchlog.latency"]
@@ -51,6 +53,14 @@ def test_opentelemetry_adapter_streamlog():
     for point in lat_points:
         if point.attributes["quantile"] == "0.5":
             assert point.value > 0.0
+
+    # Check event frequencies
+    freq_metric = metrics["sketchlog.events.frequency"]
+    freq_points = list(freq_metric.data.data_points)
+    assert len(freq_points) == 2
+    freq_dict = {p.attributes["event"]: p.value for p in freq_points}
+    assert freq_dict["login"] == 3
+    assert freq_dict["checkout"] == 0
 
 @pytest.mark.skipif(not HAS_OPENTELEMETRY, reason="opentelemetry-sdk not installed")
 def test_opentelemetry_publisher():
