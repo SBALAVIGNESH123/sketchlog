@@ -107,8 +107,28 @@ void test_merge_mismatch() {
     std::cout << "test_merge_mismatch passed\n";
 }
 
+void test_ddsketch_nan_inf_validation() {
+    bool caught;
+    const double invalid_vals[] = {NAN, INFINITY, -INFINITY};
+    for (double val : invalid_vals) {
+        caught = false;
+        try {
+            DDSketch sketch(val);
+        } catch (const std::invalid_argument&) { caught = true; }
+        assert(caught && "Should throw on invalid DDSketch accuracy");
+
+        caught = false;
+        try {
+            StreamLog log(val);
+        } catch (const std::invalid_argument&) { caught = true; }
+        assert(caught && "Should throw on invalid StreamLog accuracy");
+    }
+    std::cout << "test_ddsketch_nan_inf_validation passed\n";
+}
+
 int main() {
     test_constructor_validation();
+    test_ddsketch_nan_inf_validation();
     test_nan_and_inf_handling();
     test_negative_zero_counts();
     test_cardinality();
