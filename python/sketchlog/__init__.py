@@ -824,12 +824,20 @@ class WindowedStreamLog:
         now = _time.monotonic()
         elapsed = now - self._bucket_start_times[self._current_bucket]
 
+        # Optimization: if we've been idle for the entire window length
+        if elapsed >= self._window_seconds:
+            for i in range(self._n_buckets):
+                self._buckets[i].reset()
+                self._bucket_start_times[i] = now
+            return
+
         while elapsed >= self._bucket_duration:
+            prev_start = self._bucket_start_times[self._current_bucket]
             # Move to next bucket
             self._current_bucket = (self._current_bucket + 1) % self._n_buckets
             self._buckets[self._current_bucket].reset()
-            self._bucket_start_times[self._current_bucket] = now
-            elapsed = now - self._bucket_start_times[self._current_bucket]
+            self._bucket_start_times[self._current_bucket] = prev_start + self._bucket_duration
+            elapsed -= self._bucket_duration
 
     def _active_buckets(self):
         """Return list of non-expired buckets."""
