@@ -971,7 +971,7 @@ class WindowedStreamLog:
         with self._lock:
             for b in self._buckets:
                 b.reset()
-            now = _time.monotonic()
+            now = _time.monotonic_ns()
             self._bucket_start_times = [now] * self._n_buckets
             self._current_bucket = 0
     
