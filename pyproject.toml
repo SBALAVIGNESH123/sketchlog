@@ -1,3 +1,4 @@
+
 [build-system]
 requires = ["setuptools", "pybind11>=2.12.0", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -10,7 +11,7 @@ authors = [
     {name = "Bala Vignesh S"}
 ]
 readme = {file = "README.md", content-type = "text/markdown"}
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.8"
 keywords = ["streaming", "metrics", "ddsketch", "hyperloglog", "count-min-sketch", "percentile", "p99", "monitoring"]
 classifiers = [
@@ -33,8 +34,14 @@ Homepage = "https://github.com/SBALAVIGNESH123/sketchlog"
 Repository = "https://github.com/SBALAVIGNESH123/sketchlog"
 Issues = "https://github.com/SBALAVIGNESH123/sketchlog/issues"
 
+[project.optional-dependencies]
+docs = [
+    "mkdocs-material>=9.5.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["python"]
 
 [tool.setuptools.package-data]
 sketchlog = ["py.typed"]
+

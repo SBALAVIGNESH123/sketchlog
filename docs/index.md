@@ -1,4 +1,4 @@
-# SketchLog
+﻿# SketchLog
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
@@ -16,14 +16,12 @@ monitoring, edge devices, and memory-constrained environments.
 
 ---
 
-## ?? Documentation
+## Why SketchLog?
 
-The full documentation is available at [SketchLog Documentation Site](https://sbalavignesh123.github.io/sketchlog/) (or via `/docs` in the repository). 
-It includes:
-- **Architecture**: Details on distributed merges, drift detection, and memory footprint.
-- **Guarantees**: Formal mathematical proofs of error bounds.
-- **Integrations**: How to integrate with Prometheus, FastAPI, and OpenTelemetry.
-- **API Reference**: Comprehensive listing of classes and methods.
+1. **Constant Memory**: Track 10 events or 10 billion events; the data structure stays ~93 KB.
+2. **Mergeable**: Shard your data across 100 servers. Send the 93 KB sketches to a central node. Merge them. The result is mathematically identical to processing all events on one machine.
+3. **C++ Acceleration**: Pure Python by default, but drops into a zero-copy C++ backend (pybind11) if compiled, reaching up to 75 million events per second.
+4. **Drift Detection**: Built-in statistical detection for when metrics meaningfully change over time.
 
 ---
 
@@ -67,12 +65,12 @@ print(f"Cache Misses: {log.event_count('cache_miss')}")
 
 SketchLog is a streaming metrics compression layer. It is deliberately not:
 
-- **Not a tracing system.** No request paths, no correlation IDs, no causal chains.
-- **Not a time-series database.** No historical drill-down, no label indexing.
-- **Not an observability platform.** No raw log storage, no ad-hoc queries.
-- **Not exact.** All results are probabilistic with bounded error. If you need exact percentiles, use numpy.
+- **Not a tracing system.** No request paths, no correlation IDs, no causal chains. You cannot debug individual requests.
+- **Not a time-series database.** No historical drill-down, no label indexing. You cannot query what happened last Tuesday at 3:42am ? that data is discarded by design.
+- **Not an observability platform.** No raw log storage, no ad-hoc queries, no incident replay.
+- **Not exact.** All results are probabilistic with bounded error. If you need exact percentiles, use numpy and accept the memory cost.
 
----
-
-MIT License
+It sits between your event stream and your dashboards ? approximate answers
+good enough for monitoring, alerting, and capacity planning, without the
+infrastructure cost of storing every event.
 
