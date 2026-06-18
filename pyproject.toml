@@ -38,3 +38,11 @@ where = ["python"]
 
 [tool.setuptools.package-data]
 sketchlog = ["py.typed"]
+
+[project.optional-dependencies]
+opentelemetry = [
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp"
+]
+
