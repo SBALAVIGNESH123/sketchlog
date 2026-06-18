@@ -183,3 +183,23 @@ def test_pre_boundary_gap(monkeypatch):
 
     assert 9.0 < metric["previous_p99"] < 11.0
     assert 19.0 < metric["current_p99"] < 21.0
+
+def test_large_monotonic_clock(monkeypatch):
+    import sketchlog.drift as drift_mod
+
+    # About 116 days of uptime
+    current_time = 10_000_000.0
+    monkeypatch.setattr(drift_mod._time, "monotonic", lambda: current_time)
+
+    ds = DriftSketch(window=0.1)
+    ds.add("latency", 10.0)
+
+    # Exact float boundary addition
+    current_time += 0.1
+    ds.add("latency", 20.0)
+
+    summary = ds.summary()
+    metric = summary["metrics"][0]
+
+    assert 9.0 < metric["previous_p99"] < 11.0
+    assert 19.0 < metric["current_p99"] < 21.0

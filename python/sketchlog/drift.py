@@ -41,6 +41,7 @@ Guarantees:
 """
 
 import time as _time
+import math
 from typing import Any, Dict, List, Tuple, Union, DefaultDict
 import threading
 from collections import defaultdict
@@ -98,7 +99,12 @@ class DriftSketch:
 
         quotient = elapsed / self._window_seconds
         windows_elapsed = int(quotient)
-        if (quotient - windows_elapsed) > (1.0 - 1e-9):
+
+        # If 'now' is practically at the next boundary but float subtraction made quotient
+        # slightly < integer, snap it up. We use a tolerance scaled by math.ulp(now)
+        # to correctly handle subtraction error at large monotonic clock values.
+        next_boundary = self._window_start[name] + (windows_elapsed + 1) * self._window_seconds
+        if next_boundary - now <= max(math.ulp(now) * 10, 1e-9):
             windows_elapsed += 1
 
         if windows_elapsed >= 1:
