@@ -112,8 +112,8 @@ def test_idle_window_gaps(monkeypatch):
     import sketchlog.drift as drift_mod
 
     # Setup mock time
-    current_time = 1000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
+    current_time_ns = 1_000_000_000_000
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: current_time_ns)
 
     ds = DriftSketch(window=0.1)
 
@@ -122,7 +122,7 @@ def test_idle_window_gaps(monkeypatch):
         ds.add("latency", 10.0)
 
     # Advance time past more than 2 windows
-    current_time += 0.25
+    current_time_ns += 250_000_000
 
     # Next window
     ds.add("latency", 100.0)
@@ -139,35 +139,32 @@ def test_idle_window_gaps(monkeypatch):
 def test_consecutive_boundaries(monkeypatch):
     import sketchlog.drift as drift_mod
 
-    current_time = 1000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
+    current_time_ns = 1_000_000_000_000
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: current_time_ns)
 
     ds = DriftSketch(window=0.1)
     ds.add("latency", 10.0)
 
-    current_time = 1000.1
+    current_time_ns = 1_000_100_000_000
     ds.add("latency", 20.0)
 
-    current_time = 1000.2
+    current_time_ns = 1_000_200_000_000
     ds.add("latency", 30.0)
 
-    current_time = 1000.3
+    current_time_ns = 1_000_300_000_000
     ds.add("latency", 40.0)
 
     summary = ds.summary()
     metric = summary["metrics"][0]
 
-    # Due to floating point math, 1000.3 - 1000.2 might be slightly less than 0.1
-    # We test that our tolerance correctly identifies the window boundary.
-    # So previous window should have the ~30.0 observation, current ~40.0.
     assert 29.0 < metric["previous_p99"] < 31.0
     assert 39.0 < metric["current_p99"] < 41.0
 
 def test_pre_boundary_gap(monkeypatch):
     import sketchlog.drift as drift_mod
 
-    current_time = 1000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
+    current_time_ns = 1_000_000_000_000
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: current_time_ns)
 
     ds = DriftSketch(window=0.1)
     ds.add("latency", 10.0)
@@ -175,7 +172,7 @@ def test_pre_boundary_gap(monkeypatch):
     # Add an observation just below the next boundary.
     # It should fall into the second window (windows_elapsed=1),
     # so previous_p99 should be 10.0 and current_p99 should be 20.0.
-    current_time = 1000.1999995
+    current_time_ns = 1_000_199_999_500
     ds.add("latency", 20.0)
 
     summary = ds.summary()
@@ -188,14 +185,14 @@ def test_large_monotonic_clock(monkeypatch):
     import sketchlog.drift as drift_mod
 
     # About 116 days of uptime
-    current_time = 10_000_000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
+    current_time_ns = 10_000_000_000_000_000
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: current_time_ns)
 
     ds = DriftSketch(window=0.1)
     ds.add("latency", 10.0)
 
-    # Exact float boundary addition
-    current_time += 0.1
+    # Exact boundary addition
+    current_time_ns += 100_000_000
     ds.add("latency", 20.0)
 
     summary = ds.summary()
@@ -208,8 +205,15 @@ def test_tiny_window_no_advance(monkeypatch):
     import sketchlog.drift as drift_mod
     import pytest
 
-    current_time = 20_000.0
-    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: int(current_time * 1_000_000_000))
+    current_time_ns = 20_000_000_000_000
+    monkeypatch.setattr(drift_mod._time, "monotonic_ns", lambda: current_time_ns)
 
     with pytest.raises(ValueError, match="is too small"):
         ds = DriftSketch(window=5e-10)
+
+def test_nanosecond_precision_window_rounding():
+    ds1 = DriftSketch(window=15e-9)
+    assert ds1._window_ns == 15
+
+    ds2 = DriftSketch(window=1.9e-9)
+    assert ds2._window_ns == 2

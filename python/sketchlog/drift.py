@@ -41,6 +41,7 @@ Guarantees:
 """
 
 import time as _time
+import math
 from typing import Any, Dict, List, Tuple, Union, DefaultDict
 import threading
 from collections import defaultdict
@@ -71,9 +72,9 @@ class DriftSketch:
             cms_depth: CMS depth per dimension
         """
         self._window_seconds = _parse_window(window)
-        self._window_ns = int(self._window_seconds * 1_000_000_000)
-        if self._window_ns == 0:
+        if self._window_seconds < 1e-9:
             raise ValueError(f"Window {self._window_seconds}s is too small (sub-nanosecond resolution).")
+        self._window_ns = math.ceil(self._window_seconds * 1_000_000_000)
         self._window_str = window
         self._sk_kwargs: Dict[str, Any] = dict(
             relative_accuracy=relative_accuracy,
