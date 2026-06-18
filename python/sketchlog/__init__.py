@@ -758,15 +758,20 @@ class ThreadSafeStreamLog:
 
 def _parse_window(window: Union[str, int, float]) -> float:
     """Parse window string like '5m', '1h', '30s' to seconds."""
-    if isinstance(window, (int, float)):
-        result = float(window)
-    else:
+    if isinstance(window, str):
         window = window.strip().lower()
+        if not window:
+            raise ValueError("Window string cannot be empty or whitespace")
         units = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
         if window[-1] in units:
             result = float(window[:-1]) * units[window[-1]]
         else:
             result = float(window)
+    else:
+        result = float(window)
+        
+    if math.isnan(result) or math.isinf(result):
+        raise ValueError(f"Window must be finite, got {result}")
     if result <= 0:
         raise ValueError(f"Window must be positive, got {result}")
     return result
@@ -796,8 +801,6 @@ class WindowedStreamLog:
     def __init__(self, window: Union[str, int, float] = "5m", n_buckets: int = 6, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5) -> None:
         if n_buckets <= 0:
             raise ValueError(f"WindowedStreamLog n_buckets must be > 0, got {n_buckets}")
-        if isinstance(window, str) and not window.strip():
-            raise ValueError("WindowedStreamLog window string cannot be empty")
             
         self._window_seconds = _parse_window(window)
         self._n_buckets = n_buckets
