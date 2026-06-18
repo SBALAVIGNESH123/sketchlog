@@ -22,14 +22,14 @@ except ImportError:
         def __call__(self, *args: Any, **kwargs: Any) -> Any: return None
         def __getattr__(self, name: str) -> Any: return None
     
-    Meter = _DummyType()  # type: ignore
-    CallbackOptions = _DummyType()  # type: ignore
-    Observation = _DummyType()  # type: ignore
-    MeterProvider = _DummyType()  # type: ignore
-    SDKMeterProvider = _DummyType()  # type: ignore
-    PeriodicExportingMetricReader = _DummyType()  # type: ignore
-    ConsoleMetricExporter = _DummyType()  # type: ignore
-    set_meter_provider = _DummyType()  # type: ignore
+    Meter = _DummyType()
+    CallbackOptions = _DummyType()
+    Observation = _DummyType()
+    MeterProvider = _DummyType()
+    SDKMeterProvider = _DummyType()
+    PeriodicExportingMetricReader = _DummyType()
+    ConsoleMetricExporter = _DummyType()
+    set_meter_provider = _DummyType()
 
 
 if TYPE_CHECKING:
