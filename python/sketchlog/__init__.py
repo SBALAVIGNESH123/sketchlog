@@ -699,7 +699,7 @@ class StreamLog:
     
     def __init__(self, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5, deterministic: bool = False) -> None:
         self._deterministic = deterministic
-        if HAS_CPP and not deterministic:
+        if _cpp is not None and not deterministic:
             self._backend = _cpp.StreamLog(relative_accuracy, hll_precision, cms_width, cms_depth)
         else:
             self._backend = _PythonStreamLog(relative_accuracy, hll_precision, cms_width, cms_depth, deterministic)
@@ -711,18 +711,18 @@ class StreamLog:
         self._backend.add_batch(values)
 
     def percentile(self, q: float) -> float:
-        return self._backend.percentile(q)
+        return self._backend.percentile(q)  # type: ignore[no-any-return]
 
-    def p50(self) -> float: return self._backend.p50()
-    def p95(self) -> float: return self._backend.p95()
-    def p99(self) -> float: return self._backend.p99()
-    def p999(self) -> float: return self._backend.p999()
+    def p50(self) -> float: return self._backend.p50()  # type: ignore[no-any-return]
+    def p95(self) -> float: return self._backend.p95()  # type: ignore[no-any-return]
+    def p99(self) -> float: return self._backend.p99()  # type: ignore[no-any-return]
+    def p999(self) -> float: return self._backend.p999()  # type: ignore[no-any-return]
 
     def add_event(self, name: EventKey, count: int = 1) -> None:
         self._backend.add_event(name, count)
 
     def event_count(self, event_name: Union[str, int, bytes]) -> int:
-        return self._backend.event_count(event_name)
+        return self._backend.event_count(event_name)  # type: ignore[no-any-return]
 
     def add_unique(self, item: Union[str, bytes, int]) -> None:
         try:
@@ -733,23 +733,23 @@ class StreamLog:
             raise
 
     def unique_count(self) -> int:
-        return self._backend.unique_count()
+        return self._backend.unique_count()  # type: ignore[no-any-return]
 
     @property
     def total_events(self) -> int:
         if callable(getattr(self._backend, "total_events", None)):
-            return self._backend.total_events()
+            return self._backend.total_events()  # type: ignore[no-any-return]
         return getattr(self._backend, "total_events", 0)
 
     def memory_bytes(self) -> int:
-        return self._backend.memory_bytes()
+        return self._backend.memory_bytes()  # type: ignore[no-any-return]
 
     def memory_kb(self) -> float:
-        return self._backend.memory_kb()
+        return self._backend.memory_kb()  # type: ignore[no-any-return]
 
     def memory_breakdown(self) -> Dict[str, Any]:
         if hasattr(self._backend, "memory_breakdown"):
-            return self._backend.memory_breakdown()
+            return self._backend.memory_breakdown()  # type: ignore[no-any-return]
         total = self._backend.memory_bytes()
         return {
             'ddsketch_bytes': total // 3,
@@ -769,7 +769,7 @@ class StreamLog:
         res = self._backend.stats()
         if isinstance(res, tuple) and not isinstance(res, Stats):
             return Stats(*res)
-        return res
+        return res  # type: ignore[no-any-return]
 
     def reset(self) -> None:
         self._backend.reset()
@@ -780,7 +780,7 @@ class StreamLog:
     def to_dict(self) -> Dict[str, Any]:
         if HAS_CPP and not self._deterministic:
             raise NotImplementedError("Serialization is not supported when using the C++ backend. Initialize with deterministic=True to force the Python backend.")
-        return self._backend.to_dict()
+        return self._backend.to_dict()  # type: ignore[no-any-return]
 
     def to_json(self) -> str:
         import json

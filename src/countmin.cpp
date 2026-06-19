@@ -18,6 +18,9 @@ CountMinSketch::CountMinSketch(size_t width, size_t depth)
     if (width_ == 0 || depth_ == 0)
         throw std::invalid_argument("CountMinSketch: width and depth must be > 0");
 
+    if (width_ > std::numeric_limits<size_t>::max() / depth_)
+        throw std::invalid_argument("CountMinSketch: width * depth overflows size_t");
+
     table_.resize(width_ * depth_, 0);
     init_seeds();
 }
@@ -77,9 +80,29 @@ void CountMinSketch::add(uint64_t key, int64_t count) {
     if (count <= 0) {
         throw std::invalid_argument("Event count must be strictly positive");
     }
+    if (std::numeric_limits<int64_t>::max() - total_count_ < count) {
+        throw std::overflow_error("CountMinSketch: total_count overflow");
+    }
+
+    size_t local_idx[64];
+    std::vector<size_t> dyn_idx;
+    size_t* idx_ptr = local_idx;
+
+    if (depth_ > 64) {
+        dyn_idx.resize(depth_);
+        idx_ptr = dyn_idx.data();
+    }
+
     for (size_t row = 0; row < depth_; ++row) {
         uint64_t col = murmur_finalizer(key ^ hash_seeds_[row]) % width_;
-        table_[row * width_ + col] += count;
+        idx_ptr[row] = row * width_ + col;
+        if (std::numeric_limits<int64_t>::max() - table_[idx_ptr[row]] < count) {
+            throw std::overflow_error("CountMinSketch: bucket counter overflow");
+        }
+    }
+
+    for (size_t row = 0; row < depth_; ++row) {
+        table_[idx_ptr[row]] += count;
     }
     total_count_ += count;
 }
@@ -131,6 +154,16 @@ void CountMinSketch::merge(const CountMinSketch& other) {
     if (width_ != other.width_ || depth_ != other.depth_)
         throw std::invalid_argument(
             "CountMinSketch::merge: width and depth must match");
+
+    if (std::numeric_limits<int64_t>::max() - total_count_ < other.total_count_) {
+        throw std::overflow_error("CountMinSketch: total_count overflow during merge");
+    }
+
+    for (size_t i = 0, n = table_.size(); i < n; ++i) {
+        if (std::numeric_limits<int64_t>::max() - table_[i] < other.table_[i]) {
+            throw std::overflow_error("CountMinSketch: bucket counter overflow during merge");
+        }
+    }
 
     for (size_t i = 0, n = table_.size(); i < n; ++i)
         table_[i] += other.table_[i];

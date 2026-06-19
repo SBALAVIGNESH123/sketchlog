@@ -141,3 +141,53 @@ def test_window_parsing_validation():
         for w in invalid_windows:
             with pytest.raises(ValueError):
                 cls(window=w)
+
+def test_cpp_overflow_guards():
+    import pytest
+    from sketchlog import HAS_CPP
+    if not HAS_CPP:
+        pytest.skip("C++ extension not available")
+
+    import _sketchlog_cpp as _cpp
+
+    # 1. Constructor overflow
+    with pytest.raises(ValueError, match=r"width \* depth overflows"):
+        _cpp.CountMinSketch(2**63, 2)
+
+    # 2. Counter overflow
+    cms = _cpp.CountMinSketch()
+    maximum = 2**63 - 1
+    cms.add_int(1, maximum)
+    with pytest.raises(OverflowError):
+        cms.add_int(1, maximum)
+    # Ensure zero-mutation
+    assert cms.total_count() == maximum
+    assert cms.estimate_int(1) == maximum
+
+    # 3. StreamLog total_events overflow via add_latency
+    log = _cpp.StreamLog()
+    maximum = 2**63 - 1
+    log.add_event("x", maximum)
+    # StreamLog total_events_ is now 2**63 - 1.
+    # To overflow uint64_t total_events_, we would need to add another 2**63 - 1 + 2 events.
+    # We can't do this via add_event since CountMinSketch (int64_t max) throws first!
+    # However, let's test that add_latency correctly increments total_events_
+    events_before = log.total_events()
+    log.add_latency(1.0)
+    assert log.total_events() == events_before + 1
+
+    # 4. StreamLog merge atomicity (should not mutate if sub-component throws)
+    log1 = _cpp.StreamLog()
+    log1.add_event("x", maximum // 2)
+    log1.add_latency(1.0)
+
+    log2 = _cpp.StreamLog()
+    log2.add_event("y", (maximum // 2) + 2)
+    log2.add_latency(2.0)
+
+    p99_before = log1.p99()
+    with pytest.raises(OverflowError, match="CountMinSketch: total_count overflow"):
+        log1.merge(log2)
+    # Ensure log1 is COMPLETELY untouched!
+    assert log1.p99() == p99_before
+    assert log1.total_events() == (maximum // 2) + 1
