@@ -634,14 +634,22 @@ class _PythonStreamLog:
             def validate_buckets(b_dict: Dict[Any, Any]) -> Dict[int, int]:
                 res = {}
                 for k, v in b_dict.items():
-                    try:
-                        ik = int(k)
-                    except (ValueError, TypeError):
-                        raise ValueError(f"DDSketch bucket keys must be convertible to int: {k}")
+                    if type(k) is int:
+                        ik = k
+                    elif type(k) is str:
+                        try:
+                            ik = int(k)
+                            if str(ik) != k:
+                                raise ValueError(f"DDSketch bucket keys must be canonical ints: {k}")
+                        except ValueError:
+                            raise ValueError(f"DDSketch bucket keys must be convertible to int: {k}")
+                    else:
+                        raise ValueError(f"DDSketch bucket keys must be int or str: {k}")
+
                     if ik in res:
                         raise ValueError(f"Duplicate canonical bucket index: {ik}")
-                    if type(v) is not int or v < 0:
-                        raise ValueError(f"DDSketch bucket counts must be non-negative integers")
+                    if type(v) is not int or v <= 0:
+                        raise ValueError(f"DDSketch bucket counts must be strictly positive integers")
                     if ik < min_idx or ik > max_idx:
                         raise ValueError(f"DDSketch bucket index out of valid range: {ik}")
                     res[ik] = v
@@ -698,8 +706,8 @@ class _PythonStreamLog:
                 if lat_min == 0 and zero_count == 0:
                     raise ValueError("DDSketch min is 0 but zero_count is 0")
             else:
-                if lat_min != float('inf') or lat_max != float('-inf'):
-                    raise ValueError("Empty DDSketch must have canonical extrema")
+                if lat_min is not None or lat_max is not None:
+                    raise ValueError("Empty DDSketch must have None for extrema")
 
             uniques_data = data['uniques']
             if not isinstance(uniques_data, dict):
@@ -764,8 +772,9 @@ class _PythonStreamLog:
             log._latency._count = count
             if count > 0:
                 assert lat_min is not None and lat_max is not None
-                log._latency._min = float(lat_min)
-                log._latency._max = float(lat_max)
+                import typing
+                log._latency._min = typing.cast(float, lat_min)
+                log._latency._max = typing.cast(float, lat_max)
 
             # Restore uniques
             log._uniques._registers = bytearray(registers)

@@ -42,6 +42,31 @@ def test_serialization():
         # so this should succeed and not raise NotImplementedError
         loaded_log.to_dict()
 
+def test_serialization_edge_cases():
+    import json
+    
+    # 1. Empty sketch round trip
+    empty_log = StreamLog(deterministic=True)
+    assert StreamLog.from_dict(empty_log.to_dict()).to_dict() == empty_log.to_dict()
+
+    # 2. Event-only round trip
+    event_log = StreamLog(deterministic=True)
+    event_log.add_event("api", 100)
+    assert StreamLog.from_dict(event_log.to_dict()).to_dict() == event_log.to_dict()
+
+    # 3. Unique-only round trip
+    unique_log = StreamLog(deterministic=True)
+    unique_log.add_unique("user_xyz")
+    assert StreamLog.from_dict(unique_log.to_dict()).to_dict() == unique_log.to_dict()
+
+    # 4. Large exact integer extrema round trip
+    large_int = 10**100
+    huge_log = StreamLog(deterministic=True)
+    huge_log.add_latency(large_int)
+    huge_log.add_latency(-large_int)
+    restored_huge = StreamLog.from_json(huge_log.to_json())
+    assert restored_huge.to_dict() == huge_log.to_dict()
+
 def test_serialization_validation():
     import pytest
     import copy
@@ -92,7 +117,7 @@ def test_serialization_validation():
     bad_cms_val['events']['table'][0][0] = -1
     with pytest.raises(ValueError, match="CountMinSketch cell values must be non-negative"):
         StreamLog.from_dict(bad_cms_val)
-        
+
     bad_cms_row_sum = copy.deepcopy(valid_payload)
     bad_cms_row_sum['events']['table'][0][0] += 1
     with pytest.raises(ValueError, match="CountMinSketch row sum does not match events total"):
@@ -103,7 +128,7 @@ def test_serialization_validation():
     del bad_keys['events']
     with pytest.raises(ValueError, match="Malformed StreamLog state"):
         StreamLog.from_dict(bad_keys)
-        
+
     with pytest.raises(ValueError, match="StreamLog data must be a dictionary"):
         StreamLog.from_json("[]")
 
@@ -117,7 +142,7 @@ def test_serialization_validation():
     bad_total['total'] = 0
     with pytest.raises(ValueError, match=r"StreamLog total does not match latency count \+ events total"):
         StreamLog.from_dict(bad_total)
-        
+
     # 7. Invalid DDSketch Bucket Index
     bad_dds_idx = copy.deepcopy(valid_payload)
     bad_dds_idx['latency']['positive'] = {"1000000000": 1}
@@ -125,7 +150,7 @@ def test_serialization_validation():
     bad_dds_idx['total'] += 1
     with pytest.raises(ValueError, match="DDSketch bucket index out of valid range"):
         StreamLog.from_dict(bad_dds_idx)
-        
+
     # 8. Strict non-boolean int and finite check
     bad_float_count = copy.deepcopy(valid_payload)
     bad_float_count['latency']['count'] = 1.0
