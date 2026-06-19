@@ -593,7 +593,7 @@ class _PythonStreamLog:
 
         try:
             version = data.get('version')
-            if version != 1:
+            if type(version) is not int or version != 1:
                 raise ValueError(f"Unsupported serialization version: {version}")
 
             total = data['total']
@@ -636,8 +636,10 @@ class _PythonStreamLog:
                 for k, v in b_dict.items():
                     try:
                         ik = int(k)
-                    except ValueError:
+                    except (ValueError, TypeError):
                         raise ValueError(f"DDSketch bucket keys must be convertible to int: {k}")
+                    if ik in res:
+                        raise ValueError(f"Duplicate canonical bucket index: {ik}")
                     if type(v) is not int or v < 0:
                         raise ValueError(f"DDSketch bucket counts must be non-negative integers")
                     if ik < min_idx or ik > max_idx:
@@ -664,6 +666,40 @@ class _PythonStreamLog:
                     raise ValueError("DDSketch min/max must be finite numbers")
                 if lat_min > lat_max:
                     raise ValueError("DDSketch min cannot be greater than max")
+
+                if positive:
+                    if lat_max <= 0:
+                        raise ValueError("DDSketch extrema contradict positive buckets")
+                    if math.ceil(math.log(lat_max) * multiplier) != max(positive.keys()):
+                        raise ValueError("DDSketch max contradicts positive buckets")
+                    if lat_min > 0:
+                        if math.ceil(math.log(lat_min) * multiplier) != min(positive.keys()):
+                            raise ValueError("DDSketch min contradicts positive buckets")
+
+                if negative:
+                    if lat_min >= 0:
+                        raise ValueError("DDSketch extrema contradict negative buckets")
+                    if math.ceil(math.log(-lat_min) * multiplier) != max(negative.keys()):
+                        raise ValueError("DDSketch min contradicts negative buckets")
+                    if lat_max < 0:
+                        if math.ceil(math.log(-lat_max) * multiplier) != min(negative.keys()):
+                            raise ValueError("DDSketch max contradicts negative buckets")
+
+                if zero_count > 0:
+                    if lat_min > 0 or lat_max < 0:
+                        raise ValueError("DDSketch extrema contradict zero buckets")
+
+                if not positive and lat_max > 0:
+                    raise ValueError("DDSketch max > 0 but no positive buckets")
+                if not negative and lat_min < 0:
+                    raise ValueError("DDSketch min < 0 but no negative buckets")
+                if lat_max == 0 and zero_count == 0:
+                    raise ValueError("DDSketch max is 0 but zero_count is 0")
+                if lat_min == 0 and zero_count == 0:
+                    raise ValueError("DDSketch min is 0 but zero_count is 0")
+            else:
+                if lat_min != float('inf') or lat_max != float('-inf'):
+                    raise ValueError("Empty DDSketch must have canonical extrema")
 
             uniques_data = data['uniques']
             if not isinstance(uniques_data, dict):
@@ -742,7 +778,7 @@ class _PythonStreamLog:
 
             return log
 
-        except (KeyError, TypeError) as e:
+        except (KeyError, TypeError, ValueError, OverflowError, ZeroDivisionError) as e:
             raise ValueError(f"Malformed StreamLog state: {e}") from e
 
     @classmethod

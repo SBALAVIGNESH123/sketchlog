@@ -115,7 +115,7 @@ def test_serialization_validation():
     # 6. Invalid Aggregate Consistency
     bad_total = copy.deepcopy(valid_payload)
     bad_total['total'] = 0
-    with pytest.raises(ValueError, match="StreamLog total does not match latency count \+ events total"):
+    with pytest.raises(ValueError, match=r"StreamLog total does not match latency count \+ events total"):
         StreamLog.from_dict(bad_total)
         
     # 7. Invalid DDSketch Bucket Index
@@ -136,6 +136,41 @@ def test_serialization_validation():
     bad_nan_min['latency']['min'] = float('nan')
     with pytest.raises(ValueError, match="DDSketch min/max must be finite numbers"):
         StreamLog.from_dict(bad_nan_min)
+
+    # 9. Semantic extrema alignment
+    bad_semantic_pos = copy.deepcopy(valid_payload)
+    bad_semantic_pos['latency']['min'] = -1.0
+    bad_semantic_pos['latency']['max'] = -1.0
+    with pytest.raises(ValueError, match="DDSketch extrema contradict positive buckets"):
+        StreamLog.from_dict(bad_semantic_pos)
+
+    bad_semantic_zero = copy.deepcopy(valid_payload)
+    bad_semantic_zero['latency'].update(positive={}, negative={}, count=1, zero_count=1, min=5.0, max=5.0)
+    with pytest.raises(ValueError, match="DDSketch extrema contradict zero buckets"):
+        StreamLog.from_dict(bad_semantic_zero)
+
+    bad_semantic_bucket = copy.deepcopy(valid_payload)
+    bad_semantic_bucket['latency']['positive'] = {"1000": 1}
+    bad_semantic_bucket['latency']['min'] = 1.0
+    bad_semantic_bucket['latency']['max'] = 1.0
+    with pytest.raises(ValueError, match="DDSketch max contradicts positive buckets"):
+        StreamLog.from_dict(bad_semantic_bucket)
+
+    # 10. Malformed payload exceptions
+    bad_alpha = copy.deepcopy(valid_payload)
+    bad_alpha['latency']['alpha'] = 1e-300
+    with pytest.raises(ValueError, match="Malformed"):
+        StreamLog.from_dict(bad_alpha)
+
+    bad_inf_key = copy.deepcopy(valid_payload)
+    bad_inf_key['latency']['positive'] = {float("inf"): 1}
+    with pytest.raises(ValueError, match="Malformed"):
+        StreamLog.from_dict(bad_inf_key)
+
+    bad_huge_min = copy.deepcopy(valid_payload)
+    bad_huge_min['latency']['min'] = 10**10000
+    with pytest.raises(ValueError, match="Malformed"):
+        StreamLog.from_dict(bad_huge_min)
 
 
 def test_merge_distributed():
