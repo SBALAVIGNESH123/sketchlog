@@ -400,23 +400,32 @@ def test_ddsketch_extreme_bounds():
     import sketchlog
     from sketchlog import DDSketch
     backends = [DDSketch]
-    if hasattr(sketchlog, '_cpp'):
+    if sketchlog.HAS_CPP:
         backends.append(sketchlog._cpp.DDSketch)
-    
+
     for cls in backends:
         # 1. Invalid alpha
         with pytest.raises(ValueError):
             cls(1e-20)
-            
+
         # 2. Maximum finite values
         d = cls()
         d.add(sys.float_info.max)
         q = d.quantile(0.5)
         assert math.isfinite(q)
         assert q > 0
-        
+
+        # Sub-maximum large finite values (should be accurately recovered)
+        d2 = cls(0.01)
+        target = sys.float_info.max / 2.0
+        d2.add(target)
+        q2 = d2.quantile(0.5)
+        assert math.isfinite(q2)
+        # Should be within 1% relative error
+        assert abs(q2 - target) / target <= 0.01
+
         # 3. NaN quantiles
-        d = cls()
-        d.add(1.0)
+        d3 = cls()
+        d3.add(1.0)
         with pytest.raises(ValueError, match='Quantile must be in'):
-            d.quantile(float('nan'))
+            d3.quantile(float('nan'))

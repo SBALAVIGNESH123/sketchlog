@@ -98,7 +98,7 @@ class DDSketch:
 
     def _bucket_value(self, index: int) -> float:
         try:
-            return 2.0 * self._gamma ** index / (1.0 + self._gamma)
+            return (2.0 / (1.0 + self._gamma)) * (self._gamma ** index)
         except OverflowError:
             return sys.float_info.max
 

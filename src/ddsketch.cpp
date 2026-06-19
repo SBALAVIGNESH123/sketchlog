@@ -111,7 +111,7 @@ int DDSketch::key(double value) const {
 double DDSketch::bucket_value(int index) const {
     // Representative value at the centre of the bucket in log-space:
     //   v = 2 * gamma^index / (1 + gamma)
-    double v = 2.0 * std::pow(gamma_, index) / (1.0 + gamma_);
+    double v = (2.0 / (1.0 + gamma_)) * std::pow(gamma_, index);
     if (std::isinf(v)) return std::numeric_limits<double>::max();
     return v;
 }

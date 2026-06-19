@@ -14,7 +14,7 @@ namespace sketchlog {
 class DDSketch {
 public:
     /// Construct a DDSketch with the given relative accuracy guarantee.
-    /// @param relative_accuracy  alpha in (0, 1). Default 0.01 (1% error).
+    /// @param relative_accuracy  alpha in [1e-6, 1.0). Default 0.01 (1% error).
     explicit DDSketch(double relative_accuracy = 0.01);
 
     /// Add a single observation.
