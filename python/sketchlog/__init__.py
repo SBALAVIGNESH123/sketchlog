@@ -727,8 +727,8 @@ class _PythonStreamLog:
             log._latency._zero_count = zero_count
             log._latency._count = count
             if count > 0:
-                log._latency._min = lat_min
-                log._latency._max = lat_max
+                log._latency._min = float(lat_min)  # type: ignore[arg-type]
+                log._latency._max = float(lat_max)  # type: ignore[arg-type]
 
             # Restore uniques
             log._uniques._registers = bytearray(registers)
