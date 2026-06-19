@@ -49,6 +49,7 @@ except ImportError:
     _cpp = None
     HAS_CPP = False
 
+import sys
 from typing import Any, Dict, Iterable, List, Optional, Union, Tuple, NamedTuple
 import json
 import math
@@ -78,8 +79,8 @@ class DDSketch:
     """Logarithmic quantile sketch. O(1) memory for any percentile."""
 
     def __init__(self, relative_accuracy: float = 0.01) -> None:
-        if not 0 < relative_accuracy < 1:
-            raise ValueError("relative_accuracy must be in (0, 1)")
+        if not (1e-6 <= relative_accuracy < 1.0):
+            raise ValueError("relative_accuracy must be in [1e-6, 1.0)")
         self._alpha = relative_accuracy
         self._gamma = (1.0 + relative_accuracy) / (1.0 - relative_accuracy)
         self._log_gamma = math.log(self._gamma)
@@ -96,7 +97,10 @@ class DDSketch:
         return math.ceil(math.log(value) * self._multiplier)
 
     def _bucket_value(self, index: int) -> float:
-        return 2.0 * self._gamma ** index / (1.0 + self._gamma)
+        try:
+            return 2.0 * self._gamma ** index / (1.0 + self._gamma)
+        except OverflowError:
+            return sys.float_info.max
 
     def add(self, value: float, count: int = 1) -> None:
         if math.isnan(value) or math.isinf(value):
@@ -153,6 +157,8 @@ class DDSketch:
         self._max = _max
 
     def quantile(self, q: float) -> float:
+        if math.isnan(q) or math.isinf(q):
+            raise ValueError("Quantile must be in [0, 1]")
         if self._count == 0:
             return 0.0
         if q <= 0:

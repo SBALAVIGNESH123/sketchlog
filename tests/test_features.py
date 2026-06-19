@@ -391,3 +391,32 @@ def test_cpp_overflow_guards():
     # Ensure log1 is COMPLETELY untouched!
     assert log1.p99() == p99_before
     assert log1.total_events() == (maximum // 2) + 1
+
+
+def test_ddsketch_extreme_bounds():
+    import sys
+    import math
+    import pytest
+    import sketchlog
+    from sketchlog import DDSketch
+    backends = [DDSketch]
+    if hasattr(sketchlog, '_cpp'):
+        backends.append(sketchlog._cpp.DDSketch)
+    
+    for cls in backends:
+        # 1. Invalid alpha
+        with pytest.raises(ValueError):
+            cls(1e-20)
+            
+        # 2. Maximum finite values
+        d = cls()
+        d.add(sys.float_info.max)
+        q = d.quantile(0.5)
+        assert math.isfinite(q)
+        assert q > 0
+        
+        # 3. NaN quantiles
+        d = cls()
+        d.add(1.0)
+        with pytest.raises(ValueError, match='Quantile must be in'):
+            d.quantile(float('nan'))

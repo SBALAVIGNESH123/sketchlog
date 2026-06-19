@@ -14,8 +14,8 @@ namespace sketchlog {
 // ════════════════════════════════════════════════════════════════════════
 
 /*static*/ double DDSketch::validate_alpha(double alpha) {
-    if (!std::isfinite(alpha) || alpha <= 0.0 || alpha >= 1.0)
-        throw std::invalid_argument("DDSketch: relative_accuracy must be in (0, 1)");
+    if (!std::isfinite(alpha) || alpha < 1e-6 || alpha >= 1.0)
+        throw std::invalid_argument("DDSketch: relative_accuracy must be in [1e-6, 1.0)");
     return alpha;
 }
 
@@ -111,7 +111,9 @@ int DDSketch::key(double value) const {
 double DDSketch::bucket_value(int index) const {
     // Representative value at the centre of the bucket in log-space:
     //   v = 2 * gamma^index / (1 + gamma)
-    return 2.0 * std::pow(gamma_, index) / (1.0 + gamma_);
+    double v = 2.0 * std::pow(gamma_, index) / (1.0 + gamma_);
+    if (std::isinf(v)) return std::numeric_limits<double>::max();
+    return v;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -173,6 +175,9 @@ void DDSketch::add(double value, size_t count) {
 // ════════════════════════════════════════════════════════════════════════
 
 double DDSketch::quantile(double q) const {
+    if (std::isnan(q) || std::isinf(q)) {
+        throw std::invalid_argument("Quantile must be in [0, 1]");
+    }
     if (count_ == 0) return 0.0;
 
     if (q <= 0.0) return min_value_;
