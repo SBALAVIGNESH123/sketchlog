@@ -763,8 +763,9 @@ class _PythonStreamLog:
             log._latency._zero_count = zero_count
             log._latency._count = count
             if count > 0:
-                log._latency._min = float(lat_min)  # type: ignore[arg-type]
-                log._latency._max = float(lat_max)  # type: ignore[arg-type]
+                assert lat_min is not None and lat_max is not None
+                log._latency._min = float(lat_min)
+                log._latency._max = float(lat_max)
 
             # Restore uniques
             log._uniques._registers = bytearray(registers)
