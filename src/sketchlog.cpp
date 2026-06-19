@@ -94,4 +94,11 @@ void StreamLog::reset() {
     total_events_ = 0;
 }
 
+void StreamLog::merge(const StreamLog& other) {
+    latency_.merge(other.latency_);
+    events_.merge(other.events_);
+    uniques_.merge(other.uniques_);
+    total_events_ += other.total_events_;
+}
+
 } // namespace sketchlog

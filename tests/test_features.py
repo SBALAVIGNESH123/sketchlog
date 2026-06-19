@@ -4,7 +4,7 @@ import threading
 from sketchlog import StreamLog, ThreadSafeStreamLog
 
 def test_serialization():
-    log = StreamLog()
+    log = StreamLog(deterministic=True)
     rnd = random.Random(42)
     for _ in range(100_000):
         log.add_latency(rnd.lognormvariate(2, 1))
@@ -52,7 +52,7 @@ def test_save_load():
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        log = StreamLog()
+        log = StreamLog(deterministic=True)
         rnd = random.Random(42)
         for _ in range(10_000):
             log.add_latency(rnd.lognormvariate(2, 1))
@@ -108,7 +108,7 @@ def test_nan_and_inf_handling():
     from sketchlog.drift import DriftSketch
 
     # 1. Test Python StreamLog
-    log = StreamLog()
+    log = StreamLog(deterministic=True)
     log.add_latency(float('nan'))
     log.add_latency(float('inf'))
     log.add_latency(float('-inf'))

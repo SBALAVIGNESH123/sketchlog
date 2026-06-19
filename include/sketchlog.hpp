@@ -115,6 +115,9 @@ public:
     /** Reset everything. */
     void reset();
 
+    /** Merge another StreamLog into this one. */
+    void merge(const StreamLog& other);
+
 private:
     DDSketch latency_;
     CountMinSketch events_;

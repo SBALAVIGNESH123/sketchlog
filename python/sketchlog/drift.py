@@ -189,8 +189,8 @@ class DriftSketch:
             for name in self._current:
                 self._maybe_rotate(name)
 
-                curr_count = self._current[name]._latency.count
-                prev_count = self._previous[name]._latency.count
+                curr_count = self._current[name].total_events
+                prev_count = self._previous[name].total_events
                 if curr_count == 0 or prev_count == 0:
                     continue
 
@@ -244,8 +244,8 @@ class DriftSketch:
                 if self._event_counts[name] < min_events:
                     continue
                 self._maybe_rotate(name)
-                curr_count = self._current[name]._latency.count
-                prev_count = self._previous[name]._latency.count
+                curr_count = self._current[name].total_events
+                prev_count = self._previous[name].total_events
                 if curr_count == 0 or prev_count == 0:
                     continue
                 curr = self._current[name].p99()

@@ -144,6 +144,12 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         .def("memory_bytes", &sketchlog::StreamLog::memory_bytes)
         .def("memory_kb", &sketchlog::StreamLog::memory_kb)
         .def("reset", &sketchlog::StreamLog::reset)
+        .def("merge", &sketchlog::StreamLog::merge, py::arg("other"))
+        .def("stats", [](const sketchlog::StreamLog& self) {
+            auto s = self.stats();
+            return py::make_tuple(s.events, s.memory_bytes, s.memory_kb,
+                                  s.latency_p50, s.latency_p99, s.latency_p999, s.unique_count);
+        })
 
         .def("__repr__", [](const sketchlog::StreamLog& self) {
             auto s = self.stats();
