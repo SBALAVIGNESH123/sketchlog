@@ -297,6 +297,7 @@ class DriftSketch:
         with self._lock:
             dims = []
             for name in sorted(self._current.keys()):
+                self._maybe_rotate(name)
                 dims.append({
                     "dimension": name,
                     "events": self._event_counts[name],
