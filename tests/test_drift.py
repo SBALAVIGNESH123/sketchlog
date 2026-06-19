@@ -217,3 +217,22 @@ def test_nanosecond_precision_window_rounding():
 
     ds2 = DriftSketch(window=1.9e-9)
     assert ds2._window_ns == 2
+
+def test_drift_summary_stale_window_rotation(monkeypatch):
+    import sketchlog.drift as drift_mod
+    from sketchlog.drift import DriftSketch
+
+    clock = [1_000_000_000_000]
+    monkeypatch.setattr(drift_mod._time, 'monotonic_ns', lambda: clock[0])
+
+    ds = DriftSketch(window=0.01)
+    ds.add('latency', 10.0)
+
+    summary = ds.summary()
+    assert summary['metrics'][0]['current_p99'] > 9.0
+
+    clock[0] += 25_000_000  # 2.5 windows later
+
+    summary2 = ds.summary()
+    assert summary2['metrics'][0]['current_p99'] == 0.0
+    assert summary2['metrics'][0]['previous_p99'] == 0.0
