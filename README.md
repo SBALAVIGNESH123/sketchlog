@@ -16,7 +16,7 @@ monitoring, edge devices, and memory-constrained environments.
 
 ---
 
-## ?? Documentation
+## 📚 Documentation
 
 The full documentation is available at [SketchLog Documentation Site](https://sbalavignesh123.github.io/sketchlog/) (or via `/docs` in the repository). 
 It includes:
