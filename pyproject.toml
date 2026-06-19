@@ -41,7 +41,8 @@ dev = [
     "pytest",
     "numpy",
     "mkdocs-material>=9.5.0",
-    "mypy"
+    "mypy",
+    "pyright"
 ]
 opentelemetry = [
     "opentelemetry-api",
