@@ -98,7 +98,10 @@ class DDSketch:
 
     def _bucket_value(self, index: int) -> float:
         try:
-            return (2.0 / (1.0 + self._gamma)) * (self._gamma ** index)
+            val = (2.0 / (1.0 + self._gamma)) * (self._gamma ** index)
+            if val == 0.0:
+                return float.fromhex('0x0.0000000000001p-1022')
+            return val
         except OverflowError:
             return sys.float_info.max
 

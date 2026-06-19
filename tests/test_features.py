@@ -429,3 +429,15 @@ def test_ddsketch_extreme_bounds():
         d3.add(1.0)
         with pytest.raises(ValueError, match='Quantile must be in'):
             d3.quantile(float('nan'))
+
+        # 4. Subnormal minimum values (should not underflow to zero)
+        d4 = cls(0.95)
+        smallest = float.fromhex('0x0.0000000000001p-1022')
+        d4.add(smallest)
+        q4 = d4.quantile(0.5)
+        assert q4 > 0.0
+
+        d5 = cls(0.99)
+        d5.add(-smallest)
+        q5 = d5.quantile(0.5)
+        assert q5 < 0.0
