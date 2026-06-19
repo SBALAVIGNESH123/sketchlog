@@ -43,7 +43,9 @@ markdown_extensions:
 nav:
   - Getting Started: index.md
   - Architecture & Concepts: architecture.md
+  - Benchmarks: benchmarks.md
   - Integrations: integrations.md
   - API Reference: api.md
   - Formal Guarantees: guarantees.md
+  - Contributing: contributing.md
 

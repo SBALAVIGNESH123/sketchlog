@@ -21,9 +21,18 @@ monitoring, edge devices, and memory-constrained environments.
 The full documentation is available at [SketchLog Documentation Site](https://sbalavignesh123.github.io/sketchlog/) (or via `/docs` in the repository). 
 It includes:
 - **Architecture**: Details on distributed merges, drift detection, and memory footprint.
+- **Benchmarks**: Memory footprint scaling and CPU throughput limits.
 - **Guarantees**: Formal mathematical proofs of error bounds.
 - **Integrations**: How to integrate with Prometheus, FastAPI, and OpenTelemetry.
 - **API Reference**: Comprehensive listing of classes and methods.
+- **Contributing**: Guidelines for contributing to SketchLog.
+
+### Local Documentation Build
+To build and preview the documentation locally:
+```bash
+pip install mkdocs-material
+mkdocs serve
+```
 
 ---
 
