@@ -430,14 +430,23 @@ def test_ddsketch_extreme_bounds():
         with pytest.raises(ValueError, match='Quantile must be in'):
             d3.quantile(float('nan'))
 
-        # 4. Subnormal minimum values (should not underflow to zero)
-        d4 = cls(0.95)
+        # 4. Subnormal minimum values (should not underflow to zero, and bounds checked)
         smallest = float.fromhex('0x0.0000000000001p-1022')
+        
+        # This accuracy (0.95) allows tracking the smallest float
+        d4 = cls(0.95)
         d4.add(smallest)
         q4 = d4.quantile(0.5)
         assert q4 > 0.0
+        assert abs(q4 - smallest) / smallest <= 0.95
 
         d5 = cls(0.99)
         d5.add(-smallest)
         q5 = d5.quantile(0.5)
         assert q5 < 0.0
+        assert abs(q5 - (-smallest)) / smallest <= 0.99
+        
+        # This accuracy (0.01) is too strict for granular subnormals, should reject
+        d6 = cls(0.01)
+        with pytest.raises(ValueError, match="too small"):
+            d6.add(27 * smallest)

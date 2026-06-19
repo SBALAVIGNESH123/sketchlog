@@ -130,6 +130,10 @@ void DDSketch::add(double value, size_t count) {
     if (std::isnan(value) || std::isinf(value)) return; // silently reject
     if (count == 0) return;
 
+    if (value != 0.0 && std::abs(value) < std::numeric_limits<double>::denorm_min() / (2.0 * alpha_)) {
+        throw std::invalid_argument("DDSketch: value magnitude too small to satisfy relative accuracy");
+    }
+
     if (std::numeric_limits<size_t>::max() - count_ < count) {
         throw std::overflow_error("DDSketch: total count overflow");
     }

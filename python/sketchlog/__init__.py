@@ -110,6 +110,12 @@ class DDSketch:
             return  # silently reject
         if count <= 0:
             return
+            
+        if value != 0.0:
+            denorm_min = float.fromhex('0x0.0000000000001p-1022')
+            if abs(value) < denorm_min / (2.0 * self._alpha):
+                raise ValueError("Value magnitude too small to satisfy relative accuracy")
+                
         self._count += count
         if value < self._min:
             self._min = value
