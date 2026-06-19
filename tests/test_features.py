@@ -43,8 +43,6 @@ def test_serialization():
         loaded_log.to_dict()
 
 def test_serialization_edge_cases():
-    import json
-    
     # 1. Empty sketch round trip
     empty_log = StreamLog(deterministic=True)
     assert StreamLog.from_dict(empty_log.to_dict()).to_dict() == empty_log.to_dict()
