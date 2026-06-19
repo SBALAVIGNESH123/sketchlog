@@ -480,11 +480,11 @@ def test_add_batch_transactional():
     smallest = float.fromhex('0x0.0000000000001p-1022')
     bad_val = 51 * smallest
     batch = [2.0, bad_val, 3.0]
-    
+
     backends = [DDSketch]
     if sketchlog.HAS_CPP:
         backends.append(sketchlog._cpp.DDSketch)
-        
+
     for cls in backends:
         d = cls(0.01)
         d.add(1.0)
@@ -494,18 +494,17 @@ def test_add_batch_transactional():
         assert c == 1
         m = d.max if not callable(d.max) else d.max()
         assert m == 1.0
-        
+
     stream_backends = [StreamLog]
     if sketchlog.HAS_CPP:
         stream_backends.append(sketchlog._cpp.StreamLog)
-        
+
     for cls in stream_backends:
         log = cls(relative_accuracy=0.01)
         if cls is StreamLog:
             log = StreamLog(deterministic=True, relative_accuracy=0.01)
-        # add_latency in python StreamLog uses add_batch under the hood if it is bulk added? Wait, StreamLog.add_batch does it.
         log.add_latency(1.0)
         with pytest.raises(ValueError):
             log.add_batch(batch)
-        assert abs(log.p50() - 1.0) <= 0.011
-        # In C++, event_count etc might not be directly exposed as total_events but p50() == 1.0 ensures 2.0 wasn't added
+        c = log.total_events() if callable(getattr(log, 'total_events', None)) else log.total_events
+        assert c == 1

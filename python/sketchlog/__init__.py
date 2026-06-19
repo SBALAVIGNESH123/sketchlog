@@ -135,52 +135,64 @@ class DDSketch:
 
     def add_batch(self, values: Iterable[float]) -> None:
         """Bulk-add values. 2-5x faster than individual add() calls."""
-        if not isinstance(values, (list, tuple)):
-            values = list(values)
-
-        pos = self._positive
-        neg = self._negative
         multiplier = self._multiplier
         log = math.log
         ceil = math.ceil
         isnan = math.isnan
         isinf = math.isinf
-        _min = self._min
-        _max = self._max
-        n = 0
-        zero_count = 0
 
-        # Validation checks
+        # Validation checks and temporary accumulation
         alpha = self._alpha
+        tmp_pos: dict[int, int] = {}
+        tmp_neg: dict[int, int] = {}
+        tmp_count = 0
+        tmp_min = float('inf')
+        tmp_max = float('-inf')
+        tmp_zero_count = 0
+
         for v in values:
-            if isnan(v) or isinf(v) or v == 0.0:
+            if isnan(v) or isinf(v):
                 continue
+            if v == 0.0:
+                tmp_zero_count += 1
+                tmp_count += 1
+                if v < tmp_min: tmp_min = v
+                if v > tmp_max: tmp_max = v
+                continue
+
             abs_v = abs(v)
             idx = ceil(log(abs_v) * multiplier)
             rep = self._bucket_value(idx)
             if abs(rep - abs_v) / abs_v > alpha:
                 raise ValueError("Value magnitude too small to satisfy relative accuracy")
 
-        for v in values:
-            if isnan(v) or isinf(v):
-                continue
-            n += 1
-            if v < _min:
-                _min = v
-            if v > _max:
-                _max = v
             if v > 0:
-                idx = ceil(log(v) * multiplier)
-                pos[idx] = pos.get(idx, 0) + 1
-            elif v < 0:
-                idx = ceil(log(-v) * multiplier)
-                neg[idx] = neg.get(idx, 0) + 1
+                tmp_pos[idx] = tmp_pos.get(idx, 0) + 1
             else:
-                zero_count += 1
-        self._count += n
-        self._zero_count += zero_count
-        self._min = _min
-        self._max = _max
+                tmp_neg[idx] = tmp_neg.get(idx, 0) + 1
+
+            tmp_count += 1
+            if v < tmp_min: tmp_min = v
+            if v > tmp_max: tmp_max = v
+
+        if tmp_count == 0:
+            return
+
+        # Commit ingestion
+        pos = self._positive
+        for idx, count in tmp_pos.items():
+            pos[idx] = pos.get(idx, 0) + count
+
+        neg = self._negative
+        for idx, count in tmp_neg.items():
+            neg[idx] = neg.get(idx, 0) + count
+
+        self._count += tmp_count
+        self._zero_count += tmp_zero_count
+        if tmp_min < self._min:
+            self._min = tmp_min
+        if tmp_max > self._max:
+            self._max = tmp_max
 
     def quantile(self, q: float) -> float:
         if math.isnan(q) or math.isinf(q):
