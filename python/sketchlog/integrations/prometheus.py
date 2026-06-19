@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from sketchlog import ThreadSafeStreamLog
 
 class _NoLoggingWSGIRequestHandler(WSGIRequestHandler):
-    def log_message(self, format, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
 class PrometheusExporter:
@@ -63,7 +63,7 @@ class PrometheusExporter:
         ]
         return "\n".join(lines) + "\n"
 
-    def _wsgi_app(self, environ, start_response):
+    def _wsgi_app(self, environ: Any, start_response: Any) -> Any:
         if environ.get("PATH_INFO") == "/metrics":
             status = '200 OK'
             metrics = self._generate_metrics().encode('utf-8')

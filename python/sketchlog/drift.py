@@ -42,9 +42,24 @@ Guarantees:
 
 import time as _time
 import math
-from typing import Any, Dict, List, Tuple, Union, DefaultDict
+from typing import Any, Dict, List, Tuple, Union, DefaultDict, Iterable, TypedDict
 import threading
 from collections import defaultdict
+
+class DriftResult(TypedDict):
+    dimension: str
+    current_p99: float
+    previous_p99: float
+    drift_ratio: float
+    drift_pct: float
+    direction: str
+
+class CorrelationResult(TypedDict):
+    pair: Tuple[str, str]
+    direction: str
+    score: float
+    a_drift_pct: float
+    b_drift_pct: float
 
 from sketchlog import StreamLog, _parse_window
 
@@ -111,7 +126,7 @@ class DriftSketch:
             self._current[name] = StreamLog(**self._sk_kwargs)  # fresh
             self._window_start[name] += windows_elapsed * self._window_ns
 
-    def rotate_all(self):
+    def rotate_all(self) -> None:
         """Force window rotation for all dimensions.
 
         Useful for testing or manual window management.
@@ -124,7 +139,7 @@ class DriftSketch:
                 self._current[name] = StreamLog(**self._sk_kwargs)
                 self._window_start[name] = _time.monotonic_ns()
 
-    def add(self, dimension, value):
+    def add(self, dimension: str, value: float) -> None:
         """Add a metric observation to a named dimension.
 
         Args:
@@ -140,7 +155,7 @@ class DriftSketch:
             if sketch.total_events > count_before:
                 self._event_counts[dimension] += 1
 
-    def add_batch(self, dimension, values):
+    def add_batch(self, dimension: str, values: Iterable[float]) -> None:
         """Bulk-add observations to a dimension."""
         if not hasattr(values, "__len__"):
             values = list(values)
@@ -155,7 +170,7 @@ class DriftSketch:
 
     # ─── Drift Detection ─────────────────────────────────────────────
 
-    def drift(self, threshold=0.2):
+    def drift(self, threshold: float = 0.2) -> List[DriftResult]:
         """Detect dimensions where current window p99 differs from previous.
 
         This is statistical drift detection, not root cause analysis.
@@ -170,7 +185,7 @@ class DriftSketch:
             threshold: minimum relative change to report (default 0.2 = 20%)
         """
         with self._lock:
-            results = []
+            results: List[DriftResult] = []
             for name in self._current:
                 self._maybe_rotate(name)
 
@@ -208,12 +223,12 @@ class DriftSketch:
                         "direction": "up" if ratio > 1.0 else "down",
                     })
 
-            results.sort(key=lambda x: abs(x.get("drift_pct", 0)), reverse=True)
+            results.sort(key=lambda x: abs(float(x.get("drift_pct", 0))), reverse=True)
             return results
 
     # ─── Correlation Detection ────────────────────────────────────────
 
-    def correlations(self, min_events=10):
+    def correlations(self, min_events: int = 10) -> List[CorrelationResult]:
         """Find dimensions whose drift co-occurred (same direction + magnitude).
 
         This detects co-occurring changes, NOT causal relationships.
@@ -242,7 +257,7 @@ class DriftSketch:
                 return []
 
             names = sorted(drift_data.keys())
-            pairs = []
+            pairs: List[CorrelationResult] = []
             for i in range(len(names)):
                 for j in range(i + 1, len(names)):
                     a_r = drift_data[names[i]]
@@ -272,12 +287,12 @@ class DriftSketch:
                             "b_drift_pct": round((b_r - 1) * 100, 2),
                         })
 
-            pairs.sort(key=lambda x: abs(x["score"]), reverse=True)
+            pairs.sort(key=lambda x: abs(float(x["score"])), reverse=True)
             return pairs
 
     # ─── Summary ──────────────────────────────────────────────────────
 
-    def summary(self):
+    def summary(self) -> Dict[str, Any]:
         """Overview of all tracked dimensions."""
         with self._lock:
             dims = []
@@ -296,7 +311,7 @@ class DriftSketch:
             }
 
     @property
-    def dimensions(self):
+    def dimensions(self) -> List[str]:
         """List of tracked dimension names."""
         with self._lock:
             return list(self._current.keys())
@@ -307,10 +322,10 @@ class DriftSketch:
             return sum(self._current[n].memory_bytes() + self._previous[n].memory_bytes()
                        for n in self._current)
 
-    def memory_kb(self):
+    def memory_kb(self) -> float:
         return self.memory_bytes() / 1024.0
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         with self._lock:
             n = len(self._current)
             total = sum(self._event_counts.values())

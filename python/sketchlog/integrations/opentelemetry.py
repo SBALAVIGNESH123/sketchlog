@@ -1,24 +1,23 @@
 
-from typing import TYPE_CHECKING, Any, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Tuple, List
 import logging
 
 logger = logging.getLogger(__name__)
 
 try:
-    import opentelemetry.metrics as _metrics  # type: ignore
-    import opentelemetry.sdk.metrics as _sdk_metrics  # type: ignore
-    import opentelemetry.sdk.metrics.export as _export  # type: ignore
-
-    Meter = _metrics.Meter
-    MeterProvider = _metrics.MeterProvider
-    CallbackOptions = _metrics.CallbackOptions
-    Observation = _metrics.Observation
-    get_meter_provider = _metrics.get_meter_provider
-    set_meter_provider = _metrics.set_meter_provider
-
-    SDKMeterProvider = _sdk_metrics.MeterProvider
-    PeriodicExportingMetricReader = _export.PeriodicExportingMetricReader
-    ConsoleMetricExporter = _export.ConsoleMetricExporter
+    from opentelemetry.metrics import (  # pyright: ignore[reportMissingImports]
+        Meter,
+        MeterProvider,
+        CallbackOptions,
+        Observation,
+        get_meter_provider,
+        set_meter_provider,
+    )
+    from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider  # pyright: ignore[reportMissingImports]
+    from opentelemetry.sdk.metrics.export import (  # pyright: ignore[reportMissingImports]
+        PeriodicExportingMetricReader,
+        ConsoleMetricExporter,
+    )
 
     HAS_OPENTELEMETRY = True
 except ImportError:
@@ -52,7 +51,7 @@ class OpenTelemetryAdapter:
 
         self.log = streamlog
         self.meter = meter
-        self.export_events = list(export_events) if export_events else []
+        self.export_events: List[str] = list(export_events) if export_events else []
 
         from sketchlog import WindowedStreamLog
         self.is_windowed = isinstance(streamlog, WindowedStreamLog)
@@ -89,7 +88,7 @@ class OpenTelemetryAdapter:
                 description="Total frequency of specific events"
             )
 
-    def _get_stats(self):
+    def _get_stats(self) -> Tuple[Any, float, Any]:
         from sketchlog import WindowedStreamLog, Stats, StreamLog
 
         # Take a consistent snapshot for WindowedStreamLog without deadlocking
@@ -156,7 +155,7 @@ class SketchLogOTelPublisher:
 
         if exporter is None:
             try:
-                from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter  # type: ignore
+                from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter  # pyright: ignore[reportMissingImports]
                 exporter = OTLPMetricExporter()
             except ImportError:
                 # Fallback to console if otlp package is missing, useful for testing
@@ -177,6 +176,6 @@ class SketchLogOTelPublisher:
         self.meter = self.provider.get_meter("sketchlog")
         self.adapter = OpenTelemetryAdapter(streamlog, self.meter, export_events=export_events)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Forces a flush and shuts down the periodic reader."""
         self.provider.shutdown()
