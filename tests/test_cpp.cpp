@@ -127,6 +127,79 @@ void test_ddsketch_nan_inf_validation() {
     std::cout << "test_ddsketch_nan_inf_validation passed\n";
 }
 
+void test_overflow_guards() {
+    bool caught;
+
+    // 1. Counter overflow
+    CountMinSketch cms(100, 5);
+    int64_t maximum = std::numeric_limits<int64_t>::max();
+    cms.add(1, maximum);
+    caught = false;
+    try {
+        cms.add(1, maximum);
+    } catch (const std::overflow_error&) { caught = true; }
+    assert(caught && "CountMinSketch should throw on overflow");
+    assert(cms.total_count() == maximum && "CountMinSketch state should not mutate on overflow");
+
+    // 2. StreamLog DDSketch bin count overflow
+    StreamLog bin_log;
+    StreamLog pow_log;
+    pow_log.add_latency(1.0);
+    for (int i = 0; i < 63; ++i) {
+        bin_log.merge(pow_log);
+        if (i < 62) {
+            pow_log.merge(pow_log);
+        }
+    }
+
+    caught = false;
+    uint64_t total_before = bin_log.total_events();
+    double p99_before = bin_log.p99();
+    try {
+        bin_log.add_latency(1.0);
+    } catch (const std::overflow_error&) { caught = true; }
+    assert(caught && "StreamLog should throw on DDSketch bin overflow via add_latency");
+    assert(bin_log.total_events() == total_before && "StreamLog should not mutate total_events on bin overflow");
+    assert(bin_log.p99() == p99_before && "StreamLog should not mutate p99 on bin overflow");
+
+    // 3. StreamLog total_events overflow via add_latency
+    StreamLog lat_log;
+    lat_log.merge(bin_log); // lat_log now has INT64_MAX events
+
+    int64_t max_cms = std::numeric_limits<int64_t>::max();
+    lat_log.add_event("x", max_cms);
+    lat_log.add_latency(2.0);
+    assert(lat_log.total_events() == std::numeric_limits<uint64_t>::max() && "Should exactly reach UINT64_MAX");
+
+    p99_before = lat_log.p99();
+    caught = false;
+    try {
+        lat_log.add_latency(3.0);
+    } catch (const std::overflow_error&) { caught = true; }
+    assert(caught && "StreamLog should throw on total_events overflow via add_latency");
+    assert(lat_log.total_events() == std::numeric_limits<uint64_t>::max() && "StreamLog should not mutate total_events on overflow");
+    assert(lat_log.p99() == p99_before && "StreamLog should not mutate p99 on overflow");
+
+    // 4. StreamLog merge atomicity
+    StreamLog log1;
+    log1.add_event("x", max_cms / 2);
+    log1.add_latency(1.0);
+
+    StreamLog log2;
+    log2.add_event("y", (max_cms / 2) + 2);
+    log2.add_latency(2.0);
+
+    p99_before = log1.p99();
+    caught = false;
+    try {
+        log1.merge(log2);
+    } catch (const std::overflow_error&) { caught = true; }
+    assert(caught && "StreamLog should throw on CountMinSketch overflow during merge");
+    assert(log1.p99() == p99_before && "StreamLog should not mutate on failed merge");
+
+    std::cout << "test_overflow_guards passed\n";
+}
+
 int main() {
     test_constructor_validation();
     test_ddsketch_nan_inf_validation();
@@ -134,6 +207,7 @@ int main() {
     test_negative_zero_counts();
     test_cardinality();
     test_merge_mismatch();
+    test_overflow_guards();
 
     std::cout << "All tests passed successfully.\n";
     return 0;

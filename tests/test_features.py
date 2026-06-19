@@ -19,6 +19,29 @@ def test_serialization():
     assert abs(log.p99() - log2.p99()) < 0.001, "Serialization mismatch!"
     assert log.total_events == log2.total_events
 
+    # Regression: check C++ backend throws correctly
+    import pytest
+    from sketchlog import HAS_CPP
+    if HAS_CPP:
+        cpp_log = StreamLog(deterministic=False)
+        with pytest.raises(NotImplementedError, match="Serialization is not supported"):
+            cpp_log.to_dict()
+
+        # Regression: check restored backend (even if deterministic=False) serializes successfully
+        # We can create a JSON string from a python backend and load it
+        py_log = StreamLog(deterministic=True)
+        py_log.add_latency(1.0)
+        data = py_log.to_dict()
+        data["deterministic"] = False
+        import json
+        j_data = json.dumps(data)
+
+        # When we load from JSON, we use `from_json`, which creates a PythonStreamLog
+        loaded_log = StreamLog.from_json(j_data)
+        # Even though HAS_CPP is true, `loaded_log`'s _backend is a _PythonStreamLog
+        # so this should succeed and not raise NotImplementedError
+        loaded_log.to_dict()
+
 def test_merge_distributed():
     a = StreamLog()
     b = StreamLog()
@@ -164,19 +187,42 @@ def test_cpp_overflow_guards():
     assert cms.total_count() == maximum
     assert cms.estimate_int(1) == maximum
 
-    # 3. StreamLog total_events overflow via add_latency
-    log = _cpp.StreamLog()
-    maximum = 2**63 - 1
-    log.add_event("x", maximum)
-    # StreamLog total_events_ is now 2**63 - 1.
-    # To overflow uint64_t total_events_, we would need to add another 2**63 - 1 + 2 events.
-    # We can't do this via add_event since CountMinSketch (int64_t max) throws first!
-    # However, let's test that add_latency correctly increments total_events_
-    events_before = log.total_events()
-    log.add_latency(1.0)
-    assert log.total_events() == events_before + 1
+    # 3. StreamLog DDSketch bin count overflow via add_latency
+    bin_log = _cpp.StreamLog()
+    pow_log = _cpp.StreamLog()
+    pow_log.add_latency(1.0)
+    for i in range(63):
+        bin_log.merge(pow_log)
+        if i < 62:
+            pow_log.merge(pow_log)
 
-    # 4. StreamLog merge atomicity (should not mutate if sub-component throws)
+    total_before = bin_log.total_events()
+    p99_before = bin_log.p99()
+    with pytest.raises(OverflowError, match="DDSketch: bin count overflow"):
+        bin_log.add_latency(1.0)
+    assert bin_log.total_events() == total_before
+    assert bin_log.p99() == p99_before
+
+    # 4. StreamLog total_events overflow via add_latency
+    lat_log = _cpp.StreamLog()
+    lat_log.merge(bin_log) # lat_log now has 2**63 - 1 latency events
+
+    # lat_log now has exactly 2**63 - 1 events from latency.
+    maximum = 2**63 - 1
+    lat_log.add_event("x", maximum)
+    # total_events is now 2**64 - 2
+    lat_log.add_latency(2.0)
+    # total_events is now 2**64 - 1 (UINT64_MAX)
+    assert lat_log.total_events() == (2**64) - 1
+
+    p99_before = lat_log.p99()
+    with pytest.raises(OverflowError, match="StreamLog: total_events overflow"):
+        lat_log.add_latency(3.0)
+    # Ensure zero mutation
+    assert lat_log.total_events() == (2**64) - 1
+    assert lat_log.p99() == p99_before
+
+    # 5. StreamLog merge atomicity (should not mutate if sub-component throws)
     log1 = _cpp.StreamLog()
     log1.add_event("x", maximum // 2)
     log1.add_latency(1.0)

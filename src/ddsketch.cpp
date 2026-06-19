@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace sketchlog {
 
@@ -21,6 +22,13 @@ namespace sketchlog {
 // ════════════════════════════════════════════════════════════════════════
 //  DenseStore
 // ════════════════════════════════════════════════════════════════════════
+
+bool DDSketch::DenseStore::can_add(int index, int64_t count) const {
+    if (empty) return true;
+    if (index < offset || index >= offset + static_cast<int>(bins.size())) return true;
+    if (std::numeric_limits<int64_t>::max() - bins[static_cast<size_t>(index - offset)] < count) return false;
+    return true;
+}
 
 void DDSketch::DenseStore::add(int index, int64_t count) {
     if (empty) {
@@ -42,7 +50,11 @@ void DDSketch::DenseStore::add(int index, int64_t count) {
         bins.resize(static_cast<size_t>(index - offset + 1), int64_t{0});
     }
 
-    bins[static_cast<size_t>(index - offset)] += count;
+    size_t bin_idx = static_cast<size_t>(index - offset);
+    if (std::numeric_limits<int64_t>::max() - bins[bin_idx] < count) {
+        throw std::overflow_error("DDSketch: bin count overflow");
+    }
+    bins[bin_idx] += count;
     if (index < min_index) min_index = index;
     if (index > max_index) max_index = index;
 }
@@ -115,7 +127,28 @@ void DDSketch::add(double value, size_t count) {
     if (std::isnan(value) || std::isinf(value)) return; // silently reject
     if (count == 0) return;
 
+    if (std::numeric_limits<size_t>::max() - count_ < count) {
+        throw std::overflow_error("DDSketch: total count overflow");
+    }
+
+    if (count > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+        throw std::overflow_error("DDSketch: count exceeds int64_t capacity");
+    }
     auto n = static_cast<int64_t>(count);
+
+    if (value > 0.0) {
+        if (!positive_.can_add(key(value), n)) {
+             throw std::overflow_error("DDSketch: bin count overflow");
+        }
+    } else if (value < 0.0) {
+        if (!negative_.can_add(key(-value), n)) {
+             throw std::overflow_error("DDSketch: bin count overflow");
+        }
+    } else {
+        if (std::numeric_limits<int64_t>::max() - zero_count_ < n) {
+            throw std::overflow_error("DDSketch: zero count overflow");
+        }
+    }
 
     if (count_ == 0) {
         min_value_ = value;
@@ -204,19 +237,30 @@ void DDSketch::merge(const DDSketch& other) {
     }
     if (other.count_ == 0) return;
 
+    DDSketch temp(*this);
+
+    if (std::numeric_limits<size_t>::max() - temp.count_ < other.count_) {
+        throw std::overflow_error("DDSketch: total count overflow");
+    }
+    temp.count_ += other.count_;
+
+    if (std::numeric_limits<int64_t>::max() - temp.zero_count_ < other.zero_count_) {
+        throw std::overflow_error("DDSketch: zero count overflow");
+    }
+    temp.zero_count_ += other.zero_count_;
+
     if (count_ == 0) {
-        min_value_ = other.min_value_;
-        max_value_ = other.max_value_;
+        temp.min_value_ = other.min_value_;
+        temp.max_value_ = other.max_value_;
     } else {
-        if (other.min_value_ < min_value_) min_value_ = other.min_value_;
-        if (other.max_value_ > max_value_) max_value_ = other.max_value_;
+        if (other.min_value_ < temp.min_value_) temp.min_value_ = other.min_value_;
+        if (other.max_value_ > temp.max_value_) temp.max_value_ = other.max_value_;
     }
 
-    count_      += other.count_;
-    zero_count_ += other.zero_count_;
+    temp.positive_.merge(other.positive_);
+    temp.negative_.merge(other.negative_);
 
-    positive_.merge(other.positive_);
-    negative_.merge(other.negative_);
+    *this = std::move(temp);
 }
 
 } // namespace sketchlog

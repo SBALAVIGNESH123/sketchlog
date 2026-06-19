@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <limits>
 #include <cmath>
-
+#include <utility>
 
 namespace sketchlog {
 
@@ -107,7 +107,7 @@ void StreamLog::merge(const StreamLog& other) {
     if (std::numeric_limits<uint64_t>::max() - total_events_ < other.total_events_) {
         throw std::overflow_error("StreamLog: total_events overflow during merge");
     }
-    
+
     // Merge into copies to ensure atomic commit (CountMinSketch can throw overflow)
     DDSketch new_latency = latency_;
     CountMinSketch new_events = events_;

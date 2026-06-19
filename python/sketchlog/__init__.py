@@ -778,9 +778,9 @@ class StreamLog:
         self._backend.merge(other._backend)
 
     def to_dict(self) -> Dict[str, Any]:
-        if HAS_CPP and not self._deterministic:
+        if not isinstance(self._backend, _PythonStreamLog):
             raise NotImplementedError("Serialization is not supported when using the C++ backend. Initialize with deterministic=True to force the Python backend.")
-        return self._backend.to_dict()  # type: ignore[no-any-return]
+        return self._backend.to_dict()
 
     def to_json(self) -> str:
         import json

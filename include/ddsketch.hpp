@@ -75,6 +75,7 @@ private:
         int max_index = 0;
         bool empty = true;
 
+        bool can_add(int index, int64_t count) const;
         void add(int index, int64_t count);
         [[nodiscard]] int64_t total() const;
         void merge(const DenseStore& other);
