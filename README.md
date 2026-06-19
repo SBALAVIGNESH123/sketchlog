@@ -1,7 +1,7 @@
 # SketchLog
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
-![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 **Streaming metrics compression engine. 100M events in 93 KB with bounded error.**

@@ -43,27 +43,31 @@ __all__ = [
 # etc.), but users can access the raw C++ engine for maximum throughput.
 
 try:
-    import _sketchlog_cpp as _cpp  # type: ignore
+    import _sketchlog_cpp as _cpp  # pyright: ignore[reportMissingImports]
     HAS_CPP = True
 except ImportError:
     _cpp = None
     HAS_CPP = False
 
-from typing import Any, Dict, Iterable, List, Optional, Union, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Union, Tuple, NamedTuple
 import json
 import math
 import struct
 import hashlib
 import threading
 import time as _time
-from collections import namedtuple
 
 
-Stats = namedtuple("Stats", [
-    "events", "memory_bytes", "memory_kb",
-    "latency_p50", "latency_p99", "latency_p999",
-    "unique_count"
-])
+EventKey = Union[str, bytes, int]
+
+class Stats(NamedTuple):
+    events: int
+    memory_bytes: int
+    memory_kb: float
+    latency_p50: float
+    latency_p99: float
+    latency_p999: float
+    unique_count: int
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -73,7 +77,7 @@ Stats = namedtuple("Stats", [
 class DDSketch:
     """Logarithmic quantile sketch. O(1) memory for any percentile."""
     
-    def __init__(self, relative_accuracy=0.01):
+    def __init__(self, relative_accuracy: float = 0.01) -> None:
         if not 0 < relative_accuracy < 1:
             raise ValueError("relative_accuracy must be in (0, 1)")
         self._alpha = relative_accuracy
@@ -81,20 +85,20 @@ class DDSketch:
         self._log_gamma = math.log(self._gamma)
         self._multiplier = 1.0 / self._log_gamma
         
-        self._positive = {}  # index -> count
-        self._negative = {}  # index -> count
-        self._zero_count = 0
+        self._positive: Dict[int, int] = {}  # index -> count
+        self._negative: Dict[int, int] = {}  # index -> count
+        self._zero_count: int = 0
         self._count = 0
         self._min = float('inf')
         self._max = float('-inf')
     
-    def _key(self, value):
+    def _key(self, value: float) -> int:
         return math.ceil(math.log(value) * self._multiplier)
     
-    def _bucket_value(self, index):
+    def _bucket_value(self, index: int) -> float:
         return 2.0 * self._gamma ** index / (1.0 + self._gamma)
     
-    def add(self, value, count=1):
+    def add(self, value: float, count: int = 1) -> None:
         if math.isnan(value) or math.isinf(value):
             return  # silently reject
         if count <= 0:
@@ -148,7 +152,7 @@ class DDSketch:
         self._min = _min
         self._max = _max
     
-    def quantile(self, q):
+    def quantile(self, q: float) -> float:
         if self._count == 0:
             return 0.0
         if q <= 0:
@@ -180,15 +184,15 @@ class DDSketch:
         return self._max
     
     @property
-    def count(self):
+    def count(self) -> int:
         return self._count
     
     @property
-    def min(self):
+    def min(self) -> float:
         return self._min if self._count > 0 else 0.0
     
     @property
-    def max(self):
+    def max(self) -> float:
         return self._max if self._count > 0 else 0.0
     
     def memory_bytes(self) -> int:
@@ -212,7 +216,7 @@ class DDSketch:
 class HyperLogLog:
     """Estimate unique items in constant memory."""
     
-    def __init__(self, precision=10):
+    def __init__(self, precision: int = 10) -> None:
         if not 4 <= precision <= 18:
             raise ValueError("precision must be in [4, 18]")
         self._p = precision
@@ -230,7 +234,7 @@ class HyperLogLog:
             self._alpha = 0.7213 / (1.0 + 1.079 / self._m)
     
     @staticmethod
-    def _murmur_finalizer(h):
+    def _murmur_finalizer(h: int) -> int:
         h = h & 0xFFFFFFFFFFFFFFFF
         h ^= h >> 33
         h = (h * 0xff51afd7ed558ccd) & 0xFFFFFFFFFFFFFFFF
@@ -239,7 +243,7 @@ class HyperLogLog:
         h ^= h >> 33
         return h
     
-    def _hash_bytes(self, data):
+    def _hash_bytes(self, data: bytes) -> int:
         """FNV-1a hash for bytes, then murmur finalizer."""
         h = 0xcbf29ce484222325
         for b in data:
@@ -248,20 +252,21 @@ class HyperLogLog:
         return self._murmur_finalizer(h)
     
     @staticmethod
-    def _rho(w, p):
+    def _rho(w: int, p: int) -> int:
         """Count leading zeros + 1."""
         if w == 0:
             return 64 - p + 1
         return 64 - w.bit_length() + 1
     
-    def add(self, value):
+    def add(self, value: Any) -> None:
         """Add a value (int or bytes or string)."""
         if isinstance(value, int):
             if value < 0 or value > 0xFFFFFFFFFFFFFFFF:
                 raise ValueError("HyperLogLog integer out of range for 64-bit unsigned")
             h = self._hash_bytes(value.to_bytes(8, byteorder='little', signed=False))
         elif isinstance(value, (bytes, bytearray)):
-            h = self._hash_bytes(value)
+            self_hash_data = bytes(value)
+            h = self._hash_bytes(self_hash_data)
         elif isinstance(value, str):
             h = self._hash_bytes(value.encode('utf-8'))
         else:
@@ -273,7 +278,7 @@ class HyperLogLog:
         if rho > self._registers[idx]:
             self._registers[idx] = min(rho, 255)
     
-    def estimate(self):
+    def estimate(self) -> float:
         """Estimated cardinality."""
         raw = self._alpha * self._m * self._m
         harmonic_sum = sum(2.0 ** (-r) for r in self._registers)
@@ -303,7 +308,7 @@ class HyperLogLog:
 class CountMinSketch:
     """Estimate frequency of items in constant memory."""
     
-    def __init__(self, width=2048, depth=5):
+    def __init__(self, width: int = 2048, depth: int = 5) -> None:
         if width <= 0:
             raise ValueError(f"CountMinSketch width must be > 0, got {width}")
         if depth <= 0:
@@ -315,7 +320,7 @@ class CountMinSketch:
         self._total = 0
         
         # Deterministic seeds — splitmix64 matching C++
-        self._seeds = []
+        self._seeds: List[int] = []
         state = 42
         for _ in range(depth):
             state = (state + 0x9e3779b97f4a7c15) & 0xFFFFFFFFFFFFFFFF
@@ -326,7 +331,7 @@ class CountMinSketch:
             self._seeds.append(z)
     
     @staticmethod
-    def _hash(key, seed):
+    def _hash(key: int, seed: int) -> int:
         h = key ^ seed
         h = h & 0xFFFFFFFFFFFFFFFF
         h ^= h >> 33
@@ -336,7 +341,7 @@ class CountMinSketch:
         h ^= h >> 33
         return h
     
-    def _key_from_bytes(self, data):
+    def _key_from_bytes(self, data: Union[str, bytes]) -> int:
         h = 0xcbf29ce484222325
         if isinstance(data, str):
             data = data.encode('utf-8')
@@ -345,7 +350,7 @@ class CountMinSketch:
             h = (h * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
         return h
     
-    def add(self, item, count=1):
+    def add(self, item: EventKey, count: int = 1) -> None:
         """Add an item (str or int)."""
         if count <= 0:
             raise ValueError("Event count must be strictly positive")
@@ -360,7 +365,7 @@ class CountMinSketch:
             col = self._hash(key, self._seeds[i]) % self._width
             self._table[i][col] += count
     
-    def estimate(self, item):
+    def estimate(self, item: EventKey) -> int:
         """Estimated frequency of an item."""
         if isinstance(item, int):
             key = item
@@ -374,7 +379,7 @@ class CountMinSketch:
         return int(result)
     
     @property
-    def total_count(self):
+    def total_count(self) -> int:
         return self._total
     
     def memory_bytes(self) -> int:
@@ -452,16 +457,16 @@ class StreamLog:
     
     # ─── Events ──────────────────────────────────────────────────────
     
-    def add_event(self, name: Union[str, bytes], count: int = 1) -> None:
+    def add_event(self, name: EventKey, count: int = 1) -> None:
         """Record an event occurrence."""
         if count <= 0:
             raise ValueError("Event count must be strictly positive")
         self._events.add(name, count)
         self._total += count
     
-    def event_count(self, name: Union[str, bytes]) -> int:
-        """Estimated count for an event type."""
-        return self._events.estimate(name)
+    def event_count(self, event_name: Union[str, int, bytes]) -> int:
+        """Get approximate frequency of a discrete event."""
+        return self._events.estimate(event_name)
     
     # ─── Cardinality ─────────────────────────────────────────────────
     
@@ -521,7 +526,7 @@ class StreamLog:
             'total_kb': round(total / 1024, 2),
         }
     
-    def stats(self) -> Any:
+    def stats(self) -> Stats:
         """Full stats snapshot."""
         return Stats(
             events=self._total,
@@ -670,7 +675,7 @@ class StreamLog:
         # ── Integrity check ───────────────────────────────────────────
         self._total += other._total
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (f"StreamLog(events={self._total:,}, "
                 f"memory={self.memory_kb():.1f} KB)")
 
@@ -690,7 +695,7 @@ class ThreadSafeStreamLog:
         with self._lock:
             self._log.add_latency(value)
     
-    def add_event(self, name: Union[str, bytes], count: int = 1) -> None:
+    def add_event(self, name: EventKey, count: int = 1) -> None:
         with self._lock:
             self._log.add_event(name, count)
     
@@ -718,7 +723,7 @@ class ThreadSafeStreamLog:
         with self._lock:
             return self._log.percentile(q)
     
-    def event_count(self, name: Union[str, bytes]) -> int:
+    def event_count(self, name: Union[str, int, bytes]) -> int:
         with self._lock:
             return self._log.event_count(name)
     
@@ -739,7 +744,7 @@ class ThreadSafeStreamLog:
         with self._lock:
             return self._log.memory_kb()
     
-    def stats(self) -> Any:
+    def stats(self) -> Stats:
         with self._lock:
             return self._log.stats()
     
@@ -747,7 +752,7 @@ class ThreadSafeStreamLog:
         with self._lock:
             self._log.reset()
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         with self._lock:
             return f"ThreadSafe{repr(self._log)}"
 
@@ -823,8 +828,8 @@ class WindowedStreamLog:
         self._start_time = _time.monotonic_ns()
         self._lock = threading.RLock()  # thread-safe and reentrant
     
-    def _rotate(self):
-        """Advance to current time bucket, resetting expired buckets."""
+    def _rotate(self) -> None:
+        """Advance the ring buffer by one bucket."""
         now = _time.monotonic_ns()
         elapsed = now - self._bucket_start_times[self._current_bucket]
 
@@ -843,8 +848,8 @@ class WindowedStreamLog:
             self._bucket_start_times[self._current_bucket] = prev_start + self._bucket_duration_ns
             elapsed -= self._bucket_duration_ns
     
-    def _active_buckets(self):
-        """Return list of non-expired buckets."""
+    def _active_buckets(self) -> List[StreamLog]:
+        """Return all valid buckets in chronological order."""
         now = _time.monotonic_ns()
         active = []
         for i in range(self._n_buckets):
@@ -861,7 +866,7 @@ class WindowedStreamLog:
             self._rotate()
             self._buckets[self._current_bucket].add_latency(value)
     
-    def add_event(self, name: Union[str, bytes], count: int = 1) -> None:
+    def add_event(self, name: EventKey, count: int = 1) -> None:
         """Record an event in the current time bucket."""
         with self._lock:
             self._rotate()
@@ -912,8 +917,8 @@ class WindowedStreamLog:
                 merged.merge(bucket)
             return merged.unique_count()
     
-    def event_count(self, name: Union[str, bytes]) -> int:
-        """Estimated count for an event type in the active window."""
+    def event_count(self, name: Union[str, int, bytes]) -> int:
+        """Approximate event frequency across the window."""
         with self._lock:
             self._rotate()
             active = self._active_buckets()
@@ -943,8 +948,8 @@ class WindowedStreamLog:
     def window_seconds(self) -> float:
         return self._window_seconds
     
-    def stats(self) -> Any:
-        """Stats snapshot for the active window."""
+    def stats(self) -> Stats:
+        """Get a complete snapshot of all metrics."""
         with self._lock:
             self._rotate()
             active = self._active_buckets()
@@ -975,7 +980,7 @@ class WindowedStreamLog:
             self._bucket_start_times = [now] * self._n_buckets
             self._current_bucket = 0
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         with self._lock:
             total = sum(b.total_events for b in self._active_buckets())
             return (f"WindowedStreamLog(window={self._window_seconds}s, "

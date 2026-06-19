@@ -1,6 +1,6 @@
 include LICENSE
 include README.md
-include GUARANTEES.md
+include docs/guarantees.md
 recursive-include python/sketchlog *.py
 recursive-include benchmarks *.png
 include CMakeLists.txt

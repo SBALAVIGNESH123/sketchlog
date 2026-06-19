@@ -1,5 +1,5 @@
 import time
-from typing import Callable, Any, Optional
+from typing import Callable, Any, Optional, Dict
 from sketchlog import StreamLog
 
 class SketchLogMiddleware:
@@ -21,14 +21,14 @@ class SketchLogMiddleware:
         
         app.add_middleware(SketchLogMiddleware, streamlog=log)
     """
-    def __init__(self, app: Any, streamlog: Optional[StreamLog] = None, log: Optional[StreamLog] = None):
+    def __init__(self, app: Any, streamlog: Optional[StreamLog] = None, log: Optional[StreamLog] = None) -> None:
         self.app = app
         _log = log or streamlog
         if _log is None:
             raise ValueError("Either 'log' or 'streamlog' must be provided")
         self.log: StreamLog = _log
 
-    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+    async def __call__(self, scope: Dict[str, Any], receive: Callable[..., Any], send: Callable[..., Any]) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -39,7 +39,7 @@ class SketchLogMiddleware:
         
         status_code = [500]  # Default to 500 in case of unhandled exception
 
-        async def send_wrapper(message: dict) -> None:
+        async def send_wrapper(message: Dict[str, Any]) -> None:
             if message["type"] == "http.response.start":
                 status_code[0] = message.get("status", 500)
             await send(message)
