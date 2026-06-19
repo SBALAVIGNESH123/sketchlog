@@ -14,7 +14,7 @@ def run_benchmark() -> None:
     print(f"Python Version: {platform.python_version()}")
     print(f"C++ Backend Enabled: {sketchlog.HAS_CPP}")
     print(f"Seed: {seed}")
-    print(f"Distribution: random.uniform(1.0, 1000.0)")
+    print("Distribution: random.uniform(1.0, 1000.0)")
     print("-" * 50)
     print(f"{'Events':>12} | {'Memory (KB)':>15}")
     print("-" * 50)
