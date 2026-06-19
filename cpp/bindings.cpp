@@ -29,9 +29,11 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
              py::arg("value"), "Add a single observation.")
         .def("add_batch", [](sketchlog::DDSketch& self, py::array_t<double> values) {
             auto buf = values.unchecked<1>();
+            sketchlog::DDSketch temp = self;
             for (py::ssize_t i = 0; i < buf.shape(0); i++) {
-                self.add(buf(i));
+                temp.add(buf(i));
             }
+            self = std::move(temp);
         }, py::arg("values"), "Bulk-add values from a numpy array.")
         .def("quantile", &sketchlog::DDSketch::quantile, py::arg("q"))
         .def("min", &sketchlog::DDSketch::min)
@@ -115,9 +117,11 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         .def("add_batch", [](sketchlog::StreamLog& self,
                               py::array_t<double> values) {
             auto buf = values.unchecked<1>();
+            sketchlog::StreamLog temp = self;
             for (py::ssize_t i = 0; i < buf.shape(0); i++) {
-                self.add_latency(buf(i));
+                temp.add_latency(buf(i));
             }
+            self = std::move(temp);
         }, py::arg("values"),
            "Bulk-add latency values from a numpy array. Much faster than loop.")
         .def("percentile", &sketchlog::StreamLog::percentile, py::arg("q"))

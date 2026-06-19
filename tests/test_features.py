@@ -432,7 +432,7 @@ def test_ddsketch_extreme_bounds():
 
         # 4. Subnormal minimum values (should not underflow to zero, and bounds checked)
         smallest = float.fromhex('0x0.0000000000001p-1022')
-        
+
         # This accuracy (0.95) allows tracking the smallest float
         d4 = cls(0.95)
         d4.add(smallest)
@@ -445,7 +445,7 @@ def test_ddsketch_extreme_bounds():
         q5 = d5.quantile(0.5)
         assert q5 < 0.0
         assert abs(q5 - (-smallest)) / smallest <= 0.99
-        
+
         # This accuracy (0.01) is too strict for granular subnormals, should reject
         d6 = cls(0.01)
         with pytest.raises(ValueError, match="too small"):
@@ -461,7 +461,7 @@ def test_ddsketch_extreme_bounds():
         log_py = StreamLog(deterministic=True, relative_accuracy=0.01)
         with pytest.raises(ValueError, match="too small"):
             log_py.add_batch([51 * smallest])
-            
+
         # Test generator ingestion ensures validation and ingestion consume the same elements
         if cls is DDSketch:
             d7 = cls(0.01)
@@ -472,3 +472,40 @@ def test_ddsketch_extreme_bounds():
             d7.add_batch(gen())
             assert d7.count == 3
             assert d7.quantile(0.5) > 0
+
+def test_add_batch_transactional():
+    import sketchlog
+    import pytest
+    from sketchlog import DDSketch, StreamLog
+    smallest = float.fromhex('0x0.0000000000001p-1022')
+    bad_val = 51 * smallest
+    batch = [2.0, bad_val, 3.0]
+    
+    backends = [DDSketch]
+    if sketchlog.HAS_CPP:
+        backends.append(sketchlog._cpp.DDSketch)
+        
+    for cls in backends:
+        d = cls(0.01)
+        d.add(1.0)
+        with pytest.raises(ValueError):
+            d.add_batch(batch)
+        c = d.count if not callable(d.count) else d.count()
+        assert c == 1
+        m = d.max if not callable(d.max) else d.max()
+        assert m == 1.0
+        
+    stream_backends = [StreamLog]
+    if sketchlog.HAS_CPP:
+        stream_backends.append(sketchlog._cpp.StreamLog)
+        
+    for cls in stream_backends:
+        log = cls(relative_accuracy=0.01)
+        if cls is StreamLog:
+            log = StreamLog(deterministic=True, relative_accuracy=0.01)
+        # add_latency in python StreamLog uses add_batch under the hood if it is bulk added? Wait, StreamLog.add_batch does it.
+        log.add_latency(1.0)
+        with pytest.raises(ValueError):
+            log.add_batch(batch)
+        assert abs(log.p50() - 1.0) <= 0.011
+        # In C++, event_count etc might not be directly exposed as total_events but p50() == 1.0 ensures 2.0 wasn't added

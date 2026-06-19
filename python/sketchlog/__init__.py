@@ -110,14 +110,14 @@ class DDSketch:
             return  # silently reject
         if count <= 0:
             return
-            
+
         if value != 0.0:
             abs_v = abs(value)
             idx = self._key(abs_v)
             rep = self._bucket_value(idx)
             if abs(rep - abs_v) / abs_v > self._alpha:
                 raise ValueError("Value magnitude too small to satisfy relative accuracy")
-                
+
         self._count += count
         if value < self._min:
             self._min = value
@@ -137,7 +137,7 @@ class DDSketch:
         """Bulk-add values. 2-5x faster than individual add() calls."""
         if not isinstance(values, (list, tuple)):
             values = list(values)
-            
+
         pos = self._positive
         neg = self._negative
         multiplier = self._multiplier
@@ -149,7 +149,7 @@ class DDSketch:
         _max = self._max
         n = 0
         zero_count = 0
-        
+
         # Validation checks
         alpha = self._alpha
         for v in values:
@@ -160,7 +160,7 @@ class DDSketch:
             rep = self._bucket_value(idx)
             if abs(rep - abs_v) / abs_v > alpha:
                 raise ValueError("Value magnitude too small to satisfy relative accuracy")
-                
+
         for v in values:
             if isnan(v) or isinf(v):
                 continue
