@@ -135,6 +135,9 @@ class DDSketch:
 
     def add_batch(self, values: Iterable[float]) -> None:
         """Bulk-add values. 2-5x faster than individual add() calls."""
+        if not isinstance(values, (list, tuple)):
+            values = list(values)
+            
         pos = self._positive
         neg = self._negative
         multiplier = self._multiplier

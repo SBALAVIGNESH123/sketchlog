@@ -461,3 +461,14 @@ def test_ddsketch_extreme_bounds():
         log_py = StreamLog(deterministic=True, relative_accuracy=0.01)
         with pytest.raises(ValueError, match="too small"):
             log_py.add_batch([51 * smallest])
+            
+        # Test generator ingestion ensures validation and ingestion consume the same elements
+        if cls is DDSketch:
+            d7 = cls(0.01)
+            def gen():
+                yield 1.0
+                yield 2.0
+                yield 3.0
+            d7.add_batch(gen())
+            assert d7.count == 3
+            assert d7.quantile(0.5) > 0
