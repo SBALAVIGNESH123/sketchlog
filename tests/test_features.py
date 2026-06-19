@@ -15,7 +15,7 @@ def test_serialization():
     p99_before = log.p99()
     j = log.to_json()
     log2 = StreamLog.from_json(j)
-    
+
     assert abs(log.p99() - log2.p99()) < 0.001, "Serialization mismatch!"
     assert log.total_events == log2.total_events
 
@@ -45,7 +45,7 @@ def test_serialization():
 def test_serialization_validation():
     import pytest
     import copy
-    
+
     # Generate a valid payload
     log = StreamLog(deterministic=True)
     log.add_latency(10.0)
@@ -58,13 +58,13 @@ def test_serialization_validation():
     bad_version['version'] = 999
     with pytest.raises(ValueError, match="Unsupported serialization version"):
         StreamLog.from_dict(bad_version)
-        
+
     # 2. Invalid DDSketch state
     bad_dd_count = copy.deepcopy(valid_payload)
     bad_dd_count['latency']['count'] = 9999
     with pytest.raises(ValueError, match="do not sum to total count"):
         StreamLog.from_dict(bad_dd_count)
-        
+
     bad_dd_minmax = copy.deepcopy(valid_payload)
     bad_dd_minmax['latency']['min'] = 100
     bad_dd_minmax['latency']['max'] = 10  # min > max
@@ -76,7 +76,7 @@ def test_serialization_validation():
     bad_hll_registers['uniques']['registers'].append(0)  # wrong length
     with pytest.raises(ValueError, match="HyperLogLog registers length must be"):
         StreamLog.from_dict(bad_hll_registers)
-        
+
     bad_hll_val = copy.deepcopy(valid_payload)
     bad_hll_val['uniques']['registers'][0] = 999  # out of bounds
     with pytest.raises(ValueError, match="HyperLogLog register values must be"):
@@ -85,19 +85,57 @@ def test_serialization_validation():
     # 4. Invalid CountMinSketch state
     bad_cms_table = copy.deepcopy(valid_payload)
     bad_cms_table['events']['table'][0].append(0)  # one row is too long
-    with pytest.raises(ValueError, match="CountMinSketch table row must have"):
+    with pytest.raises(ValueError, match="CountMinSketch table row must be a list"):
         StreamLog.from_dict(bad_cms_table)
-        
+
     bad_cms_val = copy.deepcopy(valid_payload)
     bad_cms_val['events']['table'][0][0] = -1
     with pytest.raises(ValueError, match="CountMinSketch cell values must be non-negative"):
         StreamLog.from_dict(bad_cms_val)
         
-    # 5. Missing keys
+    bad_cms_row_sum = copy.deepcopy(valid_payload)
+    bad_cms_row_sum['events']['table'][0][0] += 1
+    with pytest.raises(ValueError, match="CountMinSketch row sum does not match events total"):
+        StreamLog.from_dict(bad_cms_row_sum)
+
+    # 5. Missing keys and type errors
     bad_keys = copy.deepcopy(valid_payload)
     del bad_keys['events']
     with pytest.raises(ValueError, match="Malformed StreamLog state"):
         StreamLog.from_dict(bad_keys)
+        
+    with pytest.raises(ValueError, match="StreamLog data must be a dictionary"):
+        StreamLog.from_json("[]")
+
+    bad_type = copy.deepcopy(valid_payload)
+    bad_type['latency']['positive'] = []
+    with pytest.raises(ValueError, match="DDSketch positive/negative buckets must be dictionaries"):
+        StreamLog.from_dict(bad_type)
+
+    # 6. Invalid Aggregate Consistency
+    bad_total = copy.deepcopy(valid_payload)
+    bad_total['total'] = 0
+    with pytest.raises(ValueError, match="StreamLog total does not match latency count \+ events total"):
+        StreamLog.from_dict(bad_total)
+        
+    # 7. Invalid DDSketch Bucket Index
+    bad_dds_idx = copy.deepcopy(valid_payload)
+    bad_dds_idx['latency']['positive'] = {"1000000000": 1}
+    bad_dds_idx['latency']['count'] += 1
+    bad_dds_idx['total'] += 1
+    with pytest.raises(ValueError, match="DDSketch bucket index out of valid range"):
+        StreamLog.from_dict(bad_dds_idx)
+        
+    # 8. Strict non-boolean int and finite check
+    bad_float_count = copy.deepcopy(valid_payload)
+    bad_float_count['latency']['count'] = 1.0
+    with pytest.raises(ValueError, match="DDSketch count must be a non-negative integer"):
+        StreamLog.from_dict(bad_float_count)
+
+    bad_nan_min = copy.deepcopy(valid_payload)
+    bad_nan_min['latency']['min'] = float('nan')
+    with pytest.raises(ValueError, match="DDSketch min/max must be finite numbers"):
+        StreamLog.from_dict(bad_nan_min)
 
 
 def test_merge_distributed():
@@ -108,7 +146,7 @@ def test_merge_distributed():
     for i in range(501, 1001):
         b.add_latency(float(i))
     a.merge(b)
-    
+
     assert a.total_events == 1000
     assert a.p99() > 950
 
@@ -124,13 +162,13 @@ def test_thread_safety():
         t.start()
     for t in threads:
         t.join()
-        
+
     assert ts.total_events == 80_000, f"Expected 80000, got {ts.total_events}"
 
 def test_save_load():
     import tempfile
     from pathlib import Path
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         log = StreamLog(deterministic=True)
@@ -146,25 +184,25 @@ def test_save_load():
 def test_constructor_validation():
     import pytest
     from sketchlog import CountMinSketch, WindowedStreamLog, StreamLog, HyperLogLog
-    
+
     with pytest.raises(ValueError):
         CountMinSketch(width=0)
-        
+
     with pytest.raises(ValueError):
         CountMinSketch(depth=-1)
-        
+
     with pytest.raises(ValueError):
         WindowedStreamLog(n_buckets=0)
-        
+
     with pytest.raises(ValueError):
         WindowedStreamLog(window="")
-        
+
     with pytest.raises(ValueError):
         WindowedStreamLog(window="   ")
-        
+
     with pytest.raises(ValueError):
         StreamLog().add_unique(-1)
-        
+
     with pytest.raises(ValueError):
         HyperLogLog().add(2**64)
 
