@@ -26,7 +26,7 @@ We welcome contributions to SketchLog! This document outlines the process for se
 
 ## Local Documentation Build
 
-This project uses [MkDocs](https://www.mkdocs.org/) with the Material theme for documentation. 
+This project uses [MkDocs](https://www.mkdocs.org/) with the Material theme for documentation.
 
 To build and preview the documentation locally:
 ```bash

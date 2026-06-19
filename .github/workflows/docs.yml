@@ -8,11 +8,25 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  deploy:
+  validate:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - run: pip install mkdocs-material
+      - run: mkdocs build --strict
+
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Configure Git Credentials
@@ -23,10 +37,5 @@ jobs:
         with:
           python-version: 3.x
       - run: pip install mkdocs-material
-      - name: Validate documentation (Pull Request)
-        if: github.event_name == 'pull_request'
-        run: mkdocs build --strict
-      - name: Deploy documentation (Main Branch)
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        run: mkdocs gh-deploy --force
+      - run: mkdocs gh-deploy --force
 
