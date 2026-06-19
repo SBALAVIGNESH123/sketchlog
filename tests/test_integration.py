@@ -68,8 +68,8 @@ def test_cpp_nan_and_inf_handling_for_accuracy(invalid_value):
     if not sketchlog.HAS_CPP:
         pytest.skip("C++ backend not available")
 
-    with pytest.raises(ValueError, match=r"relative_accuracy must be in \(0, 1\)"):
+    with pytest.raises(ValueError, match=r"relative_accuracy must be in \[1e-6, 1\.0\)"):
         sketchlog._cpp.DDSketch(invalid_value)
 
-    with pytest.raises(ValueError, match=r"relative_accuracy must be in \(0, 1\)"):
+    with pytest.raises(ValueError, match=r"relative_accuracy must be in \[1e-6, 1\.0\)"):
         sketchlog._cpp.StreamLog(relative_accuracy=invalid_value)
