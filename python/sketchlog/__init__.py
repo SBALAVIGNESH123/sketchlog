@@ -585,31 +585,109 @@ class _PythonStreamLog:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "_PythonStreamLog":
-        """Restore from dict."""
-        latency_data = data['latency']
-        log = cls(
-            relative_accuracy=latency_data['alpha'],
-            hll_precision=data['uniques']['precision'],
-            cms_width=data['events']['width'],
-            cms_depth=data['events']['depth'],
-            deterministic=data.get('deterministic', False),
-        )
-        # Restore latency
-        log._latency._positive = {int(k): v for k, v in latency_data['positive'].items()}
-        log._latency._negative = {int(k): v for k, v in latency_data['negative'].items()}
-        log._latency._zero_count = latency_data['zero_count']
-        log._latency._count = latency_data['count']
-        if latency_data['min'] is not None:
-            log._latency._min = latency_data['min']
-            log._latency._max = latency_data['max']
-        # Restore uniques
-        log._uniques._registers = bytearray(data['uniques']['registers'])
-        # Restore events
-        log._events._table = [row[:] for row in data['events']['table']]
-        log._events._total = data['events']['total']
-        # Restore total
-        log._total = data['total']
-        return log
+        """Restore from dict with rigorous validation."""
+        try:
+            version = data.get('version')
+            if version != 1:
+                raise ValueError(f"Unsupported serialization version: {version}")
+
+            total = data['total']
+            if not isinstance(total, int) or total < 0:
+                raise ValueError("StreamLog total must be a non-negative integer")
+
+            latency_data = data['latency']
+            alpha = latency_data['alpha']
+            if not (0 < alpha < 1):
+                raise ValueError("DDSketch alpha must be in (0, 1)")
+            
+            zero_count = latency_data['zero_count']
+            count = latency_data['count']
+            if not isinstance(zero_count, int) or zero_count < 0:
+                raise ValueError("DDSketch zero_count must be a non-negative integer")
+            if not isinstance(count, int) or count < 0:
+                raise ValueError("DDSketch count must be a non-negative integer")
+
+            positive = {int(k): v for k, v in latency_data['positive'].items()}
+            negative = {int(k): v for k, v in latency_data['negative'].items()}
+            
+            sum_pos = sum(positive.values())
+            sum_neg = sum(negative.values())
+            if any(v < 0 for v in positive.values()) or any(v < 0 for v in negative.values()):
+                raise ValueError("DDSketch bucket counts cannot be negative")
+            if count != zero_count + sum_pos + sum_neg:
+                raise ValueError("DDSketch bucket counts do not sum to total count")
+            
+            lat_min = latency_data.get('min')
+            lat_max = latency_data.get('max')
+            if count > 0:
+                if lat_min is None or lat_max is None:
+                    raise ValueError("DDSketch min/max cannot be None when count > 0")
+                if lat_min > lat_max:
+                    raise ValueError("DDSketch min cannot be greater than max")
+
+            uniques_data = data['uniques']
+            precision = uniques_data['precision']
+            if not (4 <= precision <= 18):
+                raise ValueError("HyperLogLog precision must be in [4, 18]")
+            registers = uniques_data['registers']
+            if len(registers) != (1 << precision):
+                raise ValueError(f"HyperLogLog registers length must be {1 << precision}")
+            if any(not isinstance(r, int) or r < 0 or r > 255 for r in registers):
+                raise ValueError("HyperLogLog register values must be integers in [0, 255]")
+
+            events_data = data['events']
+            width = events_data['width']
+            depth = events_data['depth']
+            if not isinstance(width, int) or width < 2:
+                raise ValueError("CountMinSketch width must be >= 2")
+            if not isinstance(depth, int) or depth < 1:
+                raise ValueError("CountMinSketch depth must be >= 1")
+            
+            events_total = events_data['total']
+            if not isinstance(events_total, int) or events_total < 0:
+                raise ValueError("CountMinSketch total must be a non-negative integer")
+
+            table = events_data['table']
+            if len(table) != depth:
+                raise ValueError(f"CountMinSketch table must have {depth} rows")
+            for row in table:
+                if len(row) != width:
+                    raise ValueError(f"CountMinSketch table row must have {width} columns")
+                if any(not isinstance(c, int) or c < 0 for c in row):
+                    raise ValueError("CountMinSketch cell values must be non-negative integers")
+
+            # Initialization
+            log = cls(
+                relative_accuracy=alpha,
+                hll_precision=precision,
+                cms_width=width,
+                cms_depth=depth,
+                deterministic=data.get('deterministic', False),
+            )
+            
+            # Restore latency
+            log._latency._positive = positive
+            log._latency._negative = negative
+            log._latency._zero_count = zero_count
+            log._latency._count = count
+            if count > 0:
+                log._latency._min = lat_min
+                log._latency._max = lat_max
+            
+            # Restore uniques
+            log._uniques._registers = bytearray(registers)
+            
+            # Restore events
+            log._events._table = [row[:] for row in table]
+            log._events._total = events_total
+            
+            # Restore total
+            log._total = total
+            
+            return log
+
+        except (KeyError, TypeError) as e:
+            raise ValueError(f"Malformed StreamLog state: {e}") from e
     
     @classmethod
     def from_json(cls, json_str: str) -> "_PythonStreamLog":

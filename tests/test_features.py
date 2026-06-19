@@ -42,6 +42,64 @@ def test_serialization():
         # so this should succeed and not raise NotImplementedError
         loaded_log.to_dict()
 
+def test_serialization_validation():
+    import pytest
+    import copy
+    
+    # Generate a valid payload
+    log = StreamLog(deterministic=True)
+    log.add_latency(10.0)
+    log.add_unique("user_1")
+    log.add_event("login", 1)
+    valid_payload = log.to_dict()
+
+    # 1. Invalid version
+    bad_version = copy.deepcopy(valid_payload)
+    bad_version['version'] = 999
+    with pytest.raises(ValueError, match="Unsupported serialization version"):
+        StreamLog.from_dict(bad_version)
+        
+    # 2. Invalid DDSketch state
+    bad_dd_count = copy.deepcopy(valid_payload)
+    bad_dd_count['latency']['count'] = 9999
+    with pytest.raises(ValueError, match="do not sum to total count"):
+        StreamLog.from_dict(bad_dd_count)
+        
+    bad_dd_minmax = copy.deepcopy(valid_payload)
+    bad_dd_minmax['latency']['min'] = 100
+    bad_dd_minmax['latency']['max'] = 10  # min > max
+    with pytest.raises(ValueError, match="min cannot be greater than max"):
+        StreamLog.from_dict(bad_dd_minmax)
+
+    # 3. Invalid HyperLogLog state
+    bad_hll_registers = copy.deepcopy(valid_payload)
+    bad_hll_registers['uniques']['registers'].append(0)  # wrong length
+    with pytest.raises(ValueError, match="HyperLogLog registers length must be"):
+        StreamLog.from_dict(bad_hll_registers)
+        
+    bad_hll_val = copy.deepcopy(valid_payload)
+    bad_hll_val['uniques']['registers'][0] = 999  # out of bounds
+    with pytest.raises(ValueError, match="HyperLogLog register values must be"):
+        StreamLog.from_dict(bad_hll_val)
+
+    # 4. Invalid CountMinSketch state
+    bad_cms_table = copy.deepcopy(valid_payload)
+    bad_cms_table['events']['table'][0].append(0)  # one row is too long
+    with pytest.raises(ValueError, match="CountMinSketch table row must have"):
+        StreamLog.from_dict(bad_cms_table)
+        
+    bad_cms_val = copy.deepcopy(valid_payload)
+    bad_cms_val['events']['table'][0][0] = -1
+    with pytest.raises(ValueError, match="CountMinSketch cell values must be non-negative"):
+        StreamLog.from_dict(bad_cms_val)
+        
+    # 5. Missing keys
+    bad_keys = copy.deepcopy(valid_payload)
+    del bad_keys['events']
+    with pytest.raises(ValueError, match="Malformed StreamLog state"):
+        StreamLog.from_dict(bad_keys)
+
+
 def test_merge_distributed():
     a = StreamLog()
     b = StreamLog()
