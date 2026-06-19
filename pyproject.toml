@@ -37,6 +37,13 @@ Issues = "https://github.com/SBALAVIGNESH123/sketchlog/issues"
 docs = [
     "mkdocs-material>=9.5.0",
 ]
+dev = [
+    "pytest",
+    "numpy",
+    "mkdocs-material>=9.5.0",
+    "mypy",
+    "pyright"
+]
 opentelemetry = [
     "opentelemetry-api",
     "opentelemetry-sdk",
