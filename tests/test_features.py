@@ -450,3 +450,14 @@ def test_ddsketch_extreme_bounds():
         d6 = cls(0.01)
         with pytest.raises(ValueError, match="too small"):
             d6.add(27 * smallest)
+
+        with pytest.raises(ValueError, match="too small"):
+            d6.add_batch([51 * smallest])
+
+        with pytest.raises(ValueError, match="too small"):
+            d6.add(51 * smallest)
+
+        from sketchlog import StreamLog
+        log_py = StreamLog(deterministic=True, relative_accuracy=0.01)
+        with pytest.raises(ValueError, match="too small"):
+            log_py.add_batch([51 * smallest])

@@ -112,8 +112,10 @@ class DDSketch:
             return
             
         if value != 0.0:
-            denorm_min = float.fromhex('0x0.0000000000001p-1022')
-            if abs(value) < denorm_min / (2.0 * self._alpha):
+            abs_v = abs(value)
+            idx = self._key(abs_v)
+            rep = self._bucket_value(idx)
+            if abs(rep - abs_v) / abs_v > self._alpha:
                 raise ValueError("Value magnitude too small to satisfy relative accuracy")
                 
         self._count += count
@@ -144,6 +146,18 @@ class DDSketch:
         _max = self._max
         n = 0
         zero_count = 0
+        
+        # Validation checks
+        alpha = self._alpha
+        for v in values:
+            if isnan(v) or isinf(v) or v == 0.0:
+                continue
+            abs_v = abs(v)
+            idx = ceil(log(abs_v) * multiplier)
+            rep = self._bucket_value(idx)
+            if abs(rep - abs_v) / abs_v > alpha:
+                raise ValueError("Value magnitude too small to satisfy relative accuracy")
+                
         for v in values:
             if isnan(v) or isinf(v):
                 continue

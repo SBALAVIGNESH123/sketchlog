@@ -130,8 +130,13 @@ void DDSketch::add(double value, size_t count) {
     if (std::isnan(value) || std::isinf(value)) return; // silently reject
     if (count == 0) return;
 
-    if (value != 0.0 && std::abs(value) < std::numeric_limits<double>::denorm_min() / (2.0 * alpha_)) {
-        throw std::invalid_argument("DDSketch: value magnitude too small to satisfy relative accuracy");
+    if (value != 0.0) {
+        double abs_v = std::abs(value);
+        int idx = key(abs_v);
+        double rep = bucket_value(idx);
+        if (std::abs(rep - abs_v) / abs_v > alpha_) {
+            throw std::invalid_argument("DDSketch: value magnitude too small to satisfy relative accuracy");
+        }
     }
 
     if (std::numeric_limits<size_t>::max() - count_ < count) {
