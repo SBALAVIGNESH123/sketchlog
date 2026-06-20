@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstring>
 #include <cmath>
+#include <stdexcept>
 #include "sketchlog.hpp"
 #include <string>
 #include <vector>
