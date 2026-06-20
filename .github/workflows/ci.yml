@@ -27,7 +27,7 @@ jobs:
 
       - name: Install package
         run: |
-          pip install pytest numpy httpx
+          pip install pytest numpy httpx hypothesis
           pip install .[server]
 
       - name: Verify C++ extension loaded

@@ -27,7 +27,7 @@ def test_differential_backend(ops):
     # Deterministic mode forces the Python backend
     py_log = StreamLog(deterministic=True)
     cpp_log = StreamLog()
-    
+
     for op_type, val in ops:
         if op_type == "latency":
             py_log.add_latency(val)
@@ -38,14 +38,14 @@ def test_differential_backend(ops):
         elif op_type == "unique":
             py_log.add_unique(val)
             cpp_log.add_unique(val)
-            
+
     # Their observable states must match exactly
     assert py_log.total_events == cpp_log.total_events
     assert py_log.unique_count() == cpp_log.unique_count()
     if py_log.total_events > 0:
         assert py_log.p99() == cpp_log.p99()
         assert py_log.p50() == cpp_log.p50()
-        
+
     for op_type, val in ops:
         if op_type == "event":
             assert py_log.event_count(val) == cpp_log.event_count(val)
@@ -61,7 +61,7 @@ def test_merge_commutativity(ops_a, ops_b):
     log_b1 = StreamLog(deterministic=True)
     log_a2 = StreamLog(deterministic=True)
     log_b2 = StreamLog(deterministic=True)
-    
+
     for op_type, val in ops_a:
         if op_type == "latency":
             log_a1.add_latency(val)
@@ -72,7 +72,7 @@ def test_merge_commutativity(ops_a, ops_b):
         elif op_type == "unique":
             log_a1.add_unique(val)
             log_a2.add_unique(val)
-            
+
     for op_type, val in ops_b:
         if op_type == "latency":
             log_b1.add_latency(val)
@@ -83,13 +83,13 @@ def test_merge_commutativity(ops_a, ops_b):
         elif op_type == "unique":
             log_b1.add_unique(val)
             log_b2.add_unique(val)
-            
+
     # A merge B
     log_a1.merge(log_b1)
-    
+
     # B merge A
     log_b2.merge(log_a2)
-    
+
     assert log_a1.to_dict() == log_b2.to_dict()
 
 @given(st.lists(operations(), max_size=100))
@@ -104,9 +104,8 @@ def test_serialization_roundtrip(ops):
             log.add_event(val)
         elif op_type == "unique":
             log.add_unique(val)
-            
+
     d = log.to_dict()
     log2 = StreamLog.from_dict(d)
-    
-    assert log.to_dict() == log2.to_dict()
 
+    assert log.to_dict() == log2.to_dict()

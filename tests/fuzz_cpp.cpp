@@ -1,19 +1,21 @@
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
+#include <cmath>
 #include "sketchlog.hpp"
 #include <string>
 #include <vector>
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     if (size == 0) return 0;
-    
+
     // We treat the input as a sequence of operations
     sketchlog::StreamLog log;
-    
+
     size_t i = 0;
     while (i < size) {
         uint8_t op = data[i++] % 4; // 4 operations
-        
+
         if (op == 0 && i + sizeof(double) <= size) {
             double val;
             std::memcpy(&val, data + i, sizeof(double));
@@ -47,15 +49,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             }
         }
     }
-    
+
     // Test observable functions
-    log.events();
+    log.total_events();
     log.unique_count();
-    if (log.events() > 0) {
+    if (log.total_events() > 0) {
         log.p50();
         log.p99();
     }
-    
+
     return 0;
 }
-
