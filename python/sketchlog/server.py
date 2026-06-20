@@ -95,6 +95,9 @@ class StreamRegistry:
             return self._streams[stream_id]
         return None
 
+    def peek(self, stream_id: str) -> Optional[StreamLog]:
+        return self._streams.get(stream_id)
+
     def delete(self, stream_id: str) -> bool:
         if stream_id in self._streams:
             del self._streams[stream_id]
@@ -157,12 +160,12 @@ async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
         new_events += sum(batch.events.values())
 
     current_total = 0
-    existing_stream = registry.get(stream_id)
+    existing_stream = registry.peek(stream_id)
     if existing_stream:
         current_total = existing_stream.total_events
 
-    # UINT64_MAX
-    if current_total + new_events > 18446744073709551615:
+    # INT64_MAX
+    if current_total + new_events > 9223372036854775807:
         raise HTTPException(status_code=422, detail="Total stream event capacity exceeded")
 
     stream = registry.get_or_create(stream_id)

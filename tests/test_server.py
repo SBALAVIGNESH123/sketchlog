@@ -153,39 +153,64 @@ def test_path_encoding_and_limits():
 
 def test_native_backend_range_limit():
     stream_id = "test-native-limit"
-    
+
     payload = {
         "latencies": [42.0],
         "events": {"overflow": 2**100}
     }
-    
+
     # Ensure atomic rejection on single event overflow leaves no stream created
     response = client.post(f"/v1/streams/{stream_id}/events", json=payload)
     assert response.status_code == 422
     assert client.get(f"/v1/streams/{stream_id}/metrics").status_code == 404
-    
+
     # Check total stream capacity overflow leaves no stream created
     payload_capacity = {
         "latencies": [42.0],
-        "events": {"almost": 18446744073709551615}
+        "events": {"almost": 9223372036854775807}
     }
     response = client.post(f"/v1/streams/{stream_id}/events", json=payload_capacity)
     assert response.status_code == 422
     assert client.get(f"/v1/streams/{stream_id}/metrics").status_code == 404
 
+def test_rejected_request_does_not_mutate_lru():
+    from sketchlog.server import registry
+    original_max = registry.max_size
+    registry.max_size = 2
+    try:
+        # Create A and B
+        client.post("/v1/streams/stream-a/events", json={"latencies": [1]})
+        client.post("/v1/streams/stream-b/events", json={"latencies": [1]})
+        
+        # Order should be A, B (B is most recent)
+        assert list(registry._streams.keys()) == ["stream-a", "stream-b"]
+        
+        # Send overflow to A (should be rejected)
+        payload = {"events": {"overflow": 9223372036854775807}}
+        assert client.post("/v1/streams/stream-a/events", json=payload).status_code == 422
+        
+        # Order should STILL be A, B
+        assert list(registry._streams.keys()) == ["stream-a", "stream-b"]
+        
+        # Create C, should evict A (least recent)
+        client.post("/v1/streams/stream-c/events", json={"latencies": [1]})
+        assert list(registry._streams.keys()) == ["stream-b", "stream-c"]
+    finally:
+        registry.max_size = original_max
+
 def test_oversized_chunked_request():
     stream_id = "test-oversized-chunked"
-    
+
     # This payload is generated dynamically to simulate a chunked transfer exceeding 1MB limit.
     def generate_large_payload():
         yield b'{"uniques": ["'
         for _ in range(150):
             yield b'a' * 10000
         yield b'"]}'
-        
+
     response = client.post(f"/v1/streams/{stream_id}/events", content=generate_large_payload(), headers={"Content-Type": "application/json"})
     assert response.status_code == 413
-    
+
     # Assert stream was NOT created because the endpoint execution was preempted
     response_metric = client.get(f"/v1/streams/{stream_id}/metrics")
     assert response_metric.status_code == 404
