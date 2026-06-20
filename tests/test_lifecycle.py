@@ -33,7 +33,7 @@ async def test_graceful_shutdown_exits_cleanly(live_server):
             tasks.append(asyncio.create_task(
                 client.post(f"{base}/v1/streams/shutdown/events", json=batch, timeout=10)
             ))
-        
+
         # Give them a tiny fraction of a second to hit the server socket
         await asyncio.sleep(0.05)
 
@@ -43,10 +43,10 @@ async def test_graceful_shutdown_exits_cleanly(live_server):
         else:
             proc.send_signal(signal.SIGTERM)
 
-        # Now await the in-flight requests. If graceful shutdown works, 
+        # Now await the in-flight requests. If graceful shutdown works,
         # Uvicorn will finish processing these before closing.
         responses = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # All requests that made it to the server before the signal should succeed
         successes = sum(1 for r in responses if isinstance(r, httpx.Response) and r.status_code == 202)
         assert successes > 0, "No in-flight requests were drained successfully"
