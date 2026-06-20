@@ -30,6 +30,7 @@ You can customize its behavior using environment variables:
 | `SKETCHLOG_PORT` | `8000` | Port to bind to |
 | `SKETCHLOG_MAX_STREAMS` | `1000` | Maximum number of independent streams to track (must be >= 1). Uses LRU eviction. |
 | `SKETCHLOG_MAX_BATCH_SIZE` | `10000` | Maximum number of data points (latencies + uniques + events) per ingestion request. |
+| `SKETCHLOG_MAX_REQUEST_BYTES`| `1048576`| Maximum size of the request body in bytes (default 1MB). Upstream proxies may also enforce bounds. |
 
 ## HTTP API Reference
 
@@ -76,7 +77,7 @@ Retrieve the aggregated metrics for a stream.
 ```
 
 ### 3. Query Specific Event Count
-`GET /v1/streams/{stream_id}/events/{event_name}`
+`GET /v1/streams/{stream_id}/events?name={event_name}`
 
 Retrieve the count for a specific named event.
 

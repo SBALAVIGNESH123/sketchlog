@@ -53,7 +53,7 @@ opentelemetry = [
 server = [
     "fastapi>=0.100.0,<1",
     "uvicorn>=0.20.0,<1",
-    "pydantic>=2.0,<4"
+    "pydantic>=2.0,<3"
 ]
 
 [tool.setuptools.packages.find]

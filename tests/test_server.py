@@ -49,8 +49,8 @@ def test_ingest_and_query_metrics():
     assert data["total_events"] == 11
     assert data["memory_footprint_bytes"] > 0
 
-    # 3. Query specific event count
-    response = client.get(f"/v1/streams/{stream_id}/events/login")
+    # 3. Query specific event count using query parameter
+    response = client.get(f"/v1/streams/{stream_id}/events?name=login")
     assert response.status_code == 200
     assert response.json() == {"stream_id": stream_id, "event_name": "login", "count": 5}
 
@@ -124,41 +124,69 @@ def test_oversized_request_body():
     # The default limit is 1MB. We can simulate a large request by mocking headers since TestClient bypasses some real network limits,
     # or just passing a large string if TestClient passes it through the middleware correctly.
     # Actually TestClient serializes JSON to bytes, so a 1.1MB payload will have Content-Length > 1MB.
-    
+
     # 1.5MB of data
     large_string = "a" * 1500000
     payload = {"uniques": [large_string]}
-    
+
     response = client.post(f"/v1/streams/{stream_id}/events", json=payload)
     assert response.status_code == 413
 
 def test_path_encoding_and_limits():
     stream_id = "test/stream/encoded"
-    
+
     payload = {
         "events": {"cache/miss": 1}
     }
     response = client.post(f"/v1/streams/{stream_id}/events", json=payload)
     assert response.status_code == 202
-    
-    # Query using URL path (should route properly)
-    response = client.get(f"/v1/streams/{stream_id}/events/cache/miss")
+
+    # 3. Query specific event count
+    response = client.get(f"/v1/streams/{stream_id}/events?name=cache/miss")
     assert response.status_code == 200
-    assert response.json()["count"] == 1
+    assert response.json() == {"stream_id": stream_id, "event_name": "cache/miss", "count": 1}
+
+    # 4. Unknown event returns 200 with count 0
+    response = client.get(f"/v1/streams/{stream_id}/events?name=unknown")
+    assert response.status_code == 200
+    assert response.json() == {"stream_id": stream_id, "event_name": "unknown", "count": 0}
 
 def test_native_backend_range_limit():
     stream_id = "test-native-limit"
-    
+
     payload = {
         "latencies": [42.0],
         "events": {"overflow": 2**100}
     }
-    
+
     response = client.post(f"/v1/streams/{stream_id}/events", json=payload)
     assert response.status_code == 422
-    
+
+    # Check total stream capacity overflow
+    payload_capacity = {
+        "latencies": [42.0],
+        "events": {"almost": 18446744073709551615}
+    }
+    response = client.post(f"/v1/streams/{stream_id}/events", json=payload_capacity)
+    assert response.status_code == 422
+
     # Ensure atomicity
     response = client.get(f"/v1/streams/{stream_id}/metrics")
     assert response.status_code == 404
 
+def test_oversized_chunked_request():
+    stream_id = "test-oversized-chunked"
 
+    def generate_large_payload():
+        yield b'{"uniques": ["'
+        for _ in range(150):
+            yield b'a' * 10000
+        yield b'"]}'
+
+    response = client.post(f"/v1/streams/{stream_id}/events", content=generate_large_payload(), headers={"Content-Type": "application/json"})
+    print("RESPONSE", response.text)
+    assert response.status_code == 413
+
+def test_malformed_content_length():
+    response = client.post(f"/v1/streams/test/events", json={}, headers={"Content-Length": "abc"})
+    assert response.status_code == 400

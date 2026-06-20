@@ -26,14 +26,41 @@ MAX_REQUEST_BYTES = int(os.environ.get("SKETCHLOG_MAX_REQUEST_BYTES", "1048576")
 if MAX_REQUEST_BYTES < 1:
     raise ValueError("SKETCHLOG_MAX_REQUEST_BYTES must be >= 1")
 
+class BodyTooLargeException(BaseException):
+    pass
+
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if request.method in ["POST", "PUT", "PATCH"]:
             content_length = request.headers.get("content-length")
-            if content_length and int(content_length) > MAX_REQUEST_BYTES:
-                return Response(status_code=413, content=b"Request body too large")
+            if content_length:
+                try:
+                    if int(content_length) > MAX_REQUEST_BYTES:
+                        return Response(status_code=413, content=b"Request body too large")
+                except ValueError:
+                    return Response(status_code=400, content=b"Invalid Content-Length")
+            
+            receive = request.receive
+            received_bytes = 0
+            request.state.body_too_large = False
+
+            async def limited_receive() -> Dict[str, Any]:
+                nonlocal received_bytes
+                message = await receive()
+                if message["type"] == "http.request":
+                    received_bytes += len(message.get("body", b""))
+                    if received_bytes > MAX_REQUEST_BYTES:
+                        request.state.body_too_large = True
+                        return {"type": "http.request", "body": b"", "more_body": False}
+                return message
+
+            request._receive = limited_receive
+
         from typing import cast
-        return cast(Response, await call_next(request))
+        response = cast(Response, await call_next(request))
+        if getattr(request.state, "body_too_large", False):
+            return Response(status_code=413, content=b"Request body too large")
+        return response
 
 app.add_middleware(LimitUploadSize)
 
@@ -117,7 +144,17 @@ async def readiness_check() -> Dict[str, str]:
 async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
     if len(stream_id) > 255:
         raise HTTPException(status_code=422, detail="Stream ID too long")
+    
     stream = registry.get_or_create(stream_id)
+
+    # 1. Preflight counter capacity limit
+    new_events = (len(batch.latencies) if batch.latencies else 0)
+    if batch.events:
+        new_events += sum(batch.events.values())
+        
+    # UINT64_MAX
+    if stream.total_events + new_events > 18446744073709551615:
+        raise HTTPException(status_code=422, detail="Total stream event capacity exceeded")
 
     if batch.latencies:
         stream.add_batch(batch.latencies)
@@ -149,16 +186,16 @@ async def get_metrics(stream_id: str) -> MetricsResponse:
         memory_footprint_bytes=stream.memory_bytes()
     )
 
-@app.get("/v1/streams/{stream_id:path}/events/{event_name:path}", response_model=EventCountResponse)
-async def get_event_count(stream_id: str, event_name: str) -> EventCountResponse:
+@app.get("/v1/streams/{stream_id:path}/events", response_model=EventCountResponse)
+async def get_event_count(stream_id: str, name: str) -> EventCountResponse:
     stream = registry.get(stream_id)
     if not stream:
         raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
 
     return EventCountResponse(
         stream_id=stream_id,
-        event_name=event_name,
-        count=stream.event_count(event_name)
+        event_name=name,
+        count=stream.event_count(name)
     )
 
 @app.delete("/v1/streams/{stream_id:path}", status_code=status.HTTP_204_NO_CONTENT)
