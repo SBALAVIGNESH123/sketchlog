@@ -181,7 +181,7 @@ def test_rejected_request_does_not_mutate_lru():
         # Create A and B
         client.post("/v1/streams/stream-a/events", json={"latencies": [1]})
         client.post("/v1/streams/stream-b/events", json={"latencies": [1]})
-        
+
         # Order should be A, B (B is most recent)
         assert list(registry._streams.keys()) == ["stream-a", "stream-b"]
 
