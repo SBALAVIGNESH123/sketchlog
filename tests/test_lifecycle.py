@@ -107,7 +107,7 @@ async def test_restart_clean_state():
         )
 
         base = f"http://127.0.0.1:{port}"
-        
+
         ready = False
         for _ in range(50):
             try:
@@ -157,7 +157,7 @@ async def test_restart_clean_state():
                 except Exception:
                     pass
                 time.sleep(0.1)
-            
+
             assert ready, "Restarted server did not become ready"
 
             # 4. Verify state is empty (ephemeral)

@@ -53,7 +53,6 @@ def live_server():
         )
 
         base_url = f"http://127.0.0.1:{port}"
-        
         # Wait for server to start
         for _ in range(50):
             try:
