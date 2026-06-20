@@ -46,7 +46,6 @@ dev = [
     "pyright",
     "httpx",
     "hypothesis",
-    "psutil",
     "types-psutil"
 ]
 opentelemetry = [
@@ -60,7 +59,8 @@ server = [
     "pydantic>=2.0,<3",
     "structlog>=23.1.0",
     "prometheus-client>=0.17.0",
-    "asgi-correlation-id>=4.2.0"
+    "asgi-correlation-id>=4.2.0",
+    "psutil"
 ]
 
 [tool.setuptools.packages.find]

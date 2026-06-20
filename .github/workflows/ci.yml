@@ -77,7 +77,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install mypy pyright httpx
+          pip install mypy pyright httpx types-psutil
           pip install .[server]
 
       - name: Run mypy

@@ -55,7 +55,7 @@ async def test_readiness_memory_degradation(live_server):
 
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{base}/ready")
-        
+
         # Depending on the CI host's actual memory, it could be healthy or degraded.
         # We cannot mock psutil because the server runs in a separate process.
         assert response.status_code in (200, 503)
