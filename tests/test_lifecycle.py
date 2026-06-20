@@ -22,15 +22,34 @@ async def test_graceful_shutdown_exits_cleanly(live_server):
 
     # Send a few requests to ensure server is warm
     async with httpx.AsyncClient() as client:
-        for i in range(5):
-            await client.post(f"{base}/v1/streams/shutdown-{i}/events",
-                              json={"latencies": [float(i)]}, timeout=5)
+        await client.post(f"{base}/v1/streams/warmup/events",
+                          json={"latencies": [1.0]}, timeout=5)
 
-    # Send SIGTERM (or terminate on Windows)
-    if sys.platform == "win32":
-        proc.terminate()
-    else:
-        proc.send_signal(signal.SIGTERM)
+        # Fire off 50 slow/large requests concurrently but don't await them yet
+        tasks = []
+        for i in range(50):
+            # A large batch takes a little time to process
+            batch = {"latencies": [float(x) for x in range(1000)]}
+            tasks.append(asyncio.create_task(
+                client.post(f"{base}/v1/streams/shutdown/events", json=batch, timeout=10)
+            ))
+        
+        # Give them a tiny fraction of a second to hit the server socket
+        await asyncio.sleep(0.05)
+
+        # Send SIGTERM (or terminate on Windows) while requests are in flight
+        if sys.platform == "win32":
+            proc.terminate()
+        else:
+            proc.send_signal(signal.SIGTERM)
+
+        # Now await the in-flight requests. If graceful shutdown works, 
+        # Uvicorn will finish processing these before closing.
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # All requests that made it to the server before the signal should succeed
+        successes = sum(1 for r in responses if isinstance(r, httpx.Response) and r.status_code == 202)
+        assert successes > 0, "No in-flight requests were drained successfully"
 
     # Wait for process to exit
     try:
@@ -42,6 +61,9 @@ async def test_graceful_shutdown_exits_cleanly(live_server):
 
     # On graceful shutdown, exit code should be 0 (or signal-based on Unix)
     assert exit_code is not None, "Process did not terminate"
+    if sys.platform != "win32":
+        # Usually 0, or -15 if killed by signal
+        assert exit_code in (0, -15, 143), f"Unexpected exit code {exit_code}"
 
 
 @pytest.mark.asyncio
