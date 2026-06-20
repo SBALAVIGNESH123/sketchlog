@@ -109,7 +109,7 @@ async def observe_requests(request: Request, call_next: Callable[[Request], Awai
         raise e
     finally:
         duration = time.perf_counter() - start_time
-        
+
         stream_id = ""
         if "streams/" in request.url.path:
             parts = request.url.path.split("streams/")
@@ -127,10 +127,10 @@ async def observe_requests(request: Request, call_next: Callable[[Request], Awai
 
         HTTP_REQUESTS_TOTAL.labels(method=request.method, status=status_code, stream_id=stream_id).inc()
         HTTP_REQUEST_DURATION.labels(method=request.method, path=path_label).observe(duration)
-        
+
         if status_code >= 400 and status_code != 404:
             logger.warning("http_request_failed", method=request.method, path=request.url.path, status=status_code)
-            
+
     if response is None:
         return Response(status_code=500)
     return response
