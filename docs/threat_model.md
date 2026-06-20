@@ -34,6 +34,6 @@ The FastAPI standalone server exposes a REST API over a network. **All incoming 
 *   **Dependency Compromise**: A third-party Python library (e.g., `fastapi`, `pydantic`) is compromised.
     *   *Mitigation*: We strictly pin upper bounds for all dependencies in `pyproject.toml`. We use `dependabot` and the GitHub Dependency Review action to scan for known vulnerabilities in third-party trees.
 *   **Release Artifact Compromise**: An attacker intercepts or alters the PyPI wheels or source distribution.
-    *   *Mitigation*: All releases are built on ephemeral GitHub Actions runners. We generate SPDX SBOMs for every release, and use `actions/attest-build-provenance` to sign the artifacts using GitHub's OIDC identity provider, publishing verifiable SLSA Level 3 provenance.
+    *   *Mitigation*: All releases are built on ephemeral GitHub Actions runners. We generate SPDX SBOMs for every release, and use `actions/attest-build-provenance` to sign the artifacts using GitHub's OIDC identity provider, publishing signed build provenance attestations using GitHub artifact attestations and a SLSA provenance predicate.
 *   **CI/CD Hijacking**: A malicious PR alters a GitHub Action script.
     *   *Mitigation*: All third-party GitHub Actions in our workflows are pinned to explicit, immutable commit SHAs. OpenSSF Scorecard continuously monitors our repository settings and workflow configurations.
