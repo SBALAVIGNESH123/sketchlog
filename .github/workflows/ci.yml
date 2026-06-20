@@ -82,6 +82,9 @@ jobs:
       - name: Run pyright
         run: pyright python/sketchlog
 
+      - name: Run API compatibility check
+        run: python scripts/check_api_compat.py
+
   test-cpp:
     name: C++ Build
     runs-on: ${{ matrix.os }}
