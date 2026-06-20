@@ -1,11 +1,8 @@
 """Overload tests — verify documented error responses under stress."""
 import asyncio
-import random
 
 import httpx
 import pytest
-
-from tests.conftest_stress import _free_port
 
 
 pytestmark = [pytest.mark.stress, pytest.mark.overload]

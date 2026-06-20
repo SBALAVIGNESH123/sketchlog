@@ -9,8 +9,6 @@ from pathlib import Path
 import httpx
 import pytest
 
-from tests.conftest_stress import _free_port
-
 
 pytestmark = [pytest.mark.stress, pytest.mark.soak]
 
