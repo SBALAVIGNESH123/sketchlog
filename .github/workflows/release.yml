@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@f8f1f387e90b5bfb57c85effaf314552ff2eaab2 # v2.16.5
+        uses: pypa/cibuildwheel@294735312765b09d24a2fbec22660ce817587d55 # v4.1.0
         env:
           CIBW_SKIP: "cp36-* cp37-* cp38-* pp*"
           CIBW_ARCHS_MACOS: "x86_64 arm64"

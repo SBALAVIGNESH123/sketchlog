@@ -1,9 +1,10 @@
 import subprocess
+import sys
 
 actions = [
     "actions/checkout@v4.2.2",
     "actions/setup-python@v5.6.0",
-    "pypa/cibuildwheel@v2.16.5",
+    "pypa/cibuildwheel@v4.1.0",
     "actions/upload-artifact@v4.6.0",
     "actions/download-artifact@v4.1.8",
     "pypa/gh-action-pypi-publish@release/v1",
@@ -13,13 +14,27 @@ actions = [
 for a in actions:
     repo, ref = a.split('@')
     url = f"https://github.com/{repo}"
-    out = subprocess.check_output(['git', 'ls-remote', url, ref, f'refs/tags/{ref}']).decode()
+
+    # Use ls-remote and get both the tag and its peeled commit (^{})
+    out = subprocess.check_output(['git', 'ls-remote', url, ref, f'refs/tags/{ref}', f'refs/tags/{ref}^{{}}']).decode()
+
+    resolved_sha = None
+
+    # Try to find peeled tag first
     for line in out.splitlines():
-        if 'refs/tags/' in line:
-            sha = line.split()[0]
-            print(f"{repo}@{sha} # {ref}")
+        if line.endswith('^{}'):
+            resolved_sha = line.split()[0]
             break
-        elif ref == 'release/v1':
-            sha = line.split()[0]
-            print(f"{repo}@{sha} # {ref}")
-            break
+
+    # Fallback to direct ref (for branches like release/v1 or unannotated tags)
+    if not resolved_sha:
+        for line in out.splitlines():
+            if ref in line:
+                resolved_sha = line.split()[0]
+                break
+
+    if resolved_sha:
+        print(f"{repo}@{resolved_sha} # {ref}")
+    else:
+        print(f"Error: Could not resolve {a}", file=sys.stderr)
+        sys.exit(1)
