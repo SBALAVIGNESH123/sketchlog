@@ -52,7 +52,7 @@ for n in event_counts:
     # Naive: each Python float = ~28 bytes + 8 byte pointer = 36 bytes
     naive_bytes = n * 36
     naive_memory_mb.append(naive_bytes / (1024 * 1024))
-    
+
     # Sketchlog: actually measure
     log = StreamLog()
     random.seed(42)
@@ -96,7 +96,7 @@ ax.annotate('100M events → 93 KB\nMemory is constant.',
             xy=(7, sketch_memory_mb[7]), xytext=(5.5, 0.5),
             fontsize=12, color=CYAN, fontweight='bold',
             arrowprops=dict(arrowstyle='->', color=CYAN, lw=1.5),
-            bbox=dict(boxstyle='round,pad=0.4', facecolor='#0d1117', 
+            bbox=dict(boxstyle='round,pad=0.4', facecolor='#0d1117',
                       edgecolor=CYAN, alpha=0.9))
 
 ax.annotate('3.6 GB\n(or OOM)',
@@ -112,7 +112,7 @@ ax.grid(True, alpha=0.3)
 ax.set_ylim(bottom=0.01)
 
 plt.tight_layout()
-plt.savefig('benchmarks/memory_comparison.png', dpi=200, 
+plt.savefig('benchmarks/memory_comparison.png', dpi=200,
             facecolor='#0d1117', bbox_inches='tight')
 print("  Saved: benchmarks/memory_comparison.png", flush=True)
 plt.close()
@@ -142,15 +142,15 @@ for dist_name, gen_fn in distributions.items():
     for n in test_sizes:
         random.seed(42)
         values = [gen_fn() for _ in range(n)]
-        
+
         log = StreamLog()
         for v in values:
             log.add_latency(v)
-        
+
         sorted_v = sorted(values)
         true_p99 = sorted_v[int(0.99 * len(sorted_v))]
         est_p99 = log.p99()
-        
+
         if true_p99 > 0:
             error_pct = abs(est_p99 - true_p99) / true_p99 * 100
         else:
@@ -161,11 +161,11 @@ for dist_name, gen_fn in distributions.items():
 fig, ax = plt.subplots(figsize=(12, 6))
 
 for dist_name, errors in errors_by_dist.items():
-    ax.plot(range(len(size_labels)), errors, linewidth=2.5, marker='o', 
+    ax.plot(range(len(size_labels)), errors, linewidth=2.5, marker='o',
             markersize=6, label=dist_name, color=colors[dist_name], zorder=5)
 
 # 1% error bound line
-ax.axhline(y=1.0, color=RED, linestyle='--', linewidth=1.5, alpha=0.7, 
+ax.axhline(y=1.0, color=RED, linestyle='--', linewidth=1.5, alpha=0.7,
            label='DDSketch bound (α=1%)')
 
 ax.set_xticks(range(len(size_labels)))
@@ -204,7 +204,7 @@ modes = ['Python\nscalar', 'C++\nscalar', 'C++\nbatch (numpy)']
 throughputs = [1.65, 3.17, 75.8]  # millions events/sec
 bar_colors = [GREY, CYAN, GREEN]
 
-bars = ax.bar(modes, throughputs, color=bar_colors, width=0.5, 
+bars = ax.bar(modes, throughputs, color=bar_colors, width=0.5,
               edgecolor='#30363d', linewidth=1.2, zorder=5)
 
 # Add value labels on bars

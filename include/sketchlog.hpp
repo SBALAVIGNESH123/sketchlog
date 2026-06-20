@@ -56,62 +56,62 @@ public:
               size_t cms_depth = 5);
 
     // ─── Latency tracking (DDSketch) ─────────────────────────────────
-    
+
     /** Add a latency measurement. */
     void add_latency(double value);
-    
+
     /** Get any percentile (0.0 to 1.0). */
     double percentile(double q) const;
-    
+
     /** Convenience: p50. */
     double p50() const { return percentile(0.50); }
-    
+
     /** Convenience: p95. */
     double p95() const { return percentile(0.95); }
-    
+
     /** Convenience: p99. */
     double p99() const { return percentile(0.99); }
-    
+
     /** Convenience: p999. */
     double p999() const { return percentile(0.999); }
-    
+
     /** Latency min/max. */
     double latency_min() const;
     double latency_max() const;
 
     // ─── Event frequency tracking (Count-Min Sketch) ─────────────────
-    
+
     /** Record an event occurrence. */
     void add_event(const std::string& name, int64_t count = 1);
-    
+
     /** Estimated count for an event. */
     int64_t event_count(const std::string& name) const;
 
     // ─── Cardinality tracking (HyperLogLog) ──────────────────────────
-    
+
     /** Add a unique item (by string). */
     void add_unique(const std::string& item);
-    
+
     /** Add a unique item (by uint64 id). */
     void add_unique(uint64_t id);
-    
+
     /** Estimated number of unique items. */
     uint64_t unique_count() const;
 
     // ─── System ──────────────────────────────────────────────────────
-    
+
     /** Total events processed. */
     uint64_t total_events() const { return total_events_; }
-    
+
     /** Total memory used by all sketches (bytes). */
     size_t memory_bytes() const;
-    
+
     /** Total memory in KB. */
     double memory_kb() const;
-    
+
     /** Full stats snapshot. */
     Stats stats() const;
-    
+
     /** Reset everything. */
     void reset();
 

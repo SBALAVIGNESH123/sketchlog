@@ -18,7 +18,7 @@ monitoring, edge devices, and memory-constrained environments.
 
 ## 📚 Documentation
 
-The full documentation is available at [SketchLog Documentation Site](https://sbalavignesh123.github.io/sketchlog/) (or via `/docs` in the repository). 
+The full documentation is available at [SketchLog Documentation Site](https://sbalavignesh123.github.io/sketchlog/) (or via `/docs` in the repository).
 It includes:
 - **Architecture**: Details on distributed merges, drift detection, and memory footprint.
 - **Benchmarks**: Memory footprint scaling and CPU throughput limits.

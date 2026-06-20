@@ -46,11 +46,11 @@ def run_worker():
     n = int(sys.argv[4])
 
     data = generate_data(dist_name, n)
-    
+
     gc.collect()
     rss_baseline = get_rss()
     start_time = time.time()
-    
+
     p50 = p95 = p99 = 0.0
 
     if candidate == "exact":
@@ -58,7 +58,7 @@ def run_worker():
         p50 = float(np.percentile(data, 50))
         p95 = float(np.percentile(data, 95))
         p99 = float(np.percentile(data, 99))
-    
+
     elif candidate == "sketchlog":
         from sketchlog import StreamLog
         log = StreamLog()
@@ -69,7 +69,7 @@ def run_worker():
         p50 = float(log.percentile(0.5))
         p95 = float(log.p95())
         p99 = float(log.p99())
-    
+
     elif candidate == "tdigest":
         from tdigest import TDigest
         td = TDigest()
@@ -77,7 +77,7 @@ def run_worker():
         p50 = float(td.percentile(50))
         p95 = float(td.percentile(95))
         p99 = float(td.percentile(99))
-        
+
     elif candidate == "datasketches":
         from datasketches import kll_floats_sketch
         kll = kll_floats_sketch(200)
@@ -86,11 +86,11 @@ def run_worker():
             kll.update(float(x))
         q = kll.get_quantiles([0.5, 0.95, 0.99])
         p50, p95, p99 = float(q[0]), float(q[1]), float(q[2])
-    
+
     elapsed = time.time() - start_time
     gc.collect()
     rss_after = get_rss()
-    
+
     res = {
         "p50": p50,
         "p95": p95,
@@ -99,7 +99,7 @@ def run_worker():
         "elapsed": elapsed,
         "throughput": n / elapsed if elapsed > 0 else 0
     }
-    
+
     print("JSON_START")
     print(json.dumps(res))
     print("JSON_END")
@@ -116,15 +116,15 @@ def main():
     distributions = ["uniform", "normal", "lognormal", "bimodal", "zipf"]
     sizes = [1_000_000, 10_000_000]
     candidates = ["sketchlog", "tdigest", "datasketches"]
-    
+
     results = []
 
     print("Running benchmark suite...")
-    
+
     for size in sizes:
         for dist in distributions:
             print(f"\\n--- {dist} @ {size:,} events ---")
-            
+
             # Get exact
             try:
                 exact_output = subprocess.check_output([sys.executable, __file__, "run_worker", "exact", dist, str(size)], text=True, timeout=120)
@@ -133,18 +133,18 @@ def main():
             except Exception as e:
                 print(f"    Failed exact calculation: {e}")
                 continue
-            
+
             for cand in candidates:
                 print(f"    Running {cand}...", end="", flush=True)
                 try:
                     out = subprocess.check_output([sys.executable, __file__, "run_worker", cand, dist, str(size)], text=True, timeout=60)
                     out_json = out.split("JSON_START")[1].split("JSON_END")[0].strip()
                     res = json.loads(out_json)
-                    
+
                     err50 = abs(res["p50"] - exact_res["p50"]) / max(1e-9, exact_res["p50"])
                     err95 = abs(res["p95"] - exact_res["p95"]) / max(1e-9, exact_res["p95"])
                     err99 = abs(res["p99"] - exact_res["p99"]) / max(1e-9, exact_res["p99"])
-                    
+
                     results.append({
                         "size": size,
                         "dist": dist,
@@ -174,7 +174,7 @@ def main():
     with open("BENCHMARKS.md", "w") as f:
         f.write("# Benchmark Suite Results\n\n")
         f.write("Compares SketchLog, T-Digest, and Apache DataSketches (KLL) across multiple distributions and scales.\n\n")
-        
+
         f.write("## 1M Events\n\n")
         f.write("| Distribution | Candidate | p50 Error | p95 Error | p99 Error | Memory (KB) | Throughput (ops/s) |\n")
         f.write("|--------------|-----------|-----------|-----------|-----------|-------------|--------------------|\n")
@@ -186,7 +186,7 @@ def main():
         for r in results:
             if r["size"] == 1_000_000:
                 f.write(format_row(r))
-                
+
         f.write("\n## 10M Events\n\n")
         f.write("| Distribution | Candidate | p50 Error | p95 Error | p99 Error | Memory (KB) | Throughput (ops/s) |\n")
         f.write("|--------------|-----------|-----------|-----------|-----------|-------------|--------------------|\n")

@@ -12,27 +12,27 @@ class _NoLoggingWSGIRequestHandler(WSGIRequestHandler):
 class PrometheusExporter:
     """
     Exposes StreamLog metrics to Prometheus.
-    
+
     Provides a lightweight HTTP server that formats the current
     state of a StreamLog instance into the Prometheus text-based format.
-    
+
     Usage:
         from sketchlog import ThreadSafeStreamLog
         from sketchlog.integrations.prometheus import PrometheusExporter
-        
+
         log = ThreadSafeStreamLog()
         exporter = PrometheusExporter(log)
         exporter.start(port=9090)
     """
-    
+
     def __init__(self, streamlog: "ThreadSafeStreamLog"):
         self.log = streamlog
         self._server: Optional[Any] = None
         self._thread: Optional[threading.Thread] = None
-    
+
     def _generate_metrics(self) -> str:
         """Generates Prometheus-formatted metrics."""
-        
+
         if hasattr(self.log, "_lock") and hasattr(self.log, "_log"):
             with self.log._lock:
                 stats = self.log._log.stats()
@@ -40,7 +40,7 @@ class PrometheusExporter:
         else:
             stats = self.log.stats()
             p95 = self.log.p95()
-            
+
         lines = [
             "# HELP sketchlog_latency Approximate latency percentiles from DDSketch",
             "# TYPE sketchlog_latency gauge",
@@ -73,7 +73,7 @@ class PrometheusExporter:
             ]
             start_response(status, headers)
             return [metrics]
-        
+
         status = '404 Not Found'
         headers = [('Content-Type', 'text/plain')]
         start_response(status, headers)
@@ -83,7 +83,7 @@ class PrometheusExporter:
         """Start the Prometheus exporter HTTP server on a background thread."""
         if self._server is not None:
             return
-            
+
         self._server = make_server(host, port, self._wsgi_app, handler_class=_NoLoggingWSGIRequestHandler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         if self._thread is not None:

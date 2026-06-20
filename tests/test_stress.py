@@ -10,11 +10,11 @@ from sketchlog import StreamLog
 def test_batch_vs_scalar_equivalence():
     random.seed(42)
     values = [random.lognormvariate(2, 1) for _ in range(5000)]
-    
+
     log_scalar = StreamLog()
     for v in values:
         log_scalar.add_latency(v)
-        
+
     log_batch = StreamLog()
     log_batch.add_batch(values)
 
@@ -26,7 +26,7 @@ def test_memory_breakdown_transparency():
     log = StreamLog()
     for _ in range(100):
         log.add_latency(10.0)
-    
+
     mem = log.memory_breakdown()
     assert "total_bytes" in mem
     assert "ddsketch_bytes" in mem
@@ -36,10 +36,10 @@ def test_memory_breakdown_transparency():
 
 def test_deterministic_mode():
     values = [random.uniform(1, 100) for _ in range(10_000)]
-    
+
     log1 = StreamLog(deterministic=True)
     log1.add_batch(values)
-    
+
     log2 = StreamLog(deterministic=True)
     log2.add_batch(values)
 
@@ -59,7 +59,7 @@ def test_distribution_robustness():
         vals = [func() for _ in range(10_000)]
         log = StreamLog()
         log.add_batch(vals)
-        
+
         sorted_vals = sorted(vals)
         true_p99 = sorted_vals[int(0.99 * 10_000)]
         if true_p99 != 0:
@@ -180,12 +180,12 @@ def test_adversarial_negative_event_counts():
         c.add('x', -5)
     with pytest.raises(ValueError):
         c.add('x', 0)
-        
+
     log = StreamLog()
     with pytest.raises(ValueError):
         log.add_event('y', -10)
     with pytest.raises(ValueError):
         log.add_event('y', 0)
-        
+
     assert c.total_count == 0
     assert log.total_events == 0
