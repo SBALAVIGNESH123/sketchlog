@@ -53,5 +53,6 @@ nav:
   - Standalone Server: server.md
   - Security Threat Model: threat_model.md
   - Formal Guarantees: guarantees.md
+  - Compatibility Guarantees: compatibility.md
   - Contributing: contributing.md
 
