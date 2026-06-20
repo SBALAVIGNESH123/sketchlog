@@ -56,7 +56,9 @@ async def test_load_ingestion(live_server, resource_envelope, results_dir):
             rng = random.Random(w)
             tasks.append(_worker(client, base, w, REQUESTS_PER_CLIENT, latencies, rng))
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        total_ok = sum(r for r in results if not isinstance(r, Exception))
+        exceptions = [r for r in results if isinstance(r, Exception)]
+        assert not exceptions, f"Load workers crashed with exceptions: {exceptions}"
+        total_ok = sum(results)
     elapsed = time.perf_counter() - t_start
 
     rps = total_ok / elapsed if elapsed > 0 else 0
@@ -121,7 +123,9 @@ async def test_load_query_under_write(live_server, resource_envelope):
                    for i in range(4)]
         results = await asyncio.gather(*writers, *readers, return_exceptions=True)
 
-    reader_results = [r for r in results[8:] if isinstance(r, int)]
+    exceptions = [r for r in results if isinstance(r, Exception)]
+    assert not exceptions, f"Workers crashed with exceptions: {exceptions}"
+    reader_results = [r for r in results[8:]]
     assert sum(reader_results) > 0, "No successful read requests"
 
     assert len(write_latencies) > 0

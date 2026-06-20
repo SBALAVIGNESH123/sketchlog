@@ -95,7 +95,6 @@ class LimitUploadSize(BaseHTTPMiddleware):
         return cast(Response, await call_next(request))
 
 app.add_middleware(LimitUploadSize)
-app.add_middleware(CorrelationIdMiddleware)
 
 @app.middleware("http")
 async def observe_requests(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
@@ -122,7 +121,7 @@ async def observe_requests(request: Request, call_next: Callable[[Request], Awai
         path_label = request.url.path
         if "/streams/" in path_label:
             parts = path_label.split("/")
-            if len(parts) >= 5 and parts[1] == "v1" and parts[2] == "streams":
+            if len(parts) >= 4 and parts[1] == "v1" and parts[2] == "streams":
                 parts[3] = "{stream_id}"
                 path_label = "/".join(parts)
 
@@ -135,6 +134,8 @@ async def observe_requests(request: Request, call_next: Callable[[Request], Awai
     if response is None:
         return Response(status_code=500)
     return response
+
+app.add_middleware(CorrelationIdMiddleware)
 
 # State
 class StreamRegistry:
@@ -217,8 +218,8 @@ async def health_check() -> Dict[str, str]:
 
 @app.get("/ready", status_code=status.HTTP_200_OK)
 async def readiness_check() -> Dict[str, str]:
-    threshold = float(os.environ.get("SKETCHLOG_MEMORY_THRESHOLD", "90"))
     try:
+        threshold = float(os.environ.get("SKETCHLOG_MEMORY_THRESHOLD", "90"))
         mem_percent = psutil.Process().memory_percent()
         if mem_percent > threshold:
             raise HTTPException(status_code=503, detail="Service degraded: Memory usage critical")

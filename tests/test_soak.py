@@ -174,7 +174,7 @@ async def test_soak_fd_stability(live_server):
                                   json=batch, timeout=5)
                 if r.status_code == 202:
                     successful_posts += 1
-            except Exception:
+            except httpx.RequestError:
                 pass
 
         assert successful_posts > 10, "Failed to ingest enough data for FD stability test"

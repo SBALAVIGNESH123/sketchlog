@@ -23,8 +23,8 @@ curl -s -v http://localhost:8000/health > /tmp/sketchlog_support/health.txt 2>&1
 
 # 3. Collect Recent Logs (Redacted)
 # We assume SketchLog is running under systemd or similar container orchestrator.
-# The structlog output is JSON, so we filter it with jq to remove any sensitive fields if necessary.
-journalctl -u sketchlog --no-pager -n 5000 | jq -c 'del(.sensitive_field)' > /tmp/sketchlog_support/logs.json
+# The structlog output is JSON, so we filter it with jq to remove request paths which contain stream IDs.
+journalctl -u sketchlog --no-pager -n 5000 | jq -c 'del(.path)' > /tmp/sketchlog_support/logs.json
 
 tar -czf /tmp/sketchlog_support.tar.gz -C /tmp sketchlog_support
 echo "Bundle created at /tmp/sketchlog_support.tar.gz"

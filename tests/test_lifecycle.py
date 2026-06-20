@@ -17,6 +17,9 @@ pytestmark = [pytest.mark.stress, pytest.mark.lifecycle]
 @pytest.mark.asyncio
 async def test_graceful_shutdown_exits_cleanly(live_server):
     """Server exits cleanly when receiving SIGTERM."""
+    if sys.platform == "win32":
+        pytest.skip("Graceful shutdown testing via signals is not reliable on Windows")
+
     base = live_server["url"]
     proc = live_server["process"]
 
@@ -38,10 +41,7 @@ async def test_graceful_shutdown_exits_cleanly(live_server):
         await asyncio.sleep(0.05)
 
         # Send SIGTERM while requests are in flight
-        if sys.platform == "win32":
-            pytest.skip("Graceful shutdown testing via signals is not reliable on Windows")
-        else:
-            proc.send_signal(signal.SIGTERM)
+        proc.send_signal(signal.SIGTERM)
 
         # Now await the in-flight requests. If graceful shutdown works,
         # Uvicorn will finish processing these before closing.

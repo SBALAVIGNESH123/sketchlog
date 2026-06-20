@@ -4,6 +4,8 @@ import asyncio
 import httpx
 import pytest
 
+from sketchlog.server import MAX_REQUEST_BYTES, MAX_BATCH_SIZE, MAX_STREAMS
+
 
 pytestmark = [pytest.mark.stress, pytest.mark.overload]
 
@@ -14,12 +16,12 @@ async def test_overload_request_size_413(live_server):
     base = live_server["url"]
     stream_id = "overload-413"
 
-    # Generate a ~1.5MB payload (default limit is 1MB)
-    large_payload = {"uniques": ["x" * 1500000]}
+    # Generate a payload just over the limit
+    large_payload = "A" * (MAX_REQUEST_BYTES + 10000)
 
     async with httpx.AsyncClient() as client:
         r = await client.post(f"{base}/v1/streams/{stream_id}/events",
-                              json=large_payload, timeout=10)
+                              content=large_payload, headers={"Content-Type": "application/json"}, timeout=10)
         assert r.status_code == 413
 
         # Stream should NOT exist
@@ -33,8 +35,8 @@ async def test_overload_batch_size_422(live_server):
     base = live_server["url"]
     stream_id = "overload-422"
 
-    # Default MAX_BATCH_SIZE is 10000
-    payload = {"latencies": [1.0] * 10001}
+    # Generate batch exceeding MAX_BATCH_SIZE
+    payload = {"latencies": [1.0] * (MAX_BATCH_SIZE + 1)}
 
     async with httpx.AsyncClient() as client:
         r = await client.post(f"{base}/v1/streams/{stream_id}/events",
@@ -51,8 +53,8 @@ async def test_overload_stream_limit_eviction(live_server):
     base = live_server["url"]
 
     async with httpx.AsyncClient() as client:
-        # Create 1005 streams sequentially to guarantee LRU order
-        for i in range(1005):
+        # Create MAX_STREAMS + 5 streams sequentially to guarantee LRU order
+        for i in range(MAX_STREAMS + 5):
             batch = {"latencies": [float(i)]}
             r = await client.post(f"{base}/v1/streams/evict-{i}/events",
                                   json=batch, timeout=10)
@@ -63,7 +65,7 @@ async def test_overload_stream_limit_eviction(live_server):
         assert r.status_code == 404
 
         # Latest should exist
-        r = await client.get(f"{base}/v1/streams/evict-1004/metrics", timeout=5)
+        r = await client.get(f"{base}/v1/streams/evict-{MAX_STREAMS + 4}/metrics", timeout=5)
         assert r.status_code == 200
 
 
@@ -111,6 +113,7 @@ async def test_overload_atomic_rejection(live_server):
 
         # Get initial state
         r = await client.get(f"{base}/v1/streams/{stream_id}/metrics", timeout=5)
+        assert r.status_code == 200
         initial_events = r.json()["total_events"]
 
         # Invalid: event count = 0 should be rejected
@@ -120,4 +123,5 @@ async def test_overload_atomic_rejection(live_server):
 
         # State should be unchanged
         r = await client.get(f"{base}/v1/streams/{stream_id}/metrics", timeout=5)
+        assert r.status_code == 200
         assert r.json()["total_events"] == initial_events
