@@ -43,7 +43,8 @@ dev = [
     "mkdocs-material>=9.5.0",
     "mypy",
     "pyright",
-    "httpx"
+    "httpx",
+    "hypothesis"
 ]
 opentelemetry = [
     "opentelemetry-api",
