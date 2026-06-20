@@ -122,7 +122,6 @@ async def test_soak_latency_drift(live_server, resource_envelope):
                 window_start = time.monotonic()
 
     assert len(windows) >= 2, "Soak duration too short or server stalled, could not collect 2 windows"
-    
     # Check absolute p99 envelope
     max_p99 = max(windows)
     assert max_p99 < resource_envelope["soak_max_latency_p99_ms"], \
