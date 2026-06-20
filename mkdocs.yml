@@ -50,6 +50,7 @@ nav:
   - Benchmarks: benchmarks.md
   - Integrations: integrations.md
   - API Reference: api.md
+  - Standalone Server: server.md
   - Formal Guarantees: guarantees.md
   - Contributing: contributing.md
 

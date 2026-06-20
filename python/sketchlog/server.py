@@ -1,0 +1,121 @@
+import os
+from typing import Dict, List, Optional
+from collections import OrderedDict
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel, Field
+
+from sketchlog import StreamLog
+
+app = FastAPI(
+    title="SketchLog Server",
+    description="Standalone network service for SketchLog event streaming and metrics aggregation.",
+    version="1.0.1",
+)
+
+# Configuration
+MAX_STREAMS = int(os.environ.get("SKETCHLOG_MAX_STREAMS", "1000"))
+
+# State
+class StreamRegistry:
+    def __init__(self, max_size: int):
+        self.max_size = max_size
+        self._streams: OrderedDict[str, StreamLog] = OrderedDict()
+
+    def get_or_create(self, stream_id: str) -> StreamLog:
+        if stream_id in self._streams:
+            self._streams.move_to_end(stream_id)
+            return self._streams[stream_id]
+        
+        if len(self._streams) >= self.max_size:
+            # Evict oldest
+            self._streams.popitem(last=False)
+            
+        stream = StreamLog()
+        self._streams[stream_id] = stream
+        return stream
+
+    def get(self, stream_id: str) -> Optional[StreamLog]:
+        if stream_id in self._streams:
+            self._streams.move_to_end(stream_id)
+            return self._streams[stream_id]
+        return None
+
+    def delete(self, stream_id: str) -> bool:
+        if stream_id in self._streams:
+            del self._streams[stream_id]
+            return True
+        return False
+
+registry = StreamRegistry(max_size=MAX_STREAMS)
+
+# Models
+class EventBatch(BaseModel):
+    latencies: Optional[List[float]] = Field(default_factory=list, description="Array of latency values to ingest.")
+    uniques: Optional[List[str]] = Field(default_factory=list, description="Array of distinct string items for cardinality tracking.")
+    events: Optional[Dict[str, int]] = Field(default_factory=dict, description="Dictionary mapping event names to their occurrence counts.")
+
+class MetricsResponse(BaseModel):
+    stream_id: str
+    p50: float
+    p90: float
+    p99: float
+    p99_9: float
+    unique_count: int
+    memory_footprint_bytes: int
+
+# Endpoints
+@app.get("/health", status_code=status.HTTP_200_OK)
+async def health_check() -> Dict[str, str]:
+    return {"status": "ok"}
+
+@app.get("/ready", status_code=status.HTTP_200_OK)
+async def readiness_check() -> Dict[str, str]:
+    return {"status": "ready"}
+
+@app.post("/v1/streams/{stream_id}/events", status_code=status.HTTP_202_ACCEPTED)
+async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
+    stream = registry.get_or_create(stream_id)
+    
+    if batch.latencies:
+        stream.add_batch(batch.latencies)
+        
+    if batch.uniques:
+        for unique_item in batch.uniques:
+            stream.add_unique(unique_item)
+            
+    if batch.events:
+        for event_name, count in batch.events.items():
+            stream.add_event(event_name, count=count)
+            
+    return {"status": "accepted"}
+
+@app.get("/v1/streams/{stream_id}/metrics", response_model=MetricsResponse)
+async def get_metrics(stream_id: str) -> MetricsResponse:
+    stream = registry.get(stream_id)
+    if not stream:
+        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+        
+    return MetricsResponse(
+        stream_id=stream_id,
+        p50=stream.percentile(0.50),
+        p90=stream.percentile(0.90),
+        p99=stream.percentile(0.99),
+        p99_9=stream.percentile(0.999),
+        unique_count=stream.unique_count(),
+        memory_footprint_bytes=stream.memory_bytes()
+    )
+
+@app.delete("/v1/streams/{stream_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_stream(stream_id: str) -> None:
+    success = registry.delete(stream_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+
+def main() -> None:
+    import uvicorn
+    host = os.environ.get("SKETCHLOG_HOST", "0.0.0.0")
+    port = int(os.environ.get("SKETCHLOG_PORT", "8000"))
+    uvicorn.run("sketchlog.server:app", host=host, port=port, reload=False)
+
+if __name__ == "__main__":
+    main()

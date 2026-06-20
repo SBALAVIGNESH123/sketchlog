@@ -27,8 +27,8 @@ jobs:
 
       - name: Install package
         run: |
-          pip install pytest numpy
-          pip install .
+          pip install pytest numpy httpx
+          pip install .[server]
 
       - name: Verify C++ extension loaded
         run: python -c "import sketchlog; assert sketchlog.HAS_CPP, 'C++ extension failed to load'"
@@ -70,7 +70,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install mypy pyright
+        run: |
+          pip install mypy pyright httpx
+          pip install .[server]
 
       - name: Run mypy
         run: mypy python/sketchlog

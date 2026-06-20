@@ -42,12 +42,18 @@ dev = [
     "numpy",
     "mkdocs-material>=9.5.0",
     "mypy",
-    "pyright"
+    "pyright",
+    "httpx"
 ]
 opentelemetry = [
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp"
+]
+server = [
+    "fastapi",
+    "uvicorn",
+    "pydantic"
 ]
 
 [tool.setuptools.packages.find]
