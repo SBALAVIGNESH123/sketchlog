@@ -86,7 +86,9 @@ async def test_overload_concurrent_saturation(live_server):
     assert successes > 0, "No requests succeeded under saturation"
 
     for r in responses:
-        if isinstance(r, httpx.Response) and r.status_code != 202:
+        if isinstance(r, Exception):
+            assert isinstance(r, httpx.RequestError), f"Unexpected error under load: {type(r).__name__}: {r}"
+        elif isinstance(r, httpx.Response) and r.status_code != 202:
             assert r.status_code in (422, 429, 503), f"Unexpected status code under load: {r.status_code}"
 
     # Server should still be alive

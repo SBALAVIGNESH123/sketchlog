@@ -56,15 +56,14 @@ async def test_abrupt_client_disconnect(live_server):
     successes = 0
     for _ in range(10):
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
-            sock.connect(("127.0.0.1", port))
-            sock.sendall(b"POST /v1/streams/disconnect-test/events HTTP/1.1\r\n")
-            sock.sendall(b"Content-Type: application/json\r\n")
-            sock.sendall(b"Content-Length: 999999\r\n\r\n")
-            sock.sendall(b'{"latencies": [1.0')  # Incomplete
-            sock.close()
-            successes += 1
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(2)
+                sock.connect(("127.0.0.1", port))
+                sock.sendall(b"POST /v1/streams/disconnect-test/events HTTP/1.1\r\n")
+                sock.sendall(b"Content-Type: application/json\r\n")
+                sock.sendall(b"Content-Length: 999999\r\n\r\n")
+                sock.sendall(b'{"latencies": [1.0')  # Incomplete
+                successes += 1
         except (socket.error, socket.timeout):
             pass
     assert successes > 0, "No injection attempts succeeded"
@@ -94,12 +93,11 @@ async def test_rapid_connect_disconnect(live_server):
     successes = 0
     for _ in range(50):
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            sock.connect(("127.0.0.1", port))
-            # Close immediately after connect
-            sock.close()
-            successes += 1
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)
+                sock.connect(("127.0.0.1", port))
+                # Closed immediately when leaving context manager
+                successes += 1
         except (socket.error, socket.timeout):
             pass
     assert successes > 0, "No connection attempts succeeded"

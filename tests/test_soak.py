@@ -43,15 +43,18 @@ async def test_soak_memory_stability(live_server, resource_envelope, results_dir
     deadline = time.monotonic() + SOAK_DURATION
 
     async with httpx.AsyncClient() as client:
+        successful_posts = 0
         while time.monotonic() < deadline:
             batch = _make_batch(rng)
             t0 = time.perf_counter()
             try:
-                await client.post(f"{base}/v1/streams/soak-stream/events",
-                                  json=batch, timeout=5)
-                elapsed_ms = (time.perf_counter() - t0) * 1000
-                current_window.append(elapsed_ms)
-            except Exception:
+                r = await client.post(f"{base}/v1/streams/soak-stream/events",
+                                      json=batch, timeout=5)
+                if r.status_code == 202:
+                    successful_posts += 1
+                    elapsed_ms = (time.perf_counter() - t0) * 1000
+                    current_window.append(elapsed_ms)
+            except httpx.RequestError:
                 pass
 
             now = time.monotonic()
@@ -64,6 +67,8 @@ async def test_soak_memory_stability(live_server, resource_envelope, results_dir
                     rss_samples.append(proc.memory_info().rss / (1024 * 1024))
                 except Exception:
                     pass
+
+    assert successful_posts > 500, f"Soak test failed to ingest enough data: {successful_posts}"
 
     if current_window:
         latency_windows.append(current_window)
@@ -102,24 +107,30 @@ async def test_soak_latency_drift(live_server, resource_envelope):
     deadline = time.monotonic() + duration
 
     async with httpx.AsyncClient() as client:
+        successful_posts = 0
         while time.monotonic() < deadline:
             batch = _make_batch(rng)
             t0 = time.perf_counter()
             try:
-                await client.post(f"{base}/v1/streams/drift-test/events",
-                                  json=batch, timeout=5)
-                elapsed_ms = (time.perf_counter() - t0) * 1000
-                current_latencies.append(elapsed_ms)
-            except Exception:
+                r = await client.post(f"{base}/v1/streams/drift-test/events",
+                                      json=batch, timeout=5)
+                if r.status_code == 202:
+                    successful_posts += 1
+                    elapsed_ms = (time.perf_counter() - t0) * 1000
+                    current_latencies.append(elapsed_ms)
+            except httpx.RequestError:
                 pass
 
-            if time.monotonic() - window_start >= 5:
+            now = time.monotonic()
+            if now - window_start >= 5:
                 if current_latencies:
                     current_latencies.sort()
-                    p99_idx = int(len(current_latencies) * 0.99)
-                    windows.append(current_latencies[p99_idx])
+                    p99 = current_latencies[min(int(len(current_latencies) * 0.99), len(current_latencies) - 1)]
+                    windows.append(p99)
                 current_latencies = []
-                window_start = time.monotonic()
+                window_start = now
+
+    assert successful_posts > 500, f"Soak test failed to ingest enough data: {successful_posts}"
 
     assert len(windows) >= 2, "Soak duration too short or server stalled, could not collect 2 windows"
     # Check absolute p99 envelope
