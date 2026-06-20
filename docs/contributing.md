@@ -44,3 +44,8 @@ Then open your browser to `http://127.0.0.1:8000/`.
 - If you're adding a new feature, include tests covering both the pure Python fallback and C++ implementations if applicable.
 - Make sure `git diff --check` passes cleanly (no trailing whitespaces).
 - Ensure type hints pass `mypy --strict`.
+
+## Community
+
+If you want to discuss ideas or need help, join us in Slack!
+[Join SketchLog Slack](https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ)

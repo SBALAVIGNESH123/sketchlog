@@ -4,6 +4,7 @@ Build script for sketchlog C++ extension.
 
 from setuptools import setup
 from pybind11.setup_helpers import Pybind11Extension, build_ext
+import os
 
 ext_modules = [
     Pybind11Extension(
@@ -20,7 +21,7 @@ ext_modules = [
         ],
         cxx_std=17,
         define_macros=[("NDEBUG", "1")],
-        optional=True,
+        optional=os.environ.get("CIBUILDWHEEL", "0") != "1",
     ),
 ]
 

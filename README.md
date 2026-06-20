@@ -72,6 +72,12 @@ print(f"Unique Users: {log.unique_count()}")
 print(f"Cache Misses: {log.event_count('cache_miss')}")
 ```
 
+## Community
+
+Join us in Slack! [Join SketchLog Slack](https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ)
+
+---
+
 ## What this is not
 
 SketchLog is a streaming metrics compression layer. It is deliberately not:
