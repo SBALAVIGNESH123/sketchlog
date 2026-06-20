@@ -56,4 +56,3 @@ if(ENABLE_FUZZING)
         message(WARNING "Fuzzing is not supported on MSVC without explicit Clang integration.")
     endif()
 endif()
-
