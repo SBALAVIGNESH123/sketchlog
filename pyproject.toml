@@ -51,9 +51,9 @@ opentelemetry = [
     "opentelemetry-exporter-otlp"
 ]
 server = [
-    "fastapi",
+    "fastapi>=0.100.0",
     "uvicorn",
-    "pydantic"
+    "pydantic>=2.0"
 ]
 
 [tool.setuptools.packages.find]

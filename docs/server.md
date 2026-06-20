@@ -21,7 +21,7 @@ Start the server using the module entrypoint:
 python -m sketchlog.server
 ```
 
-By default, the server listens on `0.0.0.0:8000`. 
+By default, the server listens on `0.0.0.0:8000`.
 You can customize its behavior using environment variables:
 
 | Variable | Default | Description |

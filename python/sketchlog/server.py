@@ -1,8 +1,9 @@
 import os
 from typing import Dict, List, Optional
 from collections import OrderedDict
-from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field, PositiveInt, model_validator
+from fastapi import FastAPI, HTTPException, status, Request, Response
+from pydantic import BaseModel, Field, constr, conint, model_validator
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from sketchlog import StreamLog
 
@@ -18,6 +19,20 @@ if MAX_STREAMS < 1:
     raise ValueError("SKETCHLOG_MAX_STREAMS must be >= 1")
 
 MAX_BATCH_SIZE = int(os.environ.get("SKETCHLOG_MAX_BATCH_SIZE", "10000"))
+if MAX_BATCH_SIZE < 1:
+    raise ValueError("SKETCHLOG_MAX_BATCH_SIZE must be >= 1")
+
+MAX_REQUEST_BYTES = int(os.environ.get("SKETCHLOG_MAX_REQUEST_BYTES", "1048576"))
+
+class LimitUploadSize(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_length = request.headers.get("content-length")
+            if content_length and int(content_length) > MAX_REQUEST_BYTES:
+                return Response(status_code=413, content=b"Request body too large")
+        return await call_next(request)
+
+app.add_middleware(LimitUploadSize)
 
 # State
 class StreamRegistry:
@@ -29,11 +44,11 @@ class StreamRegistry:
         if stream_id in self._streams:
             self._streams.move_to_end(stream_id)
             return self._streams[stream_id]
-        
+
         if len(self._streams) >= self.max_size:
             # Evict oldest
             self._streams.popitem(last=False)
-            
+
         stream = StreamLog()
         self._streams[stream_id] = stream
         return stream
@@ -53,10 +68,14 @@ class StreamRegistry:
 registry = StreamRegistry(max_size=MAX_STREAMS)
 
 # Models
+# C++ extensions accept uint64_t but typically bounded positive integers max at 2^63-1 for safe signed limits in generic protocols.
+ValidEventCount = conint(gt=0, lt=9223372036854775808)
+ValidName = constr(min_length=1, max_length=255)
+
 class EventBatch(BaseModel):
     latencies: Optional[List[float]] = Field(default_factory=list, description="Array of latency values to ingest.")
-    uniques: Optional[List[str]] = Field(default_factory=list, description="Array of distinct string items for cardinality tracking.")
-    events: Optional[Dict[str, PositiveInt]] = Field(default_factory=dict, description="Dictionary mapping event names to their positive occurrence counts.")
+    uniques: Optional[List[ValidName]] = Field(default_factory=list, description="Array of distinct string items for cardinality tracking.")
+    events: Optional[Dict[ValidName, ValidEventCount]] = Field(default_factory=dict, description="Dictionary mapping event names to their positive occurrence counts.")
 
     @model_validator(mode='after')
     def check_batch_size(self) -> 'EventBatch':
@@ -91,29 +110,31 @@ async def health_check() -> Dict[str, str]:
 async def readiness_check() -> Dict[str, str]:
     return {"status": "ready"}
 
-@app.post("/v1/streams/{stream_id}/events", status_code=status.HTTP_202_ACCEPTED)
+@app.post("/v1/streams/{stream_id:path}/events", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
+    if len(stream_id) > 255:
+        raise HTTPException(status_code=422, detail="Stream ID too long")
     stream = registry.get_or_create(stream_id)
-    
+
     if batch.latencies:
         stream.add_batch(batch.latencies)
-        
+
     if batch.uniques:
         for unique_item in batch.uniques:
             stream.add_unique(unique_item)
-            
+
     if batch.events:
         for event_name, count in batch.events.items():
             stream.add_event(event_name, count=count)
-            
+
     return {"status": "accepted"}
 
-@app.get("/v1/streams/{stream_id}/metrics", response_model=MetricsResponse)
+@app.get("/v1/streams/{stream_id:path}/metrics", response_model=MetricsResponse)
 async def get_metrics(stream_id: str) -> MetricsResponse:
     stream = registry.get(stream_id)
     if not stream:
         raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
-        
+
     return MetricsResponse(
         stream_id=stream_id,
         p50=stream.percentile(0.50),
@@ -125,19 +146,19 @@ async def get_metrics(stream_id: str) -> MetricsResponse:
         memory_footprint_bytes=stream.memory_bytes()
     )
 
-@app.get("/v1/streams/{stream_id}/events/{event_name}", response_model=EventCountResponse)
+@app.get("/v1/streams/{stream_id:path}/events/{event_name:path}", response_model=EventCountResponse)
 async def get_event_count(stream_id: str, event_name: str) -> EventCountResponse:
     stream = registry.get(stream_id)
     if not stream:
         raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
-    
+
     return EventCountResponse(
         stream_id=stream_id,
         event_name=event_name,
         count=stream.event_count(event_name)
     )
 
-@app.delete("/v1/streams/{stream_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/v1/streams/{stream_id:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def reset_stream(stream_id: str) -> None:
     success = registry.delete(stream_id)
     if not success:
