@@ -10,7 +10,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     if (size == 0) return 0;
 
     try {
-        // Occasionally try to initialize the streamlog via deserialization or constructor
+        // Optionally fuzz the parameterized constructor path
         sketchlog::StreamLog log;
         size_t i = 0;
 
