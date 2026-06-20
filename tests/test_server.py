@@ -184,14 +184,14 @@ def test_rejected_request_does_not_mutate_lru():
         
         # Order should be A, B (B is most recent)
         assert list(registry._streams.keys()) == ["stream-a", "stream-b"]
-        
+
         # Send overflow to A (should be rejected)
         payload = {"events": {"overflow": 9223372036854775807}}
         assert client.post("/v1/streams/stream-a/events", json=payload).status_code == 422
-        
+
         # Order should STILL be A, B
         assert list(registry._streams.keys()) == ["stream-a", "stream-b"]
-        
+
         # Create C, should evict A (least recent)
         client.post("/v1/streams/stream-c/events", json={"latencies": [1]})
         assert list(registry._streams.keys()) == ["stream-b", "stream-c"]
