@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 0 * * *'
 
 jobs:
   test-python:
@@ -142,5 +144,39 @@ jobs:
       - name: Build Fuzzer
         run: cmake --build build --target fuzz_cpp
 
-      - name: Run Fuzzer (60s)
-        run: ./build/fuzz_cpp -max_total_time=60
+      - name: Run Fuzzer
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            ./build/fuzz_cpp -max_total_time=3600
+          else
+            ./build/fuzz_cpp -max_total_time=60
+          fi
+          
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzzer-crashes
+          path: |
+            crash-*
+            leak-*
+            timeout-*
+            
+  test-tsan:
+    name: C++ ThreadSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install Clang
+        run: sudo apt-get install -y clang
+      - name: Configure CMake with TSan
+        env:
+          CC: clang
+          CXX: clang++
+        run: cmake -B build -DCMAKE_CXX_FLAGS="-fsanitize=thread -fpie -pie -fno-omit-frame-pointer -g"
+      - name: Build
+        run: cmake --build build
+      - name: Run C++ Tests
+        run: ctest --test-dir build --output-on-failure

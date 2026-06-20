@@ -10,10 +10,33 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     if (size == 0) return 0;
 
     try {
-        // We treat the input as a sequence of operations
+        // Occasionally try to initialize the streamlog via deserialization or constructor
         sketchlog::StreamLog log;
-
         size_t i = 0;
+
+        if (size > 1 && data[0] % 4 == 0) {
+            uint16_t des_len;
+            if (size > 3) {
+                std::memcpy(&des_len, data + 1, sizeof(uint16_t));
+                i += 3;
+                if (i + des_len <= size) {
+                    sketchlog::StreamLog::deserialize(data + i, des_len);
+                    i += des_len;
+                }
+            }
+        } else if (size > 5 && data[0] % 4 == 1) {
+            // parameterized constructor
+            double rel_acc;
+            std::memcpy(&rel_acc, data + 1, sizeof(double));
+            i += 9;
+            if (!std::isnan(rel_acc) && !std::isinf(rel_acc) && rel_acc > 0 && rel_acc < 1.0) {
+                sketchlog::StreamLog parameterized(rel_acc);
+                log = parameterized;
+            }
+        } else {
+            i = 1;
+        }
+
         while (i < size) {
             uint8_t op = data[i++] % 4; // 4 operations
 
