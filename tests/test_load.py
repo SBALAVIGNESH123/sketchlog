@@ -89,7 +89,7 @@ async def _query_worker(client: httpx.AsyncClient, base: str, stream_id: str,
     for _ in range(n):
         t0 = time.perf_counter()
         try:
-            r = await client.get(f"{base}/v1/streams/load-query/metrics", timeout=5)
+            r = await client.get(f"{base}/v1/streams/{stream_id}/metrics", timeout=5)
             elapsed_ms = (time.perf_counter() - t0) * 1000
             latencies.append(elapsed_ms)
             if r.status_code == 200:
@@ -119,7 +119,10 @@ async def test_load_query_under_write(live_server, resource_envelope):
                    for w in range(8)]
         readers = [_query_worker(client, base, f"mixed-{i % 5}", 10, read_latencies)
                    for i in range(4)]
-        await asyncio.gather(*writers, *readers, return_exceptions=True)
+        results = await asyncio.gather(*writers, *readers, return_exceptions=True)
+
+    reader_results = [r for r in results[8:] if isinstance(r, int)]
+    assert sum(reader_results) > 0, "No successful read requests"
 
     assert len(write_latencies) > 0
     assert len(read_latencies) > 0

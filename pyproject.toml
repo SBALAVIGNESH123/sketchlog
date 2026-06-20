@@ -46,7 +46,8 @@ dev = [
     "pyright",
     "httpx",
     "hypothesis",
-    "psutil"
+    "psutil",
+    "types-psutil"
 ]
 opentelemetry = [
     "opentelemetry-api",

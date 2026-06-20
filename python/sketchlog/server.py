@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Optional, Any, Annotated
+from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, status, Request, Response
 from pydantic import BaseModel, Field, model_validator
@@ -97,7 +97,7 @@ app.add_middleware(LimitUploadSize)
 app.add_middleware(CorrelationIdMiddleware)
 
 @app.middleware("http")
-async def observe_requests(request: Request, call_next):
+async def observe_requests(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     structlog.contextvars.bind_contextvars(request_id=correlation_id.get())
     start_time = time.perf_counter()
 
@@ -118,8 +118,15 @@ async def observe_requests(request: Request, call_next):
         # In ASGI, if exception is raised, response might not be bound. But we handle errors nicely via FastAPI.
         status_code = response.status_code if 'response' in locals() else 500
 
+        path_label = request.url.path
+        if "/streams/" in path_label:
+            parts = path_label.split("/")
+            if len(parts) >= 5 and parts[1] == "v1" and parts[2] == "streams":
+                parts[3] = "{stream_id}"
+                path_label = "/".join(parts)
+
         HTTP_REQUESTS_TOTAL.labels(method=request.method, status=status_code, stream_id=stream_id).inc()
-        HTTP_REQUEST_DURATION.labels(method=request.method, path=request.url.path).observe(duration)
+        HTTP_REQUEST_DURATION.labels(method=request.method, path=path_label).observe(duration)
 
         if status_code >= 400 and status_code != 404:
             logger.warning("http_request_failed", method=request.method, path=request.url.path, status=status_code)
@@ -215,10 +222,11 @@ async def readiness_check() -> Dict[str, str]:
         if isinstance(e, HTTPException):
             raise e
         logger.warning("readiness_check_failed", exc_info=True)
+        raise HTTPException(status_code=503, detail="Service degraded: Memory check failed")
     return {"status": "ready"}
 
 @app.get("/metrics")
-async def get_prometheus_metrics():
+async def get_prometheus_metrics() -> Response:
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.post("/v1/streams/{stream_id:path}/events", status_code=status.HTTP_202_ACCEPTED)
