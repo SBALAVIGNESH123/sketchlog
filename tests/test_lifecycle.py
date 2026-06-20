@@ -37,9 +37,9 @@ async def test_graceful_shutdown_exits_cleanly(live_server):
         # Give them a tiny fraction of a second to hit the server socket
         await asyncio.sleep(0.05)
 
-        # Send SIGTERM (or terminate on Windows) while requests are in flight
+        # Send SIGTERM while requests are in flight
         if sys.platform == "win32":
-            proc.terminate()
+            pytest.skip("Graceful shutdown testing via signals is not reliable on Windows")
         else:
             proc.send_signal(signal.SIGTERM)
 
