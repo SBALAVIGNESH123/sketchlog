@@ -31,14 +31,11 @@ async def _worker(client: httpx.AsyncClient, base: str, worker_id: int,
         stream_id = f"load-{worker_id}-{i % 10}"
         batch = _make_batch(rng)
         t0 = time.perf_counter()
-        try:
-            r = await client.post(f"{base}/v1/streams/{stream_id}/events", json=batch, timeout=10)
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-            latencies.append(elapsed_ms)
-            if r.status_code == 202:
-                ok += 1
-        except Exception:
-            pass
+        r = await client.post(f"{base}/v1/streams/{stream_id}/events", json=batch, timeout=10)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed_ms)
+        if r.status_code == 202:
+            ok += 1
     return ok
 
 
@@ -88,14 +85,11 @@ async def _query_worker(client: httpx.AsyncClient, base: str, stream_id: str,
     ok = 0
     for _ in range(n):
         t0 = time.perf_counter()
-        try:
-            r = await client.get(f"{base}/v1/streams/{stream_id}/metrics", timeout=10)
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-            latencies.append(elapsed_ms)
-            if r.status_code == 200:
-                ok += 1
-        except Exception:
-            pass
+        r = await client.get(f"{base}/v1/streams/{stream_id}/metrics", timeout=10)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed_ms)
+        if r.status_code == 200:
+            ok += 1
     return ok
 
 

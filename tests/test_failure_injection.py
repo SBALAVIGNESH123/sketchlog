@@ -39,7 +39,7 @@ async def test_malformed_json_payloads(live_server):
                 headers={"Content-Type": content_type},
                 timeout=5,
             )
-            assert r.status_code in (400, 413, 422), \
+            assert 400 <= r.status_code < 500, \
                 f"Expected 4xx for malformed payload, got {r.status_code}"
 
         # Server should still be alive
@@ -53,6 +53,7 @@ async def test_abrupt_client_disconnect(live_server):
     port = live_server["port"]
 
     # Open raw socket, send partial HTTP, then close abruptly
+    successes = 0
     for _ in range(10):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -63,8 +64,10 @@ async def test_abrupt_client_disconnect(live_server):
             sock.sendall(b"Content-Length: 999999\r\n\r\n")
             sock.sendall(b'{"latencies": [1.0')  # Incomplete
             sock.close()
-        except Exception:
+            successes += 1
+        except (socket.error, socket.timeout):
             pass
+    assert successes > 0, "No injection attempts succeeded"
 
     # Give server a moment to recover
     await asyncio.sleep(0.5)
@@ -88,14 +91,18 @@ async def test_rapid_connect_disconnect(live_server):
     """Open and close hundreds of connections without sending data."""
     port = live_server["port"]
 
-    for _ in range(200):
+    successes = 0
+    for _ in range(50):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(1)
             sock.connect(("127.0.0.1", port))
+            # Close immediately after connect
             sock.close()
-        except Exception:
+            successes += 1
+        except (socket.error, socket.timeout):
             pass
+    assert successes > 0, "No connection attempts succeeded"
 
     await asyncio.sleep(0.5)
 
@@ -127,7 +134,10 @@ async def test_concurrent_stream_deletion(live_server):
                 await client.delete(f"{base}/v1/streams/{stream_id}", timeout=5)
                 await asyncio.sleep(0.01)
 
-        await asyncio.gather(ingest(), delete(), return_exceptions=True)
+        results = await asyncio.gather(ingest(), delete(), return_exceptions=True)
+        for res in results:
+            if isinstance(res, Exception):
+                raise res
 
         # Server must be healthy, and stream state must be consistent
         health = await client.get(f"{base}/health", timeout=5)

@@ -47,116 +47,124 @@ async def test_graceful_shutdown_exits_cleanly(live_server):
 @pytest.mark.asyncio
 async def test_readiness_transitions():
     """Verify /ready returns 200 when server is healthy."""
-    port = _free_port()
     import os
     env = os.environ.copy()
     env["SKETCHLOG_HOST"] = "127.0.0.1"
-    env["SKETCHLOG_PORT"] = str(port)
 
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "sketchlog.server:app",
-         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
+    for attempt in range(5):
+        port = _free_port()
+        env["SKETCHLOG_PORT"] = str(port)
 
-    base = f"http://127.0.0.1:{port}"
-    try:
-        # Wait for startup
-        deadline = time.monotonic() + 15
-        ready = False
-        while time.monotonic() < deadline:
-            try:
-                r = httpx.get(f"{base}/ready", timeout=1)
-                if r.status_code == 200:
-                    ready = True
-                    break
-            except Exception:
-                pass
-            time.sleep(0.2)
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "sketchlog.server:app",
+             "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
 
-        assert ready, "Server never became ready"
-        assert httpx.get(f"{base}/ready", timeout=2).json()["status"] == "ready"
+        base = f"http://127.0.0.1:{port}"
+        try:
+            # Wait for startup
+            ready = False
+            for _ in range(50):
+                try:
+                    r = httpx.get(f"{base}/ready", timeout=0.1)
+                    if r.status_code == 200:
+                        ready = True
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.1)
 
-    finally:
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
+            if not ready:
                 proc.kill()
                 proc.wait()
+                if attempt < 4:
+                    continue
+                pytest.fail("Server never became ready")
+
+            assert httpx.get(f"{base}/ready", timeout=2).json()["status"] == "ready"
+        finally:
+            proc.kill()
+            proc.wait()
+        break
 
 
 @pytest.mark.asyncio
 async def test_restart_clean_state():
     """After restart, server starts with empty state."""
-    port = _free_port()
     import os
     env = os.environ.copy()
     env["SKETCHLOG_HOST"] = "127.0.0.1"
-    env["SKETCHLOG_PORT"] = str(port)
 
-    base = f"http://127.0.0.1:{port}"
+    for attempt in range(5):
+        port = _free_port()
+        env["SKETCHLOG_PORT"] = str(port)
 
-    # Start server 1
-    proc1 = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "sketchlog.server:app",
-         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "sketchlog.server:app",
+             "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
 
-    try:
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
+        base = f"http://127.0.0.1:{port}"
+        
+        ready = False
+        for _ in range(50):
             try:
-                if httpx.get(f"{base}/health", timeout=1).status_code == 200:
+                r = httpx.get(f"{base}/ready", timeout=0.1)
+                if r.status_code == 200:
+                    ready = True
                     break
             except Exception:
                 pass
-            time.sleep(0.2)
+            time.sleep(0.1)
 
-        # Ingest data
-        httpx.post(f"{base}/v1/streams/restart-test/events",
-                    json={"latencies": [42.0]}, timeout=5)
+        if not ready:
+            proc.kill()
+            proc.wait()
+            if attempt < 4:
+                continue
+            pytest.fail("Server did not start in time")
 
-        # Verify data exists
-        r = httpx.get(f"{base}/v1/streams/restart-test/metrics", timeout=5)
-        assert r.status_code == 200
-    finally:
-        proc1.terminate()
         try:
-            proc1.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc1.kill()
-            proc1.wait()
+            # 1. Start server, ingest some data
+            async with httpx.AsyncClient() as client:
+                r = await client.post(f"{base}/v1/streams/restart-test/events",
+                                      json={"latencies": [1.0, 2.0]}, timeout=5)
+                assert r.status_code == 202
+                r = await client.get(f"{base}/v1/streams/restart-test/metrics", timeout=5)
+                assert r.json()["total_events"] == 2
 
-    # Wait for port release
-    time.sleep(1)
+            # 2. Hard kill process
+            proc.kill()
+            proc.wait()
 
-    # Start server 2 on same port
-    proc2 = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "sketchlog.server:app",
-         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
+            # 3. Start a new server on same port
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "uvicorn", "sketchlog.server:app",
+                 "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
 
-    try:
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            try:
-                if httpx.get(f"{base}/health", timeout=1).status_code == 200:
-                    break
-            except Exception:
-                pass
-            time.sleep(0.2)
+            # Wait for restart
+            ready = False
+            for _ in range(50):
+                try:
+                    r = httpx.get(f"{base}/ready", timeout=0.1)
+                    if r.status_code == 200:
+                        ready = True
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.1)
+            
+            assert ready, "Restarted server did not become ready"
 
-        # Data should NOT persist across restart
-        r = httpx.get(f"{base}/v1/streams/restart-test/metrics", timeout=5)
-        assert r.status_code == 404, "State leaked across restart"
-    finally:
-        proc2.terminate()
-        try:
-            proc2.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc2.kill()
-            proc2.wait()
+            # 4. Verify state is empty (ephemeral)
+            async with httpx.AsyncClient() as client:
+                r = await client.get(f"{base}/v1/streams/restart-test/metrics", timeout=5)
+                assert r.status_code == 404, "Server preserved state across restarts"
+        finally:
+            proc.kill()
+            proc.wait()
+        break

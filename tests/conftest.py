@@ -34,38 +34,42 @@ def results_dir():
 @pytest.fixture()
 def live_server():
     """Start a real uvicorn server on a random port, yield base URL, then stop."""
-    port = _free_port()
     env = os.environ.copy()
     env["SKETCHLOG_HOST"] = "127.0.0.1"
-    env["SKETCHLOG_PORT"] = str(port)
     env["SKETCHLOG_MAX_STREAMS"] = "1000"
     env["SKETCHLOG_MAX_BATCH_SIZE"] = "10000"
     env["SKETCHLOG_MAX_REQUEST_BYTES"] = "1048576"
-
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "sketchlog.server:app",
-         "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    base_url = f"http://127.0.0.1:{port}"
-
-    # Wait for server to be ready
     import httpx
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        try:
-            r = httpx.get(f"{base_url}/health", timeout=1)
-            if r.status_code == 200:
-                break
-        except Exception:
-            pass
-        time.sleep(0.2)
-    else:
-        proc.kill()
-        raise RuntimeError("Server did not start in time")
+
+    for attempt in range(5):
+        port = _free_port()
+        env["SKETCHLOG_PORT"] = str(port)
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "sketchlog.server:app",
+             "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        base_url = f"http://127.0.0.1:{port}"
+        
+        # Wait for server to start
+        for _ in range(50):
+            try:
+                r = httpx.get(f"{base_url}/ready", timeout=0.1)
+                if r.status_code == 200:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+        else:
+            proc.kill()
+            proc.wait()
+            if attempt < 4:
+                continue # Retry port allocation
+            raise RuntimeError("Server did not start in time after 5 attempts")
+        break
 
     yield {"url": base_url, "process": proc, "port": port}
 
