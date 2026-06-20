@@ -14,7 +14,7 @@ def check_generated_files(git_files):
     print("Checking for generated files...")
     prohibited_exts = {".pyc", ".o", ".exe", ".so", ".dll", ".pyd"}
     prohibited_dirs = {"__pycache__"}
-    
+
     failed = False
     for f in git_files:
         # Check if it's in a prohibited directory
@@ -23,7 +23,7 @@ def check_generated_files(git_files):
             if d in prohibited_dirs:
                 print(f"ERROR: Prohibited directory found in git tracking: {f}")
                 failed = True
-                
+
         ext = os.path.splitext(f)[1].lower()
         if ext in prohibited_exts:
             print(f"ERROR: Prohibited file found in git tracking: {f}")
@@ -34,26 +34,26 @@ def check_encoding_and_whitespace(git_files):
     print("Checking encoding (UTF-8) and trailing whitespace...")
     failed = False
     allowed_exts = {".py", ".md", ".cpp", ".hpp", ".h", ".txt", ".json", ".yml", ".yaml", ".toml"}
-    
+
     for f in git_files:
         if not os.path.exists(f):
             continue
-            
+
         ext = os.path.splitext(f)[1].lower()
         if ext not in allowed_exts:
             continue
-            
+
         try:
             with open(f, "rb") as file:
                 raw = file.read()
-                
+
             # Check for BOM
             if raw.startswith(b'\xef\xbb\xbf'):
                 print(f"ERROR: File contains UTF-8 BOM: {f}")
                 failed = True
-                
+
             text = raw.decode("utf-8")
-            
+
             # Check trailing whitespace
             lines = text.splitlines()
             for i, line in enumerate(lines):
@@ -74,10 +74,10 @@ if __name__ == "__main__":
     if not git_files:
         print("No git files found, skipping checks.")
         sys.exit(0)
-        
+
     generated_failed = check_generated_files(git_files)
     whitespace_failed = check_encoding_and_whitespace(git_files)
-    
+
     if generated_failed or whitespace_failed:
         print("Hygiene checks failed!")
         sys.exit(1)
