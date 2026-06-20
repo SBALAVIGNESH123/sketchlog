@@ -1,8 +1,8 @@
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Annotated
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, status, Request, Response
-from pydantic import BaseModel, Field, constr, conint, model_validator
+from pydantic import BaseModel, Field, model_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from sketchlog import StreamLog
@@ -25,12 +25,13 @@ if MAX_BATCH_SIZE < 1:
 MAX_REQUEST_BYTES = int(os.environ.get("SKETCHLOG_MAX_REQUEST_BYTES", "1048576"))
 
 class LimitUploadSize(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
         if request.method in ["POST", "PUT", "PATCH"]:
             content_length = request.headers.get("content-length")
             if content_length and int(content_length) > MAX_REQUEST_BYTES:
                 return Response(status_code=413, content=b"Request body too large")
-        return await call_next(request)
+        from typing import cast
+        return cast(Response, await call_next(request))
 
 app.add_middleware(LimitUploadSize)
 
@@ -69,8 +70,8 @@ registry = StreamRegistry(max_size=MAX_STREAMS)
 
 # Models
 # C++ extensions accept uint64_t but typically bounded positive integers max at 2^63-1 for safe signed limits in generic protocols.
-ValidEventCount = conint(gt=0, lt=9223372036854775808)
-ValidName = constr(min_length=1, max_length=255)
+ValidEventCount = Annotated[int, Field(gt=0, lt=9223372036854775808)]
+ValidName = Annotated[str, Field(min_length=1, max_length=255)]
 
 class EventBatch(BaseModel):
     latencies: Optional[List[float]] = Field(default_factory=list, description="Array of latency values to ingest.")
