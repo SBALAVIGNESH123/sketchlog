@@ -1,4 +1,4 @@
-﻿# SketchLog
+# SketchLog
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
 ![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)

@@ -1,4 +1,4 @@
-﻿# Architecture & Concepts
+# Architecture & Concepts
 
 ## Accuracy and Guarantees
 

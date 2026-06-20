@@ -61,7 +61,7 @@ def test_extreme_skew_merge():
     shard_light = StreamLog()
     heavy_vals = [random.lognormvariate(5, 1) for _ in range(99_000)]
     light_vals = [random.uniform(0.1, 1.0) for _ in range(1_000)]
-    
+
     shard_heavy.add_batch(heavy_vals)
     shard_light.add_batch(light_vals)
     shard_heavy.merge(shard_light)
@@ -70,7 +70,7 @@ def test_extreme_skew_merge():
     sorted_extreme = sorted(all_extreme)
     true_p99_extreme = sorted_extreme[int(0.99 * len(all_extreme)) - 1]
     err_extreme = abs(shard_heavy.p99() - true_p99_extreme) / true_p99_extreme * 100
-    
+
     assert err_extreme < 1.0, f"99:1 skew merge p99 error too high: {err_extreme:.3f}%"
 
 def test_windowed_expiration_correctness():
@@ -85,7 +85,7 @@ def test_windowed_expiration_correctness():
     # 2b: New data after expiry works
     for i in range(50):
         log_w.add_latency(float(i + 200))
-        
+
     assert log_w.total_events == 50
     assert log_w.p99() > 200
 
@@ -103,7 +103,7 @@ def test_windowed_expiration_correctness():
     assert log_w2.total_events == 200
 
     time.sleep(1.2)
-    
+
     # First batch should have expired, second still active
     assert wait_for_condition(lambda: log_w2.total_events == 100, timeout=3.0)
 
@@ -119,7 +119,7 @@ def test_windowed_memory_stability():
 
     mem_after = log_w3.memory_bytes()
     ratio = mem_after / mem_initial if mem_initial > 0 else 1.0
-    
+
     assert ratio < 2.0, f"Memory ratio exceeded 2.0x (ratio={ratio:.2f})"
 
 def test_merge_commutativity_and_associativity():
@@ -149,14 +149,14 @@ def test_merge_commutativity_and_associativity():
     ab_c_other1 = StreamLog()
     ab_c_other1.add_batch(vals_y)
     ab_c.merge(ab_c_other1)
-    
+
     ab_c_other2 = StreamLog()
     ab_c_other2.add_batch(vals_z)
     ab_c.merge(ab_c_other2)
 
     a_bc = StreamLog()
     a_bc.add_batch(vals_x)
-    
+
     bc = StreamLog()
     bc.add_batch(vals_y)
     bc_other = StreamLog()

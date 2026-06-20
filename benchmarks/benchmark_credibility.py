@@ -74,12 +74,12 @@ if HAS_CPP:
         t0 = time.perf_counter_ns()
         log_cpp.add_latency(float(i))
         latencies_cpp.append(time.perf_counter_ns() - t0)
-    
+
     latencies_cpp.sort()
     p50_cpp = latencies_cpp[int(0.50 * N_SAMPLES)]
     p99_cpp = latencies_cpp[int(0.99 * N_SAMPLES)]
     avg_cpp = sum(latencies_cpp) / len(latencies_cpp)
-    
+
     print(f"\n  C++ add_latency() over {N_SAMPLES:,} calls:")
     print(f"    avg:   {avg_cpp:>8.0f} ns ({avg_cpp/1000:.1f} us)")
     print(f"    p50:   {p50_cpp:>8,} ns")
@@ -222,23 +222,23 @@ print()
 if HAS_CPP:
     print("5. Cross-language parity (Python vs C++ at 1M events)")
     print("-" * 70)
-    
+
     random.seed(42)
     values = [random.lognormvariate(2, 1) for _ in range(1_000_000)]
     arr = np.array(values, dtype=np.float64)
-    
+
     # Python
     log_py = sketchlog.StreamLog()
     log_py.add_batch(values)
-    
+
     # C++
     log_cpp = cpp.StreamLog()
     log_cpp.add_batch(arr)
-    
+
     quantiles = [0.50, 0.90, 0.95, 0.99, 0.999]
     print(f"  {'Quantile':>10}  {'Python':>12}  {'C++':>12}  {'Match':>8}")
     print(f"  {'--------':>10}  {'------':>12}  {'---':>12}  {'-----':>8}")
-    
+
     all_match = True
     for q in quantiles:
         py_val = log_py.percentile(q)
@@ -248,7 +248,7 @@ if HAS_CPP:
             all_match = False
         label = f"p{int(q*100)}" if q < 0.999 else "p99.9"
         print(f"  {label:>10}  {py_val:>12.4f}  {cpp_val:>12.4f}  {'YES' if match else 'NO':>8}")
-    
+
     print(f"\n  All quantiles match: {'YES' if all_match else 'NO'}")
     print(f"  Python memory: {log_py.memory_kb():.1f} KB")
     print(f"  C++ memory:    {log_cpp.memory_kb():.1f} KB")

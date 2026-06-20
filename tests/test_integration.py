@@ -15,7 +15,7 @@ def test_python_streamlog():
 def test_cpp_streamlog():
     if not sketchlog.HAS_CPP:
         pytest.skip("C++ backend not available")
-        
+
     import numpy as np
     cpp_log = sketchlog._cpp.StreamLog()
     cpp_log.add_batch(np.array([1.0, 2.0, 3.0, 4.0, 5.0]))
@@ -42,7 +42,7 @@ def test_all_features_intact():
     log2 = sketchlog.StreamLog()
     for i in range(1000):
         log2.add_latency(float(i))
-    
+
     assert "total_bytes" in log2.memory_breakdown()
     assert sketchlog.StreamLog(deterministic=True)._deterministic is True
     assert isinstance(sketchlog.WindowedStreamLog(window="5m"), sketchlog.WindowedStreamLog)

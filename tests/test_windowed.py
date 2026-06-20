@@ -16,7 +16,7 @@ def test_window_expiry():
     log2 = WindowedStreamLog(window="2s", n_buckets=4)
     for i in range(100):
         log2.add_latency(float(i))
-        
+
     assert log2.total_events == 100
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline and log2.total_events != 0:
@@ -35,13 +35,13 @@ def test_thread_safety_built_in():
     def worker(n):
         for _ in range(1000):
             log3.add_latency(float(n))
-            
+
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(4)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-        
+
     assert log3.total_events == 4000
 
 def test_events_and_uniques():
@@ -49,18 +49,18 @@ def test_events_and_uniques():
     for i in range(1000):
         log4.add_event("api_call")
         log4.add_unique(str(i))
-        
+
     assert log4.event_count("api_call") >= 1000
     assert log4.unique_count() > 950  # HyperLogLog approximation
 
 def test_empty_window_no_deadlock():
     from sketchlog import WindowedStreamLog
     log = WindowedStreamLog(window="1m")
-    
+
     # Should not deadlock
     stats = log.stats()
     assert stats.events == 0
-    
+
     # Should not deadlock
     r = repr(log)
     assert r.startswith("WindowedStreamLog")

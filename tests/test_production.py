@@ -19,17 +19,17 @@ from sketchlog import StreamLog, ThreadSafeStreamLog, WindowedStreamLog
 def test_concurrency_profiling(n_threads):
     EVENTS_PER_THREAD = 50_000
     log = ThreadSafeStreamLog()
-    
+
     def worker():
         for i in range(EVENTS_PER_THREAD):
             log.add_latency(float(i % 1000) + 1.0)
-    
+
     threads = [threading.Thread(target=worker) for _ in range(n_threads)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-    
+
     expected = n_threads * EVENTS_PER_THREAD
     assert log.total_events == expected
 
@@ -77,7 +77,7 @@ def test_adversarial_cms_hash_collision_stress():
     for key, true_count in TRUE_COUNTS.items():
         if log_cms.event_count(key) < true_count:
             underestimates += 1
-            
+
     assert underestimates == 0
 
     log_adv = StreamLog(cms_width=512, cms_depth=4)
@@ -105,7 +105,7 @@ def test_pathological_burst_insertion():
     for i in range(50_000):
         log_alt.add_latency(0.001)
         log_alt.add_latency(10_000.0)
-    
+
     exact_p99 = 10_000.0
     err = abs(log_alt.p99() - exact_p99) / exact_p99 * 100
     assert err < 1.0
@@ -120,7 +120,7 @@ def test_pathological_burst_insertion():
 def test_skew_drift_over_time_windows():
     log_drift = WindowedStreamLog(window="3s", n_buckets=6)
     random.seed(42)
-    
+
     for _ in range(5000): log_drift.add_latency(random.uniform(0.1, 100))
     p99_uniform = log_drift.p99()
 

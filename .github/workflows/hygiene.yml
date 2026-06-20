@@ -1,0 +1,44 @@
+name: Repository Hygiene
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  hygiene-checks:
+    name: Code Hygiene and Commit Size
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need history for diff size check
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run Hygiene Script
+        run: python scripts/check_hygiene.py
+
+      - name: Check Oversized Commits
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_SHA=${{ github.event.pull_request.base.sha }}
+            HEAD_SHA=${{ github.event.pull_request.head.sha }}
+            # Get the diff size in bytes
+            DIFF_SIZE=$(git diff $BASE_SHA...$HEAD_SHA | wc -c)
+
+            echo "Pull request diff size: $DIFF_SIZE bytes"
+
+            # 1 MB = 1048576 bytes
+            if [ "$DIFF_SIZE" -gt 1048576 ]; then
+              echo "::error::Commit diff exceeds 1MB limit ($DIFF_SIZE bytes). Please break up large additions or request a bypass."
+              exit 1
+            fi
+          fi
+          echo "Commit size check passed."

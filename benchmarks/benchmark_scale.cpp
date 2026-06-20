@@ -20,7 +20,7 @@ int main() {
 
     // Create StreamLog with default settings
     sketchlog::StreamLog log;
-    
+
     // Random generators for realistic latency distribution (lognormal)
     std::mt19937_64 rng(42);
     std::lognormal_distribution<double> latency_dist(2.0, 1.0);  // ~7ms median, long tail
@@ -132,10 +132,10 @@ int main() {
     std::cout << "  RESULTS" << std::endl;
     std::cout << "══════════════════════════════════════════════════════════════" << std::endl;
     std::cout << "  Events processed:  " << TOTAL_EVENTS / 1'000'000 << " million" << std::endl;
-    std::cout << "  Total memory:      " << std::fixed << std::setprecision(2) 
+    std::cout << "  Total memory:      " << std::fixed << std::setprecision(2)
               << log.memory_kb() << " KB" << std::endl;
     std::cout << "  Total time:        " << std::setprecision(1) << total_sec << " seconds" << std::endl;
-    std::cout << "  Throughput:        " << std::setprecision(0) 
+    std::cout << "  Throughput:        " << std::setprecision(0)
               << (TOTAL_EVENTS / total_sec) << " events/sec" << std::endl;
     std::cout << "  p99 latency:       " << std::setprecision(4) << log.p99() << " ms" << std::endl;
     std::cout << "  Unique users:      " << log.unique_count() << std::endl;

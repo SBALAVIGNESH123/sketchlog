@@ -1,10 +1,10 @@
-﻿# Integrations
+# Integrations
 
 SketchLog is built to fit neatly into modern observability stacks without creating architectural friction.
 
 ## OpenTelemetry Exporter
 
-You can seamlessly bridge SketchLog into any OpenTelemetry-compatible observability backend (like Jaeger, Datadog, Honeycomb, or New Relic) using the built-in OTLP asynchronous integration. 
+You can seamlessly bridge SketchLog into any OpenTelemetry-compatible observability backend (like Jaeger, Datadog, Honeycomb, or New Relic) using the built-in OTLP asynchronous integration.
 
 This exporter works by registering asynchronous OTel instruments (like `ObservableGauge`), mapping your StreamLog percentiles, cardinality estimates, and event frequencies into OTLP metrics. It guarantees zero memory duplication and respects OpenTelemetry temporality.
 
@@ -15,8 +15,8 @@ from sketchlog.integrations.opentelemetry import SketchLogOTelPublisher
 log = StreamLog()
 # You can use the high-level publisher to immediately spin up a Periodic MetricReader
 publisher = SketchLogOTelPublisher(
-    streamlog=log, 
-    export_interval_millis=60000, 
+    streamlog=log,
+    export_interval_millis=60000,
     export_events=["cache_miss", "db_query"]
 )
 

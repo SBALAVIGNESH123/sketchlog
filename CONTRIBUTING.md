@@ -7,22 +7,29 @@ Thanks for your interest in contributing. Whether it's a bug fix, new feature, d
 ```bash
 git clone https://github.com/SBALAVIGNESH123/sketchlog.git
 cd sketchlog
-pip install -e .
-pip install pytest
-python -m pytest tests/test_sketchlog.py -v
+pip install -e .[server]
+pip install pytest mypy pyright httpx
+python -m pytest tests/ -v
 ```
 
-All 21 core tests should pass.
+All 130+ core and server tests should pass.
+
+To run static type checkers:
+```bash
+python -m mypy python/sketchlog
+python -m pyright python/sketchlog
+```
 
 ## How to contribute
 
 1. Fork the repository
 2. Create a branch: `git checkout -b my-feature`
 3. Make your changes
-4. Run the tests: `python -m pytest tests/test_sketchlog.py -v`
-5. Commit: `git commit -m "add my feature"`
-6. Push: `git push origin my-feature`
-7. Open a pull request
+4. Run the tests: `python -m pytest tests/ -v`
+5. Check types: `python -m mypy python/sketchlog` and `python -m pyright python/sketchlog`
+6. Commit: `git commit -m "add my feature"`
+7. Push: `git push origin my-feature`
+8. Open a pull request
 
 ## What we're looking for
 
@@ -45,6 +52,10 @@ Some areas where help is especially useful:
 ## Reporting bugs
 
 Use the [bug report template](https://github.com/SBALAVIGNESH123/sketchlog/issues/new?template=bug_report.yml). Include a minimal reproduction if possible.
+
+## Architectural Changes
+
+If your contribution involves a major architectural change, new protocol, or breaking API change, please submit an RFC first following the [RFC Process](RFC_PROCESS.md).
 
 ## Questions?
 
