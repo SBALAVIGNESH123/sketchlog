@@ -51,6 +51,7 @@ nav:
   - Integrations: integrations.md
   - API Reference: api.md
   - Standalone Server: server.md
+  - Security Threat Model: threat_model.md
   - Formal Guarantees: guarantees.md
   - Contributing: contributing.md
 
