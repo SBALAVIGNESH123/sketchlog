@@ -15,8 +15,8 @@ pytestmark = [pytest.mark.stress, pytest.mark.lifecycle]
 
 
 @pytest.mark.asyncio
-async def test_graceful_shutdown_drains(live_server):
-    """Server finishes in-flight requests before exiting on SIGTERM."""
+async def test_graceful_shutdown_exits_cleanly(live_server):
+    """Server exits cleanly when receiving SIGTERM."""
     base = live_server["url"]
     proc = live_server["process"]
 

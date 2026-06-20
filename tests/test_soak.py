@@ -121,10 +121,16 @@ async def test_soak_latency_drift(live_server, resource_envelope):
                 current_latencies = []
                 window_start = time.monotonic()
 
-    if len(windows) >= 2:
-        drift_pct = abs(windows[-1] - windows[0]) / windows[0] * 100 if windows[0] > 0 else 0
-        assert drift_pct < resource_envelope["soak_max_latency_drift_pct"], \
-            f"Latency drift {drift_pct:.1f}% exceeds {resource_envelope['soak_max_latency_drift_pct']}%"
+    assert len(windows) >= 2, "Soak duration too short or server stalled, could not collect 2 windows"
+    
+    # Check absolute p99 envelope
+    max_p99 = max(windows)
+    assert max_p99 < resource_envelope["soak_max_latency_p99_ms"], \
+        f"Max soak p99 {max_p99:.1f}ms exceeds {resource_envelope['soak_max_latency_p99_ms']}ms"
+
+    drift_pct = abs(windows[-1] - windows[0]) / windows[0] * 100 if windows[0] > 0 else 0
+    assert drift_pct < resource_envelope["soak_max_latency_drift_pct"], \
+        f"Latency drift {drift_pct:.1f}% exceeds {resource_envelope['soak_max_latency_drift_pct']}%"
 
 
 @pytest.mark.asyncio

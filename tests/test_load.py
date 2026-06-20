@@ -79,6 +79,7 @@ async def test_load_ingestion(live_server, resource_envelope, results_dir):
     (results_dir / "load_results.json").write_text(json.dumps(result, indent=2))
 
     assert total_ok > 0, "No successful requests"
+    assert rps >= resource_envelope["load_min_throughput_rps"], f"Throughput {rps:.1f} RPS is below {resource_envelope['load_min_throughput_rps']} RPS"
     assert p99 < resource_envelope["load_max_p99_ms"], f"p99 {p99:.1f}ms exceeds {resource_envelope['load_max_p99_ms']}ms"
 
 
