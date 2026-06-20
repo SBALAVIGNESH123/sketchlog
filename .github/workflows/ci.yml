@@ -147,14 +147,14 @@ jobs:
       - name: Run Fuzzer
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            ./build/fuzz_cpp -max_total_time=3600
+            ./build/fuzz_cpp tests/corpus -max_total_time=3600
           else
-            ./build/fuzz_cpp -max_total_time=60
+            ./build/fuzz_cpp tests/corpus -max_total_time=60
           fi
 
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         with:
           name: fuzzer-crashes
           path: |
