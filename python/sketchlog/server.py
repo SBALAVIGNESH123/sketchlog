@@ -100,7 +100,7 @@ app.add_middleware(CorrelationIdMiddleware)
 async def observe_requests(request: Request, call_next):
     structlog.contextvars.bind_contextvars(request_id=correlation_id.get())
     start_time = time.perf_counter()
-    
+
     try:
         response = await call_next(request)
     except Exception as e:
@@ -108,7 +108,7 @@ async def observe_requests(request: Request, call_next):
         raise e
     finally:
         duration = time.perf_counter() - start_time
-        
+
         stream_id = ""
         if "streams/" in request.url.path:
             parts = request.url.path.split("streams/")
@@ -120,10 +120,10 @@ async def observe_requests(request: Request, call_next):
 
         HTTP_REQUESTS_TOTAL.labels(method=request.method, status=status_code, stream_id=stream_id).inc()
         HTTP_REQUEST_DURATION.labels(method=request.method, path=request.url.path).observe(duration)
-        
+
         if status_code >= 400 and status_code != 404:
             logger.warning("http_request_failed", method=request.method, path=request.url.path, status=status_code)
-            
+
     return response
 
 # State
