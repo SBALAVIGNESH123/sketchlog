@@ -24,7 +24,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             std::memcpy(&cms_d, data + 14, sizeof(uint32_t));
             cms_w = (cms_w % 100000) + 1;
             cms_d = (cms_d % 20) + 1;
-            
+
             i += 18;
             if (!std::isnan(rel_acc) && !std::isinf(rel_acc) && rel_acc >= 0.0001 && rel_acc < 1.0) {
                 sketchlog::StreamLog parameterized(rel_acc, hll_p, cms_w, cms_d);
