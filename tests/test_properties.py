@@ -144,7 +144,7 @@ def test_merge_associativity(ops_a, ops_b, ops_c):
                 log.add_event(val)
             elif op_type == "unique":
                 log.add_unique(val)
-    
+
     log_a1 = StreamLog(deterministic=True)
     log_b1 = StreamLog(deterministic=True)
     log_c1 = StreamLog(deterministic=True)
@@ -231,7 +231,7 @@ def test_countmin_properties(events):
     for ev in events:
         cms.add(ev.encode('utf-8'))
         counts[ev] += 1
-    
+
     # CMS estimate should always be >= true count
     for ev, true_count in counts.items():
         assert cms.estimate(ev.encode('utf-8')) >= true_count

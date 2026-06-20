@@ -14,23 +14,18 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         sketchlog::StreamLog log;
         size_t i = 0;
 
-        if (size > 1 && data[0] % 4 == 0) {
-            uint16_t des_len;
-            if (size > 3) {
-                std::memcpy(&des_len, data + 1, sizeof(uint16_t));
-                i += 3;
-                if (i + des_len <= size) {
-                    sketchlog::StreamLog::deserialize(data + i, des_len);
-                    i += des_len;
-                }
-            }
-        } else if (size > 5 && data[0] % 4 == 1) {
+        if (size > 21 && data[0] % 4 == 0) {
             // parameterized constructor
             double rel_acc;
             std::memcpy(&rel_acc, data + 1, sizeof(double));
-            i += 9;
-            if (!std::isnan(rel_acc) && !std::isinf(rel_acc) && rel_acc > 0 && rel_acc < 1.0) {
-                sketchlog::StreamLog parameterized(rel_acc);
+            uint8_t hll_p = data[9];
+            uint32_t cms_w, cms_d;
+            std::memcpy(&cms_w, data + 10, sizeof(uint32_t));
+            std::memcpy(&cms_d, data + 14, sizeof(uint32_t));
+            
+            i += 18;
+            if (!std::isnan(rel_acc) && !std::isinf(rel_acc) && rel_acc >= 0.0001 && rel_acc < 1.0) {
+                sketchlog::StreamLog parameterized(rel_acc, hll_p, cms_w, cms_d);
                 log = parameterized;
             }
         } else {

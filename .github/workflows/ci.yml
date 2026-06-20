@@ -151,7 +151,7 @@ jobs:
           else
             ./build/fuzz_cpp -max_total_time=60
           fi
-          
+
       - name: Upload crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4
@@ -161,7 +161,7 @@ jobs:
             crash-*
             leak-*
             timeout-*
-            
+
   test-tsan:
     name: C++ ThreadSanitizer
     runs-on: ubuntu-latest
