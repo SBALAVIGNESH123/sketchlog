@@ -12,17 +12,18 @@ from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 
 from sketchlog import StreamLog
 
-structlog.configure(
-    processors=[
-        structlog.contextvars.merge_contextvars,
-        structlog.processors.add_log_level,
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer(),
-    ]
-)
+if not structlog.is_configured():
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer(),
+        ]
+    )
 logger = structlog.get_logger("sketchlog.server")
 
-HTTP_REQUESTS_TOTAL = Counter("sketchlog_http_requests_total", "Total HTTP requests", ["method", "status", "stream_id"])
+HTTP_REQUESTS_TOTAL = Counter("sketchlog_http_requests_total", "Total HTTP requests", ["method", "status"])
 HTTP_REQUEST_DURATION = Histogram("sketchlog_http_request_duration_seconds", "HTTP request duration", ["method", "path"])
 ACTIVE_STREAMS = Gauge("sketchlog_active_streams", "Number of active streams in registry")
 EVENTS_INGESTED_TOTAL = Counter("sketchlog_events_ingested_total", "Total events ingested")
@@ -125,7 +126,7 @@ async def observe_requests(request: Request, call_next: Callable[[Request], Awai
                 parts[3] = "{stream_id}"
                 path_label = "/".join(parts)
 
-        HTTP_REQUESTS_TOTAL.labels(method=request.method, status=status_code, stream_id=stream_id).inc()
+        HTTP_REQUESTS_TOTAL.labels(method=request.method, status=status_code).inc()
         HTTP_REQUEST_DURATION.labels(method=request.method, path=path_label).observe(duration)
 
         if status_code >= 400 and status_code != 404:
@@ -216,9 +217,10 @@ async def health_check() -> Dict[str, str]:
 
 @app.get("/ready", status_code=status.HTTP_200_OK)
 async def readiness_check() -> Dict[str, str]:
+    threshold = float(os.environ.get("SKETCHLOG_MEMORY_THRESHOLD", "90"))
     try:
         mem_percent = psutil.Process().memory_percent()
-        if mem_percent > 90.0:
+        if mem_percent > threshold:
             raise HTTPException(status_code=503, detail="Service degraded: Memory usage critical")
     except Exception as e:
         if isinstance(e, HTTPException):
