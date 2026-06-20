@@ -44,7 +44,8 @@ class LimitUploadSize(BaseHTTPMiddleware):
             received_bytes = 0
             request.state.body_too_large = False
 
-            async def limited_receive() -> Dict[str, Any]:
+            from typing import MutableMapping
+            async def limited_receive() -> MutableMapping[str, Any]:
                 nonlocal received_bytes
                 message = await receive()
                 if message["type"] == "http.request":
