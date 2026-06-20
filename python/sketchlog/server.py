@@ -2,7 +2,7 @@ import os
 from typing import Dict, List, Optional
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PositiveInt, model_validator
 
 from sketchlog import StreamLog
 
@@ -14,6 +14,10 @@ app = FastAPI(
 
 # Configuration
 MAX_STREAMS = int(os.environ.get("SKETCHLOG_MAX_STREAMS", "1000"))
+if MAX_STREAMS < 1:
+    raise ValueError("SKETCHLOG_MAX_STREAMS must be >= 1")
+
+MAX_BATCH_SIZE = int(os.environ.get("SKETCHLOG_MAX_BATCH_SIZE", "10000"))
 
 # State
 class StreamRegistry:
@@ -52,7 +56,16 @@ registry = StreamRegistry(max_size=MAX_STREAMS)
 class EventBatch(BaseModel):
     latencies: Optional[List[float]] = Field(default_factory=list, description="Array of latency values to ingest.")
     uniques: Optional[List[str]] = Field(default_factory=list, description="Array of distinct string items for cardinality tracking.")
-    events: Optional[Dict[str, int]] = Field(default_factory=dict, description="Dictionary mapping event names to their occurrence counts.")
+    events: Optional[Dict[str, PositiveInt]] = Field(default_factory=dict, description="Dictionary mapping event names to their positive occurrence counts.")
+
+    @model_validator(mode='after')
+    def check_batch_size(self) -> 'EventBatch':
+        total_items = (len(self.latencies) if self.latencies else 0) + \
+                      (len(self.uniques) if self.uniques else 0) + \
+                      (len(self.events) if self.events else 0)
+        if total_items > MAX_BATCH_SIZE:
+            raise ValueError(f"Batch size exceeds maximum limit of {MAX_BATCH_SIZE} items")
+        return self
 
 class MetricsResponse(BaseModel):
     stream_id: str
@@ -61,7 +74,13 @@ class MetricsResponse(BaseModel):
     p99: float
     p99_9: float
     unique_count: int
+    total_events: int
     memory_footprint_bytes: int
+
+class EventCountResponse(BaseModel):
+    stream_id: str
+    event_name: str
+    count: int
 
 # Endpoints
 @app.get("/health", status_code=status.HTTP_200_OK)
@@ -102,7 +121,20 @@ async def get_metrics(stream_id: str) -> MetricsResponse:
         p99=stream.percentile(0.99),
         p99_9=stream.percentile(0.999),
         unique_count=stream.unique_count(),
+        total_events=stream.total_events,
         memory_footprint_bytes=stream.memory_bytes()
+    )
+
+@app.get("/v1/streams/{stream_id}/events/{event_name}", response_model=EventCountResponse)
+async def get_event_count(stream_id: str, event_name: str) -> EventCountResponse:
+    stream = registry.get(stream_id)
+    if not stream:
+        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+    
+    return EventCountResponse(
+        stream_id=stream_id,
+        event_name=event_name,
+        count=stream.event_count(event_name)
     )
 
 @app.delete("/v1/streams/{stream_id}", status_code=status.HTTP_204_NO_CONTENT)

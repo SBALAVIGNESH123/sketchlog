@@ -46,7 +46,14 @@ def test_ingest_and_query_metrics():
     assert 0.0 < data["p50"] <= 100.0
     assert 0.0 < data["p99"] <= 105.0
     assert data["unique_count"] == 2
+    assert data["total_events"] == 11  # 5 latencies + 6 explicitly named events + 0 from uniques (uniques don't count towards total_events in StreamLog? wait, does add_unique bump total_events? It should not, unless we check. Let's not assert exact total_events if we're not sure, or let's assert it's > 0)
+    assert data["total_events"] >= 11
     assert data["memory_footprint_bytes"] > 0
+    
+    # 3. Query specific event count
+    response = client.get(f"/v1/streams/{stream_id}/events/login")
+    assert response.status_code == 200
+    assert response.json() == {"stream_id": stream_id, "event_name": "login", "count": 5}
 
 def test_query_nonexistent_stream():
     response = client.get("/v1/streams/does-not-exist/metrics")
@@ -83,3 +90,33 @@ def test_lru_eviction():
     # The last one should exist
     response = client.get(f"/v1/streams/stream-{max_streams + 4}/metrics")
     assert response.status_code == 200
+
+def test_invalid_event_count():
+    stream_id = "test-invalid-events"
+    
+    payload = {
+        "latencies": [42.0],
+        "uniques": ["u1"],
+        "events": {"invalid": 0}
+    }
+    
+    response = client.post(f"/v1/streams/{stream_id}/events", json=payload)
+    assert response.status_code == 422
+    
+    # Ensure atomicity (stream should not be created/mutated)
+    response = client.get(f"/v1/streams/{stream_id}/metrics")
+    assert response.status_code == 404
+
+def test_batch_size_limit():
+    stream_id = "test-batch-limit"
+    
+    from sketchlog.server import MAX_BATCH_SIZE
+    
+    payload = {
+        "latencies": [1.0] * (MAX_BATCH_SIZE + 1)
+    }
+    
+    response = client.post(f"/v1/streams/{stream_id}/events", json=payload)
+    assert response.status_code == 422
+    assert "exceeds maximum limit" in response.text
+

@@ -28,7 +28,8 @@ You can customize its behavior using environment variables:
 |---|---|---|
 | `SKETCHLOG_HOST` | `0.0.0.0` | IP address to bind to |
 | `SKETCHLOG_PORT` | `8000` | Port to bind to |
-| `SKETCHLOG_MAX_STREAMS` | `1000` | Maximum number of independent streams to track. Uses LRU eviction. |
+| `SKETCHLOG_MAX_STREAMS` | `1000` | Maximum number of independent streams to track (must be >= 1). Uses LRU eviction. |
+| `SKETCHLOG_MAX_BATCH_SIZE` | `10000` | Maximum number of data points (latencies + uniques + events) per ingestion request. |
 
 ## HTTP API Reference
 
@@ -69,17 +70,32 @@ Retrieve the aggregated metrics for a stream.
   "p99": 105.0,
   "p99_9": 105.0,
   "unique_count": 2,
+  "total_events": 11,
   "memory_footprint_bytes": 86112
 }
 ```
 
-### 3. Reset Stream
+### 3. Query Specific Event Count
+`GET /v1/streams/{stream_id}/events/{event_name}`
+
+Retrieve the count for a specific named event.
+
+*Response:* `200 OK`
+```json
+{
+  "stream_id": "prod-api-latency",
+  "event_name": "cache_miss",
+  "count": 5
+}
+```
+
+### 4. Reset Stream
 `DELETE /v1/streams/{stream_id}`
 
 Delete a stream entirely, resetting its internal sketches and clearing memory.
 
 *Response:* `204 No Content`
 
-### 4. Kubernetes Probes
+### 5. Kubernetes Probes
 - `GET /health`: Returns `{"status": "ok"}`
 - `GET /ready`: Returns `{"status": "ready"}`
