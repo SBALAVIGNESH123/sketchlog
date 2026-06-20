@@ -78,8 +78,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             log.p50();
             log.p99();
         }
-    } catch (...) {
-        // Ignore expected exceptions (e.g. overflow, invalid arguments)
+    } catch (const std::overflow_error&) {
+        // Expected on saturation
+    } catch (const std::invalid_argument&) {
+        // Expected on malformed constructor or parameters
     }
 
     return 0;
