@@ -11,7 +11,7 @@ The core library operates entirely within the host application's memory space. I
 *   **Integer Overflow**: Sketch algorithms (like Count-Min Sketch) rely on fixed-size counters.
     *   *Mitigation*: The C++ backend enforces strict signed and unsigned bounds. Event insertion counts are pre-flighted against `UINT64_MAX` and `INT64_MAX` constraints before mutation to prevent undefined behavior or state wrapping.
 *   **Out-of-Bounds Memory Access**: Sketches allocate specific capacities (e.g., hash arrays).
-    *   *Mitigation*: Internal C++ arrays are bounded and indexed via safe modulo arithmetic on cryptographic hashes (MurmurHash3).
+    *   *Mitigation*: Internal C++ arrays are bounded and indexed via safe modulo arithmetic on seeded hash values (MurmurHash3).
 *   **Malicious Serialized State**: When restoring a sketch from disk or network, the state could be crafted to exploit deserializers.
     *   *Mitigation*: We do not use unsafe deserialization formats like Python's `pickle`. Sketches are serialized to raw byte streams or JSON structures with strict schema validation in C++.
 

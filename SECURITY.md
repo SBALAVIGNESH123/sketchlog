@@ -13,7 +13,7 @@ We provide security updates for the current major version. Users are strongly en
 
 If you discover a security vulnerability, please do **NOT** open a public issue.
 
-Please report all security vulnerabilities via the **[GitHub Security Advisories](https://github.com/SBALAVIGNESH123/sketchlog/security/advisories/new)** tab in this repository. If you do not have access to this feature, please email the project owner directly.
+Please report all security vulnerabilities via the **[GitHub Security Advisories](https://github.com/SBALAVIGNESH123/sketchlog/security/advisories/new)** tab in this repository. If you do not have access to this feature, please email us directly at `security@sketchlog.io`.
 
 ### What to Include
 *   A clear description of the vulnerability.
