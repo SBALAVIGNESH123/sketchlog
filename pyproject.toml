@@ -39,12 +39,14 @@ docs = [
 ]
 dev = [
     "pytest",
+    "pytest-asyncio",
     "numpy",
     "mkdocs-material>=9.5.0",
     "mypy",
     "pyright",
     "httpx",
-    "hypothesis"
+    "hypothesis",
+    "psutil"
 ]
 opentelemetry = [
     "opentelemetry-api",
