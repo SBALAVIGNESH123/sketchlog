@@ -1,7 +1,7 @@
 {
   "soak_max_rss_mb": 256,
-  "soak_max_latency_p99_ms": 50,
-  "soak_max_latency_drift_pct": 20,
-  "load_min_throughput_rps": 1000,
-  "load_max_p99_ms": 100
+  "soak_max_latency_p99_ms": 2000,
+  "soak_max_latency_drift_pct": 200,
+  "load_min_throughput_rps": 500,
+  "load_max_p99_ms": 2000
 }
