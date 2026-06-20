@@ -26,9 +26,6 @@ MAX_REQUEST_BYTES = int(os.environ.get("SKETCHLOG_MAX_REQUEST_BYTES", "1048576")
 if MAX_REQUEST_BYTES < 1:
     raise ValueError("SKETCHLOG_MAX_REQUEST_BYTES must be >= 1")
 
-class BodyTooLargeException(BaseException):
-    pass
-
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if request.method in ["POST", "PUT", "PATCH"]:
@@ -39,29 +36,37 @@ class LimitUploadSize(BaseHTTPMiddleware):
                         return Response(status_code=413, content=b"Request body too large")
                 except ValueError:
                     return Response(status_code=400, content=b"Invalid Content-Length")
-            
+
+            body = bytearray()
+            more_body = True
             receive = request.receive
-            received_bytes = 0
-            request.state.body_too_large = False
+
+            while more_body:
+                message = await receive()
+                if message["type"] == "http.request":
+                    chunk = message.get("body", b"")
+                    body.extend(chunk)
+                    if len(body) > MAX_REQUEST_BYTES:
+                        return Response(status_code=413, content=b"Request body too large")
+                    more_body = message.get("more_body", False)
+                elif message["type"] == "http.disconnect":
+                    more_body = False
+
+            body_bytes = bytes(body)
 
             from typing import MutableMapping
             async def limited_receive() -> MutableMapping[str, Any]:
-                nonlocal received_bytes
-                message = await receive()
-                if message["type"] == "http.request":
-                    received_bytes += len(message.get("body", b""))
-                    if received_bytes > MAX_REQUEST_BYTES:
-                        request.state.body_too_large = True
-                        return {"type": "http.request", "body": b"", "more_body": False}
-                return message
+                nonlocal body_bytes
+                if body_bytes is not None:
+                    msg = {"type": "http.request", "body": body_bytes, "more_body": False}
+                    body_bytes = None  # type: ignore
+                    return msg
+                return {"type": "http.request", "body": b"", "more_body": False}
 
             request._receive = limited_receive
 
         from typing import cast
-        response = cast(Response, await call_next(request))
-        if getattr(request.state, "body_too_large", False):
-            return Response(status_code=413, content=b"Request body too large")
-        return response
+        return cast(Response, await call_next(request))
 
 app.add_middleware(LimitUploadSize)
 
@@ -145,17 +150,22 @@ async def readiness_check() -> Dict[str, str]:
 async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
     if len(stream_id) > 255:
         raise HTTPException(status_code=422, detail="Stream ID too long")
-    
-    stream = registry.get_or_create(stream_id)
 
     # 1. Preflight counter capacity limit
     new_events = (len(batch.latencies) if batch.latencies else 0)
     if batch.events:
         new_events += sum(batch.events.values())
-        
+
+    current_total = 0
+    existing_stream = registry.get(stream_id)
+    if existing_stream:
+        current_total = existing_stream.total_events
+
     # UINT64_MAX
-    if stream.total_events + new_events > 18446744073709551615:
+    if current_total + new_events > 18446744073709551615:
         raise HTTPException(status_code=422, detail="Total stream event capacity exceeded")
+
+    stream = registry.get_or_create(stream_id)
 
     if batch.latencies:
         stream.add_batch(batch.latencies)

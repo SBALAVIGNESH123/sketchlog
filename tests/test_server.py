@@ -153,40 +153,43 @@ def test_path_encoding_and_limits():
 
 def test_native_backend_range_limit():
     stream_id = "test-native-limit"
-
+    
     payload = {
         "latencies": [42.0],
         "events": {"overflow": 2**100}
     }
-
+    
+    # Ensure atomic rejection on single event overflow leaves no stream created
     response = client.post(f"/v1/streams/{stream_id}/events", json=payload)
     assert response.status_code == 422
-
-    # Check total stream capacity overflow
+    assert client.get(f"/v1/streams/{stream_id}/metrics").status_code == 404
+    
+    # Check total stream capacity overflow leaves no stream created
     payload_capacity = {
         "latencies": [42.0],
         "events": {"almost": 18446744073709551615}
     }
     response = client.post(f"/v1/streams/{stream_id}/events", json=payload_capacity)
     assert response.status_code == 422
-
-    # Ensure atomicity
-    response = client.get(f"/v1/streams/{stream_id}/metrics")
-    assert response.status_code == 404
+    assert client.get(f"/v1/streams/{stream_id}/metrics").status_code == 404
 
 def test_oversized_chunked_request():
     stream_id = "test-oversized-chunked"
-
+    
+    # This payload is generated dynamically to simulate a chunked transfer exceeding 1MB limit.
     def generate_large_payload():
         yield b'{"uniques": ["'
         for _ in range(150):
             yield b'a' * 10000
         yield b'"]}'
-
+        
     response = client.post(f"/v1/streams/{stream_id}/events", content=generate_large_payload(), headers={"Content-Type": "application/json"})
-    print("RESPONSE", response.text)
     assert response.status_code == 413
+    
+    # Assert stream was NOT created because the endpoint execution was preempted
+    response_metric = client.get(f"/v1/streams/{stream_id}/metrics")
+    assert response_metric.status_code == 404
 
 def test_malformed_content_length():
-    response = client.post(f"/v1/streams/test/events", json={}, headers={"Content-Length": "abc"})
+    response = client.post("/v1/streams/test/events", json={}, headers={"Content-Length": "abc"})
     assert response.status_code == 400
