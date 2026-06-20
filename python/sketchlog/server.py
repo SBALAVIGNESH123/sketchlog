@@ -23,6 +23,8 @@ if MAX_BATCH_SIZE < 1:
     raise ValueError("SKETCHLOG_MAX_BATCH_SIZE must be >= 1")
 
 MAX_REQUEST_BYTES = int(os.environ.get("SKETCHLOG_MAX_REQUEST_BYTES", "1048576"))
+if MAX_REQUEST_BYTES < 1:
+    raise ValueError("SKETCHLOG_MAX_REQUEST_BYTES must be >= 1")
 
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
