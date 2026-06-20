@@ -59,7 +59,7 @@ class LimitUploadSize(BaseHTTPMiddleware):
                 nonlocal body_bytes
                 if body_bytes is not None:
                     msg = {"type": "http.request", "body": body_bytes, "more_body": False}
-                    body_bytes = None  # type: ignore
+                    body_bytes = None
                     return msg
                 return {"type": "http.request", "body": b"", "more_body": False}
 
