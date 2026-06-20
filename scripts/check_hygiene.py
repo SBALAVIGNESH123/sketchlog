@@ -34,13 +34,15 @@ def check_encoding_and_whitespace(git_files):
     print("Checking encoding (UTF-8) and trailing whitespace...")
     failed = False
     allowed_exts = {".py", ".md", ".cpp", ".hpp", ".h", ".txt", ".json", ".yml", ".yaml", ".toml"}
+    allowed_exact = {".gitignore", ".gitkeep", "CODEOWNERS", "LICENSE", "Makefile"}
 
     for f in git_files:
         if not os.path.exists(f):
             continue
 
         ext = os.path.splitext(f)[1].lower()
-        if ext not in allowed_exts:
+        basename = os.path.basename(f)
+        if ext not in allowed_exts and basename not in allowed_exact:
             continue
 
         try:
