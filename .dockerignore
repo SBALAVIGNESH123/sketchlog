@@ -27,3 +27,4 @@ jobs_new.json
 *.py
 !setup.py
 !pyproject.toml
+!README.md
