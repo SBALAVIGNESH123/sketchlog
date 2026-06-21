@@ -240,6 +240,7 @@ async def get_prometheus_metrics() -> Response:
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 # Test endpoint for SDK retry validation
+# Intentionally non-thread-safe state for deterministic single-client conformance testing.
 _flake_counter = 0
 
 @app.api_route("/test/flake", methods=["GET", "POST"])

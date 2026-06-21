@@ -84,7 +84,7 @@ export class SketchLogClient {
           }
           throw new SketchLogError(408, 'Request Timeout');
         }
-        if (isIdempotent && attempt <= this.maxRetries) {
+        if (isIdempotent && attempt <= this.maxRetries && err.name !== 'TypeError') {
           await this.delay(attempt);
           continue;
         }

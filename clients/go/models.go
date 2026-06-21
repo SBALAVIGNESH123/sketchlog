@@ -21,7 +21,6 @@ type EventBatch struct {
 }
 
 // ClientOptions allows configuring the SketchLog client.
-
 type ClientOptions struct {
 	Endpoint   string
 	MaxRetries int

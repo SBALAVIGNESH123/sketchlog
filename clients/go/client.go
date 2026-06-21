@@ -89,7 +89,7 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 				}
 				continue
 			}
-			return nil, &SketchLogError{StatusCode: 400, Message: "Marshal Error: " + err.Error()}
+			return nil, &SketchLogError{StatusCode: 503, Message: "Transport Error: " + err.Error()}
 		}
 
 		resBody, _ := io.ReadAll(res.Body)
