@@ -41,8 +41,8 @@ func main() {
 		fmt.Println("Ingest success")
 
 	case "test-retries":
-		if err := client.Health(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "Health error: %v\n", err)
+		if err := client.TestFlake(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Retry error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Retry/Health success")

@@ -239,6 +239,18 @@ async def readiness_check() -> Dict[str, str]:
 async def get_prometheus_metrics() -> Response:
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+# Test endpoint for SDK retry validation
+_flake_counter = 0
+
+@app.api_route("/test/flake", methods=["GET", "POST"])
+async def flake_endpoint() -> Dict[str, str]:
+    global _flake_counter
+    _flake_counter += 1
+    if _flake_counter <= 2:
+        raise HTTPException(status_code=503, detail="Simulated flake")
+    _flake_counter = 0
+    return {"status": "success"}
+
 @app.post("/v1/streams/{stream_id:path}/events", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
     if len(stream_id) > 255:

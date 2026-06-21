@@ -1,6 +1,9 @@
 package sketchlog
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type SketchLogError struct {
 	StatusCode int
@@ -18,7 +21,9 @@ type EventBatch struct {
 }
 
 // ClientOptions allows configuring the SketchLog client.
+
 type ClientOptions struct {
 	Endpoint   string
 	MaxRetries int
+	Timeout    time.Duration
 }

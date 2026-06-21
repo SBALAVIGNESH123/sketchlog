@@ -19,12 +19,11 @@ class ConformanceSuite:
             [sys.executable, "-m", "uvicorn", "sketchlog.server:app", "--port", str(self.port)],
             stdout=sys.stdout,
             stderr=sys.stderr,
-            cwd=self.cwd,
             env={**os.environ, "PYTHONPATH": "python"}
         )
 
-        # Wait for server to become healthy
-        for _ in range(30):
+        # Wait for server to become healthy (up to 10 seconds)
+        for _ in range(100):
             try:
                 with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health") as res:
                     if res.getcode() == 200:

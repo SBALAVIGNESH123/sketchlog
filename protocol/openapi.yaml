@@ -41,8 +41,9 @@ paths:
         '200':
           description: Successful Response
           content:
-            application/json:
-              schema: {}
+            text/plain; version=0.0.4:
+              schema:
+                type: string
   /v1/streams/{stream_id}/events:
     post:
       summary: Ingest Events

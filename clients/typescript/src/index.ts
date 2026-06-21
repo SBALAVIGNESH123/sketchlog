@@ -75,14 +75,20 @@ export class SketchLogClient {
         throw new SketchLogError(res.status, await res.text());
 
       } catch (err: any) {
+        if (err instanceof SketchLogError) {
+          throw err;
+        }
         if (err.name === 'AbortError') {
+          if (signal?.aborted) {
+            throw signal.reason || err;
+          }
           throw new SketchLogError(408, 'Request Timeout');
         }
-        if (isIdempotent && attempt <= this.maxRetries && (err.code === 'ECONNRESET' || err.code === 'UND_ERR_SOCKET')) {
+        if (isIdempotent && attempt <= this.maxRetries) {
           await this.delay(attempt);
           continue;
         }
-        throw err;
+        throw new SketchLogError(0, err.message || 'Unknown network error');
       }
     }
   }

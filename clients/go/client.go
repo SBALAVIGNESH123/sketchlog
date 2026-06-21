@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -24,6 +25,10 @@ func NewClient(opts ClientOptions) *Client {
 		opts.MaxRetries = 3
 	}
 
+	if opts.Timeout == 0 {
+		opts.Timeout = 10 * time.Second
+	}
+
 	transport := &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 100,
@@ -35,7 +40,7 @@ func NewClient(opts ClientOptions) *Client {
 		maxRetries: opts.MaxRetries,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   5 * time.Second,
+			Timeout:   opts.Timeout,
 		},
 	}
 }
@@ -114,10 +119,13 @@ func (c *Client) delay(ctx context.Context, attempt int) error {
 	jitter := rng.Float64() * 50.0
 	delay := time.Duration(base+jitter) * time.Millisecond
 	
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(delay):
+	case <-timer.C:
 		return nil
 	}
 }
@@ -128,6 +136,13 @@ func (c *Client) Health(ctx context.Context) error {
 }
 
 func (c *Client) IngestEvents(ctx context.Context, streamID string, batch EventBatch) error {
-	_, err := c.request(ctx, "POST", "/v1/streams/"+streamID+"/events", batch)
+	escapedID := url.PathEscape(streamID)
+	_, err := c.request(ctx, "POST", "/v1/streams/"+escapedID+"/events", batch)
+	return err
+}
+
+// TestFlake is an internal method used by the conformance suite to verify retry logic.
+func (c *Client) TestFlake(ctx context.Context) error {
+	_, err := c.request(ctx, "GET", "/test/flake", nil)
 	return err
 }

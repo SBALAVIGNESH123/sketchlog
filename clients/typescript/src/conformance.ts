@@ -26,9 +26,7 @@ async function main() {
       });
       console.log('Ingest success');
     } else if (command === 'test-retries') {
-      // In a real test we'd hit an endpoint that returns 503,
-      // but for conformance we just test basic health logic.
-      await client.health();
+      await (client as any).request('GET', '/test/flake');
       console.log('Retry/Health success');
     } else {
       console.error(`Unknown command: ${command}`);
