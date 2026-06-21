@@ -153,7 +153,6 @@
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
-              "log": 10,
               "type": "linear"
             },
             "showPoints": "auto",

@@ -19,8 +19,11 @@ You can find the dashboard template inside the repository at `dashboards/sketchl
 3. Navigate to **Dashboards** > **Import**.
 4. Click **Upload JSON file** and select the `sketchlog-overview.json` file from the repository, or copy/paste the JSON contents directly into the "Import via panel json" text box.
 5. Click **Load**.
-6. At the bottom of the import screen, select your **Prometheus Datasource** from the dropdown menu.
-7. Click **Import**.
+6. At the top of the newly imported dashboard, click the dashboard settings (gear icon) and navigate to **Variables**. Ensure the `DS_PROMETHEUS` variable points to your correct Prometheus instance.
+7. Save the dashboard.
+
+> [!NOTE]
+> The template uses a fixed UID (`sketchlog-overview`). If you already have a dashboard with this UID, re-importing this file will overwrite it in place.
 
 ## Supported Metrics
 
