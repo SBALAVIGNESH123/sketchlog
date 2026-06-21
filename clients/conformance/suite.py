@@ -16,9 +16,10 @@ class ConformanceSuite:
     def start_server(self):
         print(f"Starting sketchlog server on port {self.port}...")
         self.server_process = subprocess.Popen(
-            ["uvicorn", "sketchlog.server:app", "--port", str(self.port)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            [sys.executable, "-m", "uvicorn", "sketchlog.server:app", "--port", str(self.port)],
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            cwd=self.cwd,
             env={**os.environ, "PYTHONPATH": "python"}
         )
 
