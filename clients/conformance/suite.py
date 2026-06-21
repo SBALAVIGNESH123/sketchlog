@@ -20,7 +20,7 @@ class ConformanceSuite:
             stderr=subprocess.DEVNULL,
             env={**os.environ, "PYTHONPATH": "python"}
         )
-        
+
         # Wait for server to become healthy
         for _ in range(30):
             try:
@@ -51,25 +51,25 @@ class ConformanceSuite:
     def run_all(self):
         try:
             self.start_server()
-            
+
             # Test 1: Basic Ingestion
             self.run_test("ingest_basic", ["test-ingest"])
-            
+
             # Verify ingestion via metrics
             with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/metrics") as res:
                 metrics = res.read().decode('utf-8')
                 if "sketchlog_events_ingested_total" not in metrics:
                     print("FAILED: Metrics did not record ingested events.")
                     sys.exit(1)
-                    
+
             # Test 2: Idempotent Retry (SDK should retry 503s correctly)
             # We can't easily force the server to 503 without a proxy, so the SDK test wrapper
             # will just simulate it internally or we use a special endpoint if available.
             # For now, we trust the SDK test wrapper runs its own mock tests for retries.
             self.run_test("retries", ["test-retries"])
-            
+
             print("All conformance tests passed!")
-            
+
         finally:
             self.stop_server()
 
@@ -77,6 +77,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SketchLog Protocol Conformance Suite")
     parser.add_argument("--command", required=True, help="Command to run the SDK wrapper (e.g. 'node run.js' or 'go run main.go')")
     args = parser.parse_args()
-    
+
     suite = ConformanceSuite(args.command)
     suite.run_all()

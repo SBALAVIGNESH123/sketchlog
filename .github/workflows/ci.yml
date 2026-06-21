@@ -247,7 +247,7 @@ jobs:
         working-directory: clients/typescript
         run: npm install
       - name: Run Conformance Suite
-        run: python clients/conformance/suite.py --command "npx tsx clients/typescript/src/conformance.ts"
+        run: python clients/conformance/suite.py --command "cd clients/typescript && npx tsx src/conformance.ts"
 
   conformance-go:
     name: Conformance Suite (Go)
@@ -265,4 +265,4 @@ jobs:
         with:
           go-version: "1.21"
       - name: Run Conformance Suite
-        run: python clients/conformance/suite.py --command "go run clients/go/cmd/conformance/main.go"
+        run: python clients/conformance/suite.py --command "cd clients/go && go run cmd/conformance/main.go"

@@ -1,7 +1,7 @@
 # SketchLog Client SDKs
 
-SketchLog provides officially supported, production-ready client SDKs for TypeScript/JavaScript and Go. 
-Our SDKs are built entirely by hand to guarantee optimal connection pooling, jittered retry logic, and strict typed error handling—they are **not** blindly generated wrappers. 
+SketchLog provides officially supported, production-ready client SDKs for TypeScript/JavaScript and Go.
+Our SDKs are built entirely by hand to guarantee optimal connection pooling, jittered retry logic, and strict typed error handling—they are **not** blindly generated wrappers.
 
 ## Supported Languages
 
@@ -84,10 +84,10 @@ The SDKs automatically retry idempotent requests (like metrics aggregations and 
 
 ### 2. Timeouts and Cancellation
 - **TypeScript**: The SDK supports `AbortController` signals to cancel requests mid-flight. If a request surpasses `timeoutMs`, an `AbortError` is automatically thrown and translated to a `408 Request Timeout` SketchLogError.
-- **Go**: The SDK strictly honors `context.Context` for propagation, timeouts, and deadlines. 
+- **Go**: The SDK strictly honors `context.Context` for propagation, timeouts, and deadlines.
 
 ### 3. Connection Pooling
-High-throughput data planes require persistent connections to avoid TLS handshake penalties. 
+High-throughput data planes require persistent connections to avoid TLS handshake penalties.
 - The TypeScript SDK utilizes `undici.Agent` for robust Keep-Alive pooling in Node.js.
 - The Go SDK utilizes a custom-tuned `http.Transport` optimized for high `MaxIdleConnsPerHost`.
 
