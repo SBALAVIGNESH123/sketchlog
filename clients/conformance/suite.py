@@ -25,7 +25,7 @@ class ConformanceSuite:
         # Wait for server to become healthy (up to 10 seconds)
         for _ in range(100):
             try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health") as res:
+                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health", timeout=5) as res:
                     if res.getcode() == 200:
                         print("Server is healthy.")
                         return
@@ -36,7 +36,10 @@ class ConformanceSuite:
     def stop_server(self):
         if self.server_process:
             self.server_process.terminate()
-            self.server_process.wait()
+            try:
+                self.server_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.server_process.kill()
 
     def run_test(self, name: str, args: list[str]):
         print(f"Running test: {name}...")
@@ -58,7 +61,7 @@ class ConformanceSuite:
             self.run_test("ingest_basic", ["test-ingest"])
 
             # Verify ingestion via metrics
-            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/metrics") as res:
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/metrics", timeout=5) as res:
                 metrics = res.read().decode('utf-8')
                 if "sketchlog_events_ingested_total" not in metrics:
                     print("FAILED: Metrics did not record ingested events.")

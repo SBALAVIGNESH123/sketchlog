@@ -53,7 +53,7 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 	if body != nil {
 		reqBody, err = json.Marshal(body)
 		if err != nil {
-			return nil, err
+			return nil, &SketchLogError{StatusCode: 400, Message: "Marshal Error: " + err.Error()}
 		}
 	}
 
@@ -70,7 +70,7 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 
 		req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 		if err != nil {
-			return nil, err
+			return nil, &SketchLogError{StatusCode: 400, Message: "Marshal Error: " + err.Error()}
 		}
 
 		if body != nil {
@@ -89,7 +89,7 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 				}
 				continue
 			}
-			return nil, err
+			return nil, &SketchLogError{StatusCode: 400, Message: "Marshal Error: " + err.Error()}
 		}
 
 		resBody, _ := io.ReadAll(res.Body)

@@ -104,6 +104,6 @@ export class SketchLogClient {
   }
 
   async ingestEvents(streamId: string, batch: EventBatch, signal?: AbortSignal): Promise<void> {
-    await this.request('POST', `/v1/streams/${streamId}/events`, batch, signal);
+    await this.request('POST', `/v1/streams/${encodeURIComponent(streamId)}/events`, batch, signal);
   }
 }

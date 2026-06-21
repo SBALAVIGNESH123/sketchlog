@@ -33,7 +33,8 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
 
             try {
                 if (py::isinstance<py::array_t<double>>(values)) {
-                    auto buf = values.cast<py::array_t<double>>().unchecked<1>();
+                    auto arr = values.cast<py::array_t<double>>();
+                    auto buf = arr.unchecked<1>();
                     for (py::ssize_t i = 0; i < buf.shape(0); i++) {
                         temp.add(buf(i));
                     }
@@ -136,7 +137,8 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
 
             try {
                 if (py::isinstance<py::array_t<double>>(values)) {
-                    auto buf = values.cast<py::array_t<double>>().unchecked<1>();
+                    auto arr = values.cast<py::array_t<double>>();
+                    auto buf = arr.unchecked<1>();
                     for (py::ssize_t i = 0; i < buf.shape(0); i++) {
                         temp.add_latency(buf(i));
                     }

@@ -159,6 +159,7 @@ components:
           - items:
               type: number
             type: array
+            maxItems: 10000
           - type: 'null'
           title: Latencies
           description: Array of latency values to ingest.
@@ -169,6 +170,7 @@ components:
               maxLength: 255
               minLength: 1
             type: array
+            maxItems: 10000
           - type: 'null'
           title: Uniques
           description: Array of distinct string items for cardinality tracking.
@@ -182,6 +184,7 @@ components:
               maxLength: 255
               minLength: 1
             type: object
+            maxProperties: 10000
           - type: 'null'
           title: Events
           description: Dictionary mapping event names to their positive occurrence
