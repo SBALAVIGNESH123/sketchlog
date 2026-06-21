@@ -43,5 +43,7 @@ async function main() {
     process.exit(1);
   }
 }
-
-main().catch(console.error);
+main().catch((err) => {
+  console.error('Fatal startup/runtime failure:', err);
+  process.exit(1);
+});

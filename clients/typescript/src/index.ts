@@ -31,8 +31,8 @@ export class SketchLogClient {
     this.timeoutMs = options.timeoutMs ?? 5000;
     // Connection pooling
     this.agent = new Agent({
-      keepAliveTimeout: 10,
-      keepAliveMaxTimeout: 10,
+      keepAliveTimeout: 10000,
+      keepAliveMaxTimeout: 10000,
     });
   }
 
@@ -46,8 +46,8 @@ export class SketchLogClient {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
         
-        // Use provided signal or our timeout signal
-        const activeSignal = signal || controller.signal;
+        // Combine provided signal with our timeout signal so neither is ignored
+        const activeSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
 
         const res = await fetch(url, {
           method,
