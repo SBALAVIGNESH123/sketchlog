@@ -24,7 +24,7 @@ LICENSE
 pytest.ini
 jobs.json
 jobs_new.json
-*.py
+/*.py
 !setup.py
 !pyproject.toml
 !README.md

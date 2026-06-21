@@ -1,4 +1,5 @@
-FROM python:3.11-slim AS builder
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim AS builder
 
 # Install build dependencies required for pybind11 and C++ extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -18,7 +19,7 @@ RUN pip install --no-cache-dir build wheel && \
     pip install --no-cache-dir .[server]
 
 # Stage 2: Runtime
-FROM python:3.11-slim
+FROM python:${PYTHON_VERSION}-slim
 
 # Install curl for healthcheck and create a non-root user
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
