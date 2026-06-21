@@ -7,8 +7,9 @@ import urllib.request
 import os
 
 class ConformanceSuite:
-    def __init__(self, command: str, port: int = 8999):
+    def __init__(self, command: str, cwd: str, port: int = 8999):
         self.command = command
+        self.cwd = cwd
         self.port = port
         self.server_process = None
 
@@ -39,8 +40,9 @@ class ConformanceSuite:
 
     def run_test(self, name: str, args: list[str]):
         print(f"Running test: {name}...")
-        cmd_str = f"{self.command} --endpoint=http://127.0.0.1:{self.port} {' '.join(args)}"
-        result = subprocess.run(cmd_str, capture_output=True, text=True, shell=True)
+        import shlex
+        cmd_args = shlex.split(self.command) + [f"--endpoint=http://127.0.0.1:{self.port}"] + args
+        result = subprocess.run(cmd_args, cwd=self.cwd, capture_output=True, text=True, shell=False)
         if result.returncode != 0:
             print(f"Test '{name}' FAILED!")
             print(f"STDOUT: {result.stdout}")
@@ -75,8 +77,9 @@ class ConformanceSuite:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SketchLog Protocol Conformance Suite")
-    parser.add_argument("--command", required=True, help="Command to run the SDK wrapper (e.g. 'node run.js' or 'go run main.go')")
+    parser.add_argument('--command', required=True, help="Command to run SDK conformance wrapper")
+    parser.add_argument('--cwd', required=False, default=".", help="Working directory for the command")
     args = parser.parse_args()
 
-    suite = ConformanceSuite(args.command)
+    suite = ConformanceSuite(args.command, args.cwd)
     suite.run_all()

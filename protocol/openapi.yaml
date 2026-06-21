@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: SketchLog Server
+  title: SketchLog API
   description: Standalone network service for SketchLog event streaming and metrics
     aggregation.
-  version: 1.0.1
+  version: 0.1.0
 paths:
   /health:
     get:

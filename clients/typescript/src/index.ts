@@ -1,4 +1,4 @@
-import { fetch, Agent, Response } from 'undici';
+import { fetch, Agent } from 'undici';
 
 export class SketchLogError extends Error {
   constructor(public status: number, message: string) {
@@ -38,6 +38,7 @@ export class SketchLogClient {
 
   private async request(method: string, path: string, body?: any, signal?: AbortSignal): Promise<any> {
     const url = `${this.endpoint}${path}`;
+    const isIdempotent = method === 'GET' || method === 'PUT' || method === 'DELETE';
     let attempt = 0;
 
     while (true) {
@@ -65,8 +66,8 @@ export class SketchLogClient {
         }
 
         // Retry on 5xx or 429
-        if ((res.status >= 500 || res.status === 429) && attempt <= this.maxRetries) {
-          const text = await res.text();
+        if ((res.status >= 500 || res.status === 429) && isIdempotent && attempt <= this.maxRetries) {
+          await res.arrayBuffer(); // Consume to free socket
           await this.delay(attempt);
           continue;
         }
@@ -77,7 +78,7 @@ export class SketchLogClient {
         if (err.name === 'AbortError') {
           throw new SketchLogError(408, 'Request Timeout');
         }
-        if (attempt <= this.maxRetries && (err.code === 'ECONNRESET' || err.code === 'UND_ERR_SOCKET')) {
+        if (isIdempotent && attempt <= this.maxRetries && (err.code === 'ECONNRESET' || err.code === 'UND_ERR_SOCKET')) {
           await this.delay(attempt);
           continue;
         }
