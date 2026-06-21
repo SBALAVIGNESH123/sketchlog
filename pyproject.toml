@@ -39,12 +39,14 @@ docs = [
 ]
 dev = [
     "pytest",
+    "pytest-asyncio",
     "numpy",
     "mkdocs-material>=9.5.0",
     "mypy",
     "pyright",
     "httpx",
-    "hypothesis"
+    "hypothesis",
+    "types-psutil"
 ]
 opentelemetry = [
     "opentelemetry-api",
@@ -54,7 +56,11 @@ opentelemetry = [
 server = [
     "fastapi>=0.100.0,<1",
     "uvicorn>=0.20.0,<1",
-    "pydantic>=2.0,<3"
+    "pydantic>=2.0,<3",
+    "structlog>=23.1.0",
+    "prometheus-client>=0.17.0",
+    "asgi-correlation-id>=4.2.0",
+    "psutil"
 ]
 
 [tool.setuptools.packages.find]

@@ -39,3 +39,6 @@ venv/
 site/
 py38/
 *.zip
+
+# Stress test results
+tests/results/*.json
