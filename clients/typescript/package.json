@@ -1,0 +1,21 @@
+{
+  "name": "typescript",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "undici": "^8.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

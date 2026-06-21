@@ -1,0 +1,115 @@
+package sketchlog
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"math"
+	"math/rand"
+	"net/http"
+	"strings"
+	"time"
+)
+
+type Client struct {
+	endpoint   string
+	maxRetries int
+	httpClient *http.Client
+}
+
+func NewClient(opts ClientOptions) *Client {
+	if opts.MaxRetries == 0 {
+		opts.MaxRetries = 3
+	}
+
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     90 * time.Second,
+	}
+
+	return &Client{
+		endpoint:   strings.TrimRight(opts.Endpoint, "/"),
+		maxRetries: opts.MaxRetries,
+		httpClient: &http.Client{
+			Transport: transport,
+			Timeout:   5 * time.Second,
+		},
+	}
+}
+
+func (c *Client) request(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	url := c.endpoint + path
+
+	var reqBody []byte
+	var err error
+	if body != nil {
+		reqBody, err = json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	attempt := 0
+	for {
+		attempt++
+
+		var bodyReader io.Reader
+		if body != nil {
+			bodyReader = bytes.NewReader(reqBody)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+		if err != nil {
+			return nil, err
+		}
+
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		res, err := c.httpClient.Do(req)
+
+		if err != nil {
+			if attempt <= c.maxRetries {
+				c.delay(attempt)
+				continue
+			}
+			return nil, err
+		}
+
+		resBody, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+
+		if res.StatusCode >= 200 && res.StatusCode < 300 {
+			return resBody, nil
+		}
+
+		if (res.StatusCode >= 500 || res.StatusCode == 429) && attempt <= c.maxRetries {
+			c.delay(attempt)
+			continue
+		}
+
+		return nil, &SketchLogError{
+			StatusCode: res.StatusCode,
+			Message:    string(resBody),
+		}
+	}
+}
+
+func (c *Client) delay(attempt int) {
+	base := 100.0 * math.Pow(2, float64(attempt-1))
+	jitter := rand.Float64() * 50.0
+	time.Sleep(time.Duration(base+jitter) * time.Millisecond)
+}
+
+func (c *Client) Health(ctx context.Context) error {
+	_, err := c.request(ctx, "GET", "/health", nil)
+	return err
+}
+
+func (c *Client) IngestEvents(ctx context.Context, streamID string, batch EventBatch) error {
+	_, err := c.request(ctx, "POST", "/v1/streams/"+streamID+"/events", batch)
+	return err
+}

@@ -1,0 +1,40 @@
+{
+  "environment": {
+    "os": "Windows",
+    "os_release": "10",
+    "machine": "AMD64",
+    "python_version": "3.11.9",
+    "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+    "timestamp": "2026-06-21T02:02:35.276689Z"
+  },
+  "results": [
+    {
+      "name": "python_scalar_add",
+      "unit": "seconds",
+      "samples": 3,
+      "mean": 0.04782449999887225,
+      "median": 0.04769749999832129,
+      "stddev": 0.0003333659258651456,
+      "p95": 0.04820269999981974,
+      "raw_samples": [
+        0.047573299998475704,
+        0.04769749999832129,
+        0.04820269999981974
+      ]
+    },
+    {
+      "name": "cpp_scalar_add",
+      "unit": "seconds",
+      "samples": 3,
+      "mean": 0.04567233333242863,
+      "median": 0.04483989999789628,
+      "stddev": 0.0029545501362328638,
+      "p95": 0.04895380000016303,
+      "raw_samples": [
+        0.04322329999922658,
+        0.04483989999789628,
+        0.04895380000016303
+      ]
+    }
+  ]
+}

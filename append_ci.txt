@@ -1,0 +1,40 @@
+
+  test-sanitizers:
+    name: C++ Sanitizers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Configure CMake with Sanitizers
+        run: cmake -B build -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run C++ Tests
+        run: ctest --test-dir build --output-on-failure
+
+  fuzz-cpp:
+    name: C++ Fuzzing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install Clang
+        run: sudo apt-get install -y clang
+
+      - name: Configure CMake
+        env:
+          CC: clang
+          CXX: clang++
+        run: cmake -B build -DENABLE_FUZZING=ON
+
+      - name: Build Fuzzer
+        run: cmake --build build --target fuzz_cpp
+
+      - name: Run Fuzzer (60s)
+        run: ./build/fuzz_cpp -max_total_time=60
+

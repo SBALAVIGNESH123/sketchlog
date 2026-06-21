@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Solution>
+	<Configurations>
+		<BuildType Name="Debug"/>
+		<BuildType Name="Release"/>
+		<BuildType Name="MinSizeRel"/>
+		<BuildType Name="RelWithDebInfo"/>
+		<Platform Name="x64"/>
+	</Configurations>
+	<Project Path="ALL_BUILD.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="478da574-07d0-3543-b997-bfc4671e8f15" DefaultStartup="true">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="benchmark_scale.vcxproj"/>
+		<BuildDependency Project="countmin.vcxproj"/>
+		<BuildDependency Project="ddsketch.vcxproj"/>
+		<BuildDependency Project="hyperloglog.vcxproj"/>
+		<BuildDependency Project="sketchlog.vcxproj"/>
+		<BuildDependency Project="tests_cpp.vcxproj"/>
+		<Build Solution="Debug|*" Project="false"/>
+		<Build Solution="Release|*" Project="false"/>
+		<Build Solution="MinSizeRel|*" Project="false"/>
+		<Build Solution="RelWithDebInfo|*" Project="false"/>
+	</Project>
+	<Project Path="RUN_TESTS.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="f4a2e7e7-633d-3577-bb63-f52ec79c1f2a">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<Build Solution="Debug|*" Project="false"/>
+		<Build Solution="Release|*" Project="false"/>
+		<Build Solution="MinSizeRel|*" Project="false"/>
+		<Build Solution="RelWithDebInfo|*" Project="false"/>
+	</Project>
+	<Project Path="ZERO_CHECK.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="5372a472-20c1-3434-84d1-7022754219e4"/>
+	<Project Path="benchmark_scale.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="7f8c0867-73a2-3051-ad26-208dac81e4c3">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="countmin.vcxproj"/>
+		<BuildDependency Project="ddsketch.vcxproj"/>
+		<BuildDependency Project="hyperloglog.vcxproj"/>
+		<BuildDependency Project="sketchlog.vcxproj"/>
+	</Project>
+	<Project Path="countmin.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="b4ec22a9-5b54-391a-be6b-820cde245916">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="ddsketch.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="cf9ca885-a88b-3458-b489-5c939a3d3626">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="hyperloglog.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="89e274bb-cd03-3ae6-8093-ddfa36b26020">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="sketchlog.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="9985a943-4262-3d16-a4a4-1e84cb19e9dc">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="countmin.vcxproj"/>
+		<BuildDependency Project="ddsketch.vcxproj"/>
+		<BuildDependency Project="hyperloglog.vcxproj"/>
+	</Project>
+	<Project Path="tests_cpp.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="e3214238-af4f-3b3a-9326-a75e9bb755ee">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="countmin.vcxproj"/>
+		<BuildDependency Project="ddsketch.vcxproj"/>
+		<BuildDependency Project="hyperloglog.vcxproj"/>
+		<BuildDependency Project="sketchlog.vcxproj"/>
+	</Project>
+</Solution>

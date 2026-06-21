@@ -48,6 +48,7 @@ nav:
   - Getting Started: index.md
   - Architecture & Concepts: architecture.md
   - Benchmarks: benchmarks.md
+  - Client SDKs: sdks.md
   - Integrations: integrations.md
   - Grafana Dashboard: grafana.md
   - Runbooks: runbooks.md

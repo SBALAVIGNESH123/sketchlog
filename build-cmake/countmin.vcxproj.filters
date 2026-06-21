@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\balav\.gemini\antigravity\scratch\sketchlog\src\countmin.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\balav\.gemini\antigravity\scratch\sketchlog\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{D5CB9EC0-FF79-3477-8917-F39DB593510E}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
