@@ -52,6 +52,8 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 	}
 
 	attempt := 0
+	isIdempotent := (method == "GET" || method == "PUT" || method == "DELETE")
+
 	for {
 		attempt++
 
@@ -72,8 +74,13 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 		res, err := c.httpClient.Do(req)
 
 		if err != nil {
-			if attempt <= c.maxRetries {
-				c.delay(attempt)
+			if ctx.Err() != nil {
+				return nil, err
+			}
+			if isIdempotent && attempt <= c.maxRetries {
+				if err := c.delay(ctx, attempt); err != nil {
+					return nil, err
+				}
 				continue
 			}
 			return nil, err
@@ -86,8 +93,10 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 			return resBody, nil
 		}
 
-		if (res.StatusCode >= 500 || res.StatusCode == 429) && attempt <= c.maxRetries {
-			c.delay(attempt)
+		if (res.StatusCode >= 500 || res.StatusCode == 429) && isIdempotent && attempt <= c.maxRetries {
+			if err := c.delay(ctx, attempt); err != nil {
+				return nil, err
+			}
 			continue
 		}
 
@@ -98,10 +107,18 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 	}
 }
 
-func (c *Client) delay(attempt int) {
+func (c *Client) delay(ctx context.Context, attempt int) error {
 	base := 100.0 * math.Pow(2, float64(attempt-1))
-	jitter := rand.Float64() * 50.0
-	time.Sleep(time.Duration(base+jitter) * time.Millisecond)
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	jitter := rng.Float64() * 50.0
+	delay := time.Duration(base+jitter) * time.Millisecond
+	
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
+	}
 }
 
 func (c *Client) Health(ctx context.Context) error {

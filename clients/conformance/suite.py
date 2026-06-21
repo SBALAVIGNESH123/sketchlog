@@ -39,7 +39,7 @@ class ConformanceSuite:
 
     def run_test(self, name: str, args: list[str]):
         print(f"Running test: {name}...")
-        cmd_str = f"{self.command} {' '.join(args)} --endpoint=http://127.0.0.1:{self.port}"
+        cmd_str = f"{self.command} --endpoint=http://127.0.0.1:{self.port} {' '.join(args)}"
         result = subprocess.run(cmd_str, capture_output=True, text=True, shell=True)
         if result.returncode != 0:
             print(f"Test '{name}' FAILED!")
