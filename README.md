@@ -38,38 +38,72 @@ mkdocs serve
 
 ## Installation
 
+### 1. The Core Library (Python)
+If you just want to use the high-performance sketching data structures directly in Python:
 ```bash
 pip install sketchlog
 ```
 
-If you have a C++ compiler installed (e.g., GCC, Clang, or MSVC), `pip` will automatically compile the native extension for a 46x speedup. If not, it gracefully falls back to the pure Python implementation.
+### 2. The Standalone Server
+To run SketchLog as an independent network service (like Redis or Prometheus):
+```bash
+pip install "sketchlog[server]"
+uvicorn sketchlog.server:app --port 8080
+```
 
 ---
 
 ## Quickstart
 
+### 🐍 Python (Embedded Library)
 ```python
 from sketchlog import StreamLog
 
 log = StreamLog()
-
-# Ingest data (O(1) time, O(1) memory)
 log.add_latency(42.5)
-log.add_latency(11.2)
-log.add_batch([15.0, 88.2, 42.1, 105.0])
-
-# Track unique users (HyperLogLog)
+log.add_batch([15.0, 88.2, 42.1])
 log.add_unique("user_12345")
-log.add_unique("user_99999")
+log.add_event("cache_miss", count=5)
 
-# Track discrete events (Count-Min Sketch)
-log.add_event("cache_miss")
-log.add_event("db_query", count=5)
-
-# Query instantly
 print(f"p99 Latency:  {log.p99():.2f}ms")
-print(f"Unique Users: {log.unique_count()}")
-print(f"Cache Misses: {log.event_count('cache_miss')}")
+```
+
+### 🟨 TypeScript / Node.js SDK
+Connect to the standalone server via HTTP:
+```bash
+npm install @sketchlog/client
+```
+```typescript
+import { SketchLogClient } from '@sketchlog/client';
+
+const client = new SketchLogClient({ endpoint: 'http://localhost:8080' });
+
+// Non-blocking, buffered ingest
+await client.ingestEvents('production_api', {
+  latencies: [42.5, 15.0, 88.2, 42.1],
+  uniques: ["user_12345"],
+  events: { "cache_miss": 5 }
+});
+```
+
+### 🐹 Go SDK
+```bash
+go get github.com/SBALAVIGNESH123/sketchlog-go
+```
+```go
+import "github.com/SBALAVIGNESH123/sketchlog-go"
+
+client := sketchlog.NewClient(sketchlog.ClientOptions{
+    Endpoint: "http://localhost:8080",
+})
+
+batch := sketchlog.EventBatch{
+    Latencies: []float64{42.5, 15.0, 88.2, 42.1},
+    Uniques:   []string{"user_12345"},
+    Events:    map[string]int64{"cache_miss": 5},
+}
+
+err := client.IngestEvents(ctx, "production_api", batch)
 ```
 
 ## Community
