@@ -2,8 +2,11 @@ import platform
 import json
 import time
 import statistics
+import math
 from typing import Callable, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
+
+__all__ = ['BenchmarkHarness', 'BenchmarkResult']
 
 class BenchmarkResult:
     def __init__(self, name: str, unit: str):
@@ -26,7 +29,6 @@ class BenchmarkResult:
         self.median = statistics.median(self.samples)
         self.stddev = statistics.stdev(self.samples) if len(self.samples) > 1 else 0.0
         # Use 0-based percentile formula to prevent systematic inflation
-        import math
         n = len(self.samples)
         idx_95 = max(0, min(n - 1, int(math.ceil(0.95 * n)) - 1))
         self.p95 = self.samples[idx_95]
@@ -51,7 +53,7 @@ class BenchmarkHarness:
             "machine": platform.machine(),
             "python_version": platform.python_version(),
             "processor": platform.processor(),
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         self.results: List[BenchmarkResult] = []
 

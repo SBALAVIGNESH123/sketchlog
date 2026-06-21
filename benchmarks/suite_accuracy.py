@@ -4,6 +4,7 @@ import argparse
 import random
 import numpy as np
 
+# For local dev without pip install -e .
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 import sketchlog
 
