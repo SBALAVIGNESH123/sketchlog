@@ -3,6 +3,7 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 
 #include "sketchlog.hpp"
 #include "ddsketch.hpp"
@@ -26,13 +27,29 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         .def(py::init<double>(), py::arg("relative_accuracy") = 0.01)
         .def("add", py::overload_cast<double>(&sketchlog::DDSketch::add),
              py::arg("value"), "Add a single observation.")
-        .def("add_batch", [](sketchlog::DDSketch& self, py::iterable values) {
+        .def("add_batch", [](sketchlog::DDSketch& self, py::object values) {
             sketchlog::DDSketch temp = self;
-            for (auto item : values) {
-                temp.add(item.cast<double>());
+            bool fast_path_used = false;
+
+            try {
+                if (py::isinstance<py::array_t<double>>(values)) {
+                    auto buf = values.cast<py::array_t<double>>().unchecked<1>();
+                    for (py::ssize_t i = 0; i < buf.shape(0); i++) {
+                        temp.add(buf(i));
+                    }
+                    fast_path_used = true;
+                }
+            } catch (const py::error_already_set&) {
+                // numpy not installed or cast failed, ignore and fallback
+            }
+
+            if (!fast_path_used) {
+                for (auto item : py::iter(values)) {
+                    temp.add(item.cast<double>());
+                }
             }
             self = std::move(temp);
-        }, py::arg("values"), "Bulk-add values from an iterable.")
+        }, py::arg("values"), "Bulk-add values from an iterable (fast path for numpy arrays).")
         .def("quantile", &sketchlog::DDSketch::quantile, py::arg("q"))
         .def("min", &sketchlog::DDSketch::min)
         .def("max", &sketchlog::DDSketch::max)
@@ -113,14 +130,30 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         .def("add_latency", &sketchlog::StreamLog::add_latency,
              py::arg("value"), "Add a latency measurement.")
         .def("add_batch", [](sketchlog::StreamLog& self,
-                              py::iterable values) {
+                              py::object values) {
             sketchlog::StreamLog temp = self;
-            for (auto item : values) {
-                temp.add_latency(item.cast<double>());
+            bool fast_path_used = false;
+
+            try {
+                if (py::isinstance<py::array_t<double>>(values)) {
+                    auto buf = values.cast<py::array_t<double>>().unchecked<1>();
+                    for (py::ssize_t i = 0; i < buf.shape(0); i++) {
+                        temp.add_latency(buf(i));
+                    }
+                    fast_path_used = true;
+                }
+            } catch (const py::error_already_set&) {
+                // numpy not installed or cast failed, ignore and fallback
+            }
+
+            if (!fast_path_used) {
+                for (auto item : py::iter(values)) {
+                    temp.add_latency(item.cast<double>());
+                }
             }
             self = std::move(temp);
         }, py::arg("values"),
-           "Bulk-add latency values from an iterable. Much faster than loop.")
+           "Bulk-add latency values from an iterable (fast path for numpy arrays).")
         .def("percentile", &sketchlog::StreamLog::percentile, py::arg("q"))
         .def("p50", &sketchlog::StreamLog::p50)
         .def("p95", &sketchlog::StreamLog::p95)
