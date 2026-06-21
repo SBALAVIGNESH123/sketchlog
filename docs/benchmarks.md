@@ -2,6 +2,14 @@
 
 SketchLog is engineered for real-time aggregation at scale, capable of absorbing extremely high throughput event streams while keeping its memory footprint rigidly bounded.
 
+> [!IMPORTANT]
+> **Performance Reproducibility**
+> All performance and accuracy claims are automatically verified continuously on GitHub Actions. Our benchmarking suite calculates rigorous statistical variances, confidence intervals, and machine-readable artifacts for every push.
+> 
+> * **Run Throughput Benchmark:** `python benchmarks/suite_throughput.py`
+> * **Run Accuracy Benchmark:** `python benchmarks/suite_accuracy.py`
+> * **CI Pipeline:** See the `Benchmarks` workflow in `.github/workflows/benchmarks.yml` for the latest `results.json` artifacts.
+
 ## Measured Workload: 100M Events
 
 By utilizing probabilistic data structures, SketchLog effectively compresses memory footprints. The data structure sizes are deterministic and isolated entirely from the number of incoming events, depending instead on the value distribution.
