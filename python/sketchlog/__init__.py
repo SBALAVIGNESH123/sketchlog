@@ -31,10 +31,16 @@ For multi-threaded use:
 
 __version__ = "1.0.1"
 
+from sketchlog.facade import StreamLog
+from sketchlog.concurrent import ThreadSafeStreamLog
+from sketchlog.windowed import WindowedStreamLog
+from sketchlog.drift import DriftSketch
+
 __all__ = [
     "StreamLog",
     "ThreadSafeStreamLog",
-    "WindowedStreamLog"
+    "WindowedStreamLog",
+    "DriftSketch"
 ]
 
 # ── C++ backend auto-detection ───────────────────────────────────────────

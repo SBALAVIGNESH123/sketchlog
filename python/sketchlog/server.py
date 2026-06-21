@@ -23,12 +23,23 @@ if not structlog.is_configured():
     )
 logger = structlog.get_logger("sketchlog.server")
 
-HTTP_REQUESTS_TOTAL = Counter("sketchlog_http_requests_total", "Total HTTP requests", ["method", "status"])
-HTTP_REQUEST_DURATION = Histogram("sketchlog_http_request_duration_seconds", "HTTP request duration", ["method", "path"])
-ACTIVE_STREAMS = Gauge("sketchlog_active_streams", "Number of active streams in registry")
-EVENTS_INGESTED_TOTAL = Counter("sketchlog_events_ingested_total", "Total events ingested")
-STREAM_EVICTIONS_TOTAL = Counter("sketchlog_stream_evictions_total", "Total streams evicted from registry")
-REJECTIONS_TOTAL = Counter("sketchlog_rejections_total", "Total rejected operations", ["reason"])
+# Initialize global alerting engine
+global_drift_sketch = DriftSketch(window="1m")
+alert_engine = AlertEngine(global_drift_sketch, poll_interval=10.0)
+alert_engine.start()
+
+# Prometheus Metrics
+REGISTRY = CollectorRegistry()
+HTTP_REQUESTS_TOTAL = Counter("sketchlog_http_requests_total", "Total HTTP requests", ["method", "status"], registry=REGISTRY)
+HTTP_REQUEST_DURATION = Histogram("sketchlog_http_request_duration_seconds", "HTTP request duration", ["method", "path"], registry=REGISTRY)
+ACTIVE_STREAMS = Gauge("sketchlog_active_streams", "Number of active streams in registry", registry=REGISTRY)
+EVENTS_INGESTED_TOTAL = Counter("sketchlog_events_ingested_total", "Total events ingested", registry=REGISTRY)
+STREAM_EVICTIONS_TOTAL = Counter("sketchlog_stream_evictions_total", "Total streams evicted from registry", registry=REGISTRY)
+REJECTIONS_TOTAL = Counter("sketchlog_rejections_total", "Total rejected operations", ["reason"], registry=REGISTRY)
+
+# Alerting Metrics
+ALERTS_FIRED = Counter("sketchlog_alerts_fired_total", "Total alerts fired", registry=REGISTRY)
+WEBHOOK_FAILURES = Counter("sketchlog_webhook_deliveries_failed_total", "Total failed webhook deliveries", registry=REGISTRY)
 
 app = FastAPI(
     title="SketchLog Server",

@@ -61,7 +61,8 @@ class CorrelationResult(TypedDict):
     a_drift_pct: float
     b_drift_pct: float
 
-from sketchlog import StreamLog, _parse_window
+from sketchlog.facade import StreamLog
+from sketchlog.windowed import _parse_window
 
 
 class DriftSketch:
