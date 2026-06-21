@@ -40,9 +40,9 @@ class ConformanceSuite:
 
     def run_test(self, name: str, args: list[str]):
         print(f"Running test: {name}...")
-        import shlex
+        import shlex, sys
         cmd_args = shlex.split(self.command) + [f"--endpoint=http://127.0.0.1:{self.port}"] + args
-        result = subprocess.run(cmd_args, cwd=self.cwd, capture_output=True, text=True, shell=False)
+        result = subprocess.run(cmd_args, cwd=self.cwd, capture_output=True, text=True, shell=(sys.platform == 'win32'))
         if result.returncode != 0:
             print(f"Test '{name}' FAILED!")
             print(f"STDOUT: {result.stdout}")

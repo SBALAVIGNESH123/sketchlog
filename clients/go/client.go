@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"math/rand"
@@ -102,7 +103,7 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 
 		return nil, &SketchLogError{
 			StatusCode: res.StatusCode,
-			Message:    string(resBody),
+			Message:    fmt.Sprintf("Req: %s | Res: %s", string(reqBody), string(resBody)),
 		}
 	}
 }
