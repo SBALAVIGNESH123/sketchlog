@@ -125,7 +125,7 @@ async def test_load_query_under_write(live_server, resource_envelope):
 
     exceptions = [r for r in results if isinstance(r, Exception)]
     assert not exceptions, f"Workers crashed with exceptions: {exceptions}"
-    reader_results = [r for r in results[8:]]
+    reader_results = results[8:]
     assert sum(reader_results) > 0, "No successful read requests"
 
     assert len(write_latencies) > 0

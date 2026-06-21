@@ -220,6 +220,11 @@ async def health_check() -> Dict[str, str]:
 async def readiness_check() -> Dict[str, str]:
     try:
         threshold = float(os.environ.get("SKETCHLOG_MEMORY_THRESHOLD", "90"))
+    except ValueError:
+        logger.warning("Invalid SKETCHLOG_MEMORY_THRESHOLD, defaulting to 90.0")
+        threshold = 90.0
+
+    try:
         mem_percent = psutil.Process().memory_percent()
         if mem_percent > threshold:
             raise HTTPException(status_code=503, detail="Service degraded: Memory usage critical")
