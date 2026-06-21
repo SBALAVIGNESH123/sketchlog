@@ -51,19 +51,25 @@ async def test_overload_stream_limit_eviction(live_server):
     base = live_server["url"]
 
     async with httpx.AsyncClient() as client:
-        # Create 1005 streams sequentially to guarantee LRU order
-        for i in range(1005):
-            batch = {"latencies": [float(i)]}
-            r = await client.post(f"{base}/v1/streams/evict-{i}/events",
-                                  json=batch, timeout=10)
-            assert r.status_code == 202
+        # Create MAX_STREAMS + 5 streams in batches of 50 to guarantee LRU order
+        # while keeping the test fast.
+        limit = 1005
+        for i in range(0, limit, 50):
+            tasks = []
+            for j in range(i, min(i + 50, limit)):
+                batch = {"latencies": [float(j)]}
+                tasks.append(client.post(f"{base}/v1/streams/evict-{j}/events",
+                                         json=batch, timeout=10))
+            responses = await asyncio.gather(*tasks)
+            for r in responses:
+                assert r.status_code == 202
 
         # Early streams should have been evicted
         r = await client.get(f"{base}/v1/streams/evict-0/metrics", timeout=5)
         assert r.status_code == 404
 
         # Latest should exist
-        r = await client.get(f"{base}/v1/streams/evict-1004/metrics", timeout=5)
+        r = await client.get(f"{base}/v1/streams/evict-{limit - 1}/metrics", timeout=5)
         assert r.status_code == 200
 
 
