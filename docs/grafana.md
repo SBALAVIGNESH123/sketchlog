@@ -14,7 +14,7 @@ The dashboard includes visualisations for:
 
 You can find the dashboard template inside the repository at `dashboards/sketchlog-overview.json`.
 
-1. **Prerequisite**: Ensure you have configured the [Prometheus Exporter](observability.md#prometheus) to emit metrics.
+1. **Prerequisite**: Ensure you have configured the [Prometheus Exporter](integrations.md#prometheus-exporter) to emit metrics.
 2. Open your Grafana instance.
 3. Navigate to **Dashboards** > **Import**.
 4. Click **Upload JSON file** and select the `sketchlog-overview.json` file from the repository, or copy/paste the JSON contents directly into the "Import via panel json" text box.
