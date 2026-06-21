@@ -65,10 +65,12 @@ jobs:
 
               # Optional: warn (don't fail) if throughput dropped vs. baseline
               if file == 'benchmark_throughput.json':
-                  BASELINE_SECONDS = 0.05  # Approximate baseline for 500k items
+                  BASELINE_SECONDS = 0.05  # Measured on ubuntu-latest 2-core runner, June 2026
                   for r in data['results']:
                       if r.get('mean', 0) > BASELINE_SECONDS * 1.5:
-                          print(f'WARNING: Possible regression in {file} for {r["name"]} (mean {r["mean"]:.4f} > {BASELINE_SECONDS * 1.5})')
+                          name = r.get('name')
+                          mean_val = r.get('mean')
+                          print(f'WARNING: Possible regression in {file} for {name} (mean {mean_val:.4f} > {BASELINE_SECONDS * 1.5})')
 
           check('benchmark_throughput.json')
           check('benchmark_accuracy.json')

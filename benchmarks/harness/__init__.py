@@ -53,7 +53,7 @@ class BenchmarkHarness:
             "machine": platform.machine(),
             "python_version": platform.python_version(),
             "processor": platform.processor(),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
         self.results: List[BenchmarkResult] = []
 
