@@ -56,7 +56,9 @@ async def test_load_ingestion(live_server, resource_envelope, results_dir):
             rng = random.Random(w)
             tasks.append(_worker(client, base, w, REQUESTS_PER_CLIENT, latencies, rng))
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        total_ok = sum(r for r in results if not isinstance(r, Exception))
+        exceptions = [r for r in results if isinstance(r, Exception)]
+        assert not exceptions, f"Load workers crashed with exceptions: {exceptions}"
+        total_ok = sum(results)
     elapsed = time.perf_counter() - t_start
 
     rps = total_ok / elapsed if elapsed > 0 else 0
@@ -89,7 +91,7 @@ async def _query_worker(client: httpx.AsyncClient, base: str, stream_id: str,
     for _ in range(n):
         t0 = time.perf_counter()
         try:
-            r = await client.get(f"{base}/v1/streams/load-query/metrics", timeout=5)
+            r = await client.get(f"{base}/v1/streams/{stream_id}/metrics", timeout=5)
             elapsed_ms = (time.perf_counter() - t0) * 1000
             latencies.append(elapsed_ms)
             if r.status_code == 200:
@@ -119,7 +121,12 @@ async def test_load_query_under_write(live_server, resource_envelope):
                    for w in range(8)]
         readers = [_query_worker(client, base, f"mixed-{i % 5}", 10, read_latencies)
                    for i in range(4)]
-        await asyncio.gather(*writers, *readers, return_exceptions=True)
+        results = await asyncio.gather(*writers, *readers, return_exceptions=True)
+
+    exceptions = [r for r in results if isinstance(r, Exception)]
+    assert not exceptions, f"Workers crashed with exceptions: {exceptions}"
+    reader_results = results[8:]
+    assert sum(reader_results) > 0, "No successful read requests"
 
     assert len(write_latencies) > 0
     assert len(read_latencies) > 0

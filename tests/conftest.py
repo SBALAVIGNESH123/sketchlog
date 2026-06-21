@@ -57,7 +57,7 @@ def live_server():
         for _ in range(50):
             try:
                 r = httpx.get(f"{base_url}/ready", timeout=0.1)
-                if r.status_code == 200:
+                if r.status_code in (200, 503):
                     break
             except Exception:
                 pass

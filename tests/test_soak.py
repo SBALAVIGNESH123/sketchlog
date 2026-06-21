@@ -92,6 +92,8 @@ async def test_soak_memory_stability(live_server, resource_envelope, results_dir
     if rss_samples:
         assert max(rss_samples) < resource_envelope["soak_max_rss_mb"], \
             f"RSS {max(rss_samples):.1f}MB exceeds {resource_envelope['soak_max_rss_mb']}MB"
+    else:
+        pytest.fail("No RSS samples collected during soak memory stability test")
 
 
 @pytest.mark.asyncio
@@ -164,18 +166,23 @@ async def test_soak_fd_stability(live_server):
     deadline = time.monotonic() + duration
 
     async with httpx.AsyncClient() as client:
+        successful_posts = 0
         while time.monotonic() < deadline:
             batch = _make_batch(rng)
             try:
-                await client.post(f"{base}/v1/streams/fd-test/events",
+                r = await client.post(f"{base}/v1/streams/fd-test/events",
                                   json=batch, timeout=5)
-            except Exception:
+                if r.status_code == 202:
+                    successful_posts += 1
+            except httpx.RequestError:
                 pass
+
+        assert successful_posts > 10, "Failed to ingest enough data for FD stability test"
 
     try:
         final_fds = proc.num_fds() if hasattr(proc, 'num_fds') else len(proc.open_files())
     except Exception:
-        return  # Can't measure, skip assertion
+        pytest.skip("Cannot measure final FDs on this platform")
 
     fd_growth = final_fds - initial_fds
     assert fd_growth < 50, f"FD growth {fd_growth} suggests a leak"

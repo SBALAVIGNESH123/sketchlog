@@ -1,11 +1,34 @@
 import os
-from typing import Dict, List, Optional, Any, Annotated
+from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, status, Request, Response
 from pydantic import BaseModel, Field, model_validator
 from starlette.middleware.base import BaseHTTPMiddleware
+import time
+import psutil
+import structlog
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 
 from sketchlog import StreamLog
+
+if not structlog.is_configured():
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer(),
+        ]
+    )
+logger = structlog.get_logger("sketchlog.server")
+
+HTTP_REQUESTS_TOTAL = Counter("sketchlog_http_requests_total", "Total HTTP requests", ["method", "status"])
+HTTP_REQUEST_DURATION = Histogram("sketchlog_http_request_duration_seconds", "HTTP request duration", ["method", "path"])
+ACTIVE_STREAMS = Gauge("sketchlog_active_streams", "Number of active streams in registry")
+EVENTS_INGESTED_TOTAL = Counter("sketchlog_events_ingested_total", "Total events ingested")
+STREAM_EVICTIONS_TOTAL = Counter("sketchlog_stream_evictions_total", "Total streams evicted from registry")
+REJECTIONS_TOTAL = Counter("sketchlog_rejections_total", "Total rejected operations", ["reason"])
 
 app = FastAPI(
     title="SketchLog Server",
@@ -33,8 +56,10 @@ class LimitUploadSize(BaseHTTPMiddleware):
             if content_length:
                 try:
                     if int(content_length) > MAX_REQUEST_BYTES:
+                        REJECTIONS_TOTAL.labels(reason="payload_too_large").inc()
                         return Response(status_code=413, content=b"Request body too large")
                 except ValueError:
+                    REJECTIONS_TOTAL.labels(reason="invalid_content_length").inc()
                     return Response(status_code=400, content=b"Invalid Content-Length")
 
             body = bytearray()
@@ -47,6 +72,7 @@ class LimitUploadSize(BaseHTTPMiddleware):
                     chunk = message.get("body", b"")
                     body.extend(chunk)
                     if len(body) > MAX_REQUEST_BYTES:
+                        REJECTIONS_TOTAL.labels(reason="payload_too_large").inc()
                         return Response(status_code=413, content=b"Request body too large")
                     more_body = message.get("more_body", False)
                 elif message["type"] == "http.disconnect":
@@ -70,6 +96,47 @@ class LimitUploadSize(BaseHTTPMiddleware):
 
 app.add_middleware(LimitUploadSize)
 
+@app.middleware("http")
+async def observe_requests(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    structlog.contextvars.bind_contextvars(request_id=correlation_id.get())
+    start_time = time.perf_counter()
+    response = None
+
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        logger.exception("unhandled_exception", method=request.method, path=request.url.path, exc_info=True)
+        raise e
+    finally:
+        duration = time.perf_counter() - start_time
+
+        stream_id = ""
+        if "streams/" in request.url.path:
+            parts = request.url.path.split("streams/")
+            if len(parts) > 1:
+                stream_id = parts[1].split("/")[0]
+
+        status_code = response.status_code if response else 500
+
+        path_label = request.url.path
+        if "/streams/" in path_label:
+            parts = path_label.split("/")
+            if len(parts) >= 4 and parts[1] == "v1" and parts[2] == "streams":
+                parts[3] = "{stream_id}"
+                path_label = "/".join(parts)
+
+        HTTP_REQUESTS_TOTAL.labels(method=request.method, status=status_code).inc()
+        HTTP_REQUEST_DURATION.labels(method=request.method, path=path_label).observe(duration)
+
+        if status_code >= 400 and status_code != 404:
+            logger.warning("http_request_failed", method=request.method, path=request.url.path, status=status_code)
+
+    if response is None:
+        return Response(status_code=500)
+    return response
+
+app.add_middleware(CorrelationIdMiddleware)
+
 # State
 class StreamRegistry:
     def __init__(self, max_size: int):
@@ -83,10 +150,13 @@ class StreamRegistry:
 
         if len(self._streams) >= self.max_size:
             # Evict oldest
-            self._streams.popitem(last=False)
+            evicted_id, _ = self._streams.popitem(last=False)
+            STREAM_EVICTIONS_TOTAL.inc()
+            logger.info("stream_evicted", stream_id=evicted_id)
 
         stream = StreamLog()
         self._streams[stream_id] = stream
+        ACTIVE_STREAMS.set(len(self._streams))
         return stream
 
     def get(self, stream_id: str) -> Optional[StreamLog]:
@@ -101,6 +171,7 @@ class StreamRegistry:
     def delete(self, stream_id: str) -> bool:
         if stream_id in self._streams:
             del self._streams[stream_id]
+            ACTIVE_STREAMS.set(len(self._streams))
             return True
         return False
 
@@ -147,7 +218,26 @@ async def health_check() -> Dict[str, str]:
 
 @app.get("/ready", status_code=status.HTTP_200_OK)
 async def readiness_check() -> Dict[str, str]:
+    try:
+        threshold = float(os.environ.get("SKETCHLOG_MEMORY_THRESHOLD", "90"))
+    except ValueError:
+        logger.warning("Invalid SKETCHLOG_MEMORY_THRESHOLD, defaulting to 90.0")
+        threshold = 90.0
+
+    try:
+        mem_percent = psutil.Process().memory_percent()
+        if mem_percent > threshold:
+            raise HTTPException(status_code=503, detail="Service degraded: Memory usage critical")
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        logger.warning("readiness_check_failed", exc_info=True)
+        raise HTTPException(status_code=503, detail="Service degraded: Memory check failed")
     return {"status": "ready"}
+
+@app.get("/metrics")
+async def get_prometheus_metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.post("/v1/streams/{stream_id:path}/events", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
@@ -181,6 +271,7 @@ async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
         for event_name, count in batch.events.items():
             stream.add_event(event_name, count=count)
 
+    EVENTS_INGESTED_TOTAL.inc(new_events)
     return {"status": "accepted"}
 
 @app.get("/v1/streams/{stream_id:path}/metrics", response_model=MetricsResponse)
