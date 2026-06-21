@@ -5,7 +5,7 @@ SketchLog is engineered for real-time aggregation at scale, capable of absorbing
 > [!IMPORTANT]
 > **Performance Reproducibility**
 > All performance and accuracy claims are automatically verified continuously on GitHub Actions. Our benchmarking suite calculates rigorous statistical variances, confidence intervals, and machine-readable artifacts for every push.
-> 
+>
 > * **Run Throughput Benchmark:** `python benchmarks/suite_throughput.py`
 > * **Run Accuracy Benchmark:** `python benchmarks/suite_accuracy.py`
 > * **CI Pipeline:** See the `Benchmarks` workflow in `.github/workflows/benchmarks.yml` for the latest `results.json` artifacts.

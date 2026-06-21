@@ -24,16 +24,16 @@ def main():
     args = parser.parse_args()
 
     harness = BenchmarkHarness()
-    
+
     # Generate data
     random.seed(42)
     values = [random.lognormvariate(2, 1) for _ in range(args.items)]
-    
+
     def run_python_scalar():
         log = sketchlog.StreamLog()
         for v in values:
             log.add_latency(v)
-            
+
     harness.measure("python_scalar_add", "seconds", run_python_scalar, iterations=args.iterations, warmup=args.warmup)
 
     if HAS_CPP:
@@ -41,7 +41,7 @@ def main():
             log = cpp.StreamLog()
             for v in values:
                 log.add_latency(v)
-                
+
         harness.measure("cpp_scalar_add", "seconds", run_cpp_scalar, iterations=args.iterations, warmup=args.warmup)
 
     harness.print_summary()

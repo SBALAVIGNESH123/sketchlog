@@ -14,10 +14,10 @@ class BenchmarkResult:
         self.median = 0.0
         self.stddev = 0.0
         self.p95 = 0.0
-        
+
     def add_sample(self, value: float):
         self.samples.append(value)
-        
+
     def finalize(self):
         if not self.samples:
             return
@@ -30,7 +30,7 @@ class BenchmarkResult:
         n = len(self.samples)
         idx_95 = max(0, min(n - 1, int(math.ceil(0.95 * n)) - 1))
         self.p95 = self.samples[idx_95]
-        
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
@@ -54,24 +54,24 @@ class BenchmarkHarness:
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
         self.results: List[BenchmarkResult] = []
-        
+
     def measure(self, name: str, unit: str, func: Callable, iterations: int = 5, warmup: int = 1) -> BenchmarkResult:
         """Measure execution time of func() over multiple iterations, after warmup."""
         # Warmup
         for _ in range(warmup):
             func()
-            
+
         result = BenchmarkResult(name, unit)
         for _ in range(iterations):
             t0 = time.perf_counter()
             func()
             t1 = time.perf_counter()
             result.add_sample(t1 - t0)
-            
+
         result.finalize()
         self.results.append(result)
         return result
-        
+
     def add_metric(self, name: str, unit: str, samples: List[float]) -> BenchmarkResult:
         """Add an explicitly measured metric (e.g. accuracy errors)."""
         result = BenchmarkResult(name, unit)
@@ -80,7 +80,7 @@ class BenchmarkHarness:
         result.finalize()
         self.results.append(result)
         return result
-        
+
     def save(self, filepath: str):
         data = {
             "environment": self.env,
@@ -88,7 +88,7 @@ class BenchmarkHarness:
         }
         with open(filepath, "w") as f:
             json.dump(data, f, indent=2)
-            
+
     def print_summary(self):
         print(f"=== Benchmark Environment ===")
         for k, v in self.env.items():

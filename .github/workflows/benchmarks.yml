@@ -15,15 +15,15 @@ jobs:
   benchmark:
     name: Run Benchmarks & Regression Check
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -53,7 +53,7 @@ jobs:
           python -c "
           import json
           import sys
-          
+
           def check(file):
               with open(file) as f:
                   data = json.load(f)
@@ -61,7 +61,7 @@ jobs:
                   print(f'Error: No results found in {file}')
                   sys.exit(1)
               print(f'Successfully validated {file}')
-              
+
           check('benchmark_throughput.json')
           check('benchmark_accuracy.json')
           "
