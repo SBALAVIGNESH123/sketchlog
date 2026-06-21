@@ -25,10 +25,10 @@ class BenchmarkResult:
         self.mean = statistics.mean(self.samples)
         self.median = statistics.median(self.samples)
         self.stddev = statistics.stdev(self.samples) if len(self.samples) > 1 else 0.0
-        # Simple p95 for the samples
-        idx_95 = int(0.95 * len(self.samples))
-        if idx_95 >= len(self.samples):
-            idx_95 = len(self.samples) - 1
+        # Use 0-based percentile formula to prevent systematic inflation
+        import math
+        n = len(self.samples)
+        idx_95 = max(0, min(n - 1, int(math.ceil(0.95 * n)) - 1))
         self.p95 = self.samples[idx_95]
         
     def to_dict(self) -> Dict[str, Any]:

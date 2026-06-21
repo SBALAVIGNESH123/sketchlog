@@ -42,7 +42,7 @@ def main():
         log2.add_unique(str(v))
         
     unique_sketch = log2.stats().unique_count
-    err_unique = abs(unique_sketch - unique_actual) / unique_actual * 100
+    err_unique = abs(unique_sketch - unique_actual) / unique_actual * 100 if unique_actual > 0 else 0.0
     
     harness.add_metric("zipf_unique_count_error_percent", "percent", [err_unique])
     
@@ -51,6 +51,7 @@ def main():
     massive = sketchlog.StreamLog()
     tiny_logs = []
     
+    random.seed(42)
     for i in range(10_000):
         massive.add_latency(float(i))
         

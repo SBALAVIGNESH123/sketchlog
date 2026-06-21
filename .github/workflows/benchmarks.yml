@@ -32,11 +32,11 @@ jobs:
 
       - name: Run Throughput Benchmark
         run: |
-          python benchmarks/suite_throughput.py --output benchmark_throughput.json --items 500000 --iterations 3
+          PYTHONPATH=. python benchmarks/suite_throughput.py --output benchmark_throughput.json --items 500000 --iterations 3
 
       - name: Run Accuracy Benchmark
         run: |
-          python benchmarks/suite_accuracy.py --output benchmark_accuracy.json --items 50000
+          PYTHONPATH=. python benchmarks/suite_accuracy.py --output benchmark_accuracy.json --items 50000
 
       - name: Archive Benchmark Artifacts
         uses: actions/upload-artifact@v4
