@@ -49,9 +49,6 @@ nav:
   - Architecture & Concepts: architecture.md
   - Benchmarks: benchmarks.md
   - Integrations: integrations.md
-  - Grafana Dashboard: grafana.md
-  - Runbooks: runbooks.md
-  - Troubleshooting: troubleshooting.md
   - API Reference: api.md
   - Standalone Server: server.md
   - Security Threat Model: threat_model.md
