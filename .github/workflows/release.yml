@@ -304,3 +304,52 @@ jobs:
         run: |
           CHART_PKG=$(ls sketchlog-*.tgz)
           helm push ${CHART_PKG} oci://ghcr.io/${{ github.repository_owner }}/charts
+
+  publish_typescript:
+    name: Publish TypeScript SDK
+    needs: [preflight, build_wheels]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Install dependencies
+        working-directory: clients/typescript
+        run: npm install
+      - name: Build TypeScript
+        working-directory: clients/typescript
+        run: npm run build --if-present
+      - name: Publish to NPM
+        working-directory: clients/typescript
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish_go:
+    name: Publish Go SDK Tag
+    needs: [preflight, build_wheels]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Create Go Module Tag
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          GO_TAG="clients/go/${VERSION}"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a "${GO_TAG}" -m "Release Go SDK ${VERSION}"
+          git push origin "${GO_TAG}"

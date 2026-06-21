@@ -1,0 +1,282 @@
+openapi: 3.1.0
+info:
+  title: SketchLog API
+  description: Standalone network service for SketchLog event streaming and metrics
+    aggregation.
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      summary: Health Check
+      operationId: health_check_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Health Check Health Get
+  /ready:
+    get:
+      summary: Readiness Check
+      operationId: readiness_check_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Readiness Check Ready Get
+  /metrics:
+    get:
+      summary: Get Prometheus Metrics
+      operationId: get_prometheus_metrics_metrics_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/plain; version=0.0.4:
+              schema:
+                type: string
+  /v1/streams/{stream_id}/events:
+    post:
+      summary: Ingest Events
+      operationId: ingest_events_v1_streams__stream_id__events_post
+      parameters:
+      - name: stream_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stream Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventBatch'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                title: Response Ingest Events V1 Streams  Stream Id  Events Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: Get Event Count
+      operationId: get_event_count_v1_streams__stream_id__events_get
+      parameters:
+      - name: stream_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stream Id
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventCountResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/streams/{stream_id}/metrics:
+    get:
+      summary: Get Metrics
+      operationId: get_metrics_v1_streams__stream_id__metrics_get
+      parameters:
+      - name: stream_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stream Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/streams/{stream_id}:
+    delete:
+      summary: Reset Stream
+      operationId: reset_stream_v1_streams__stream_id__delete
+      parameters:
+      - name: stream_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stream Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    EventBatch:
+      properties:
+        latencies:
+          anyOf:
+          - items:
+              type: number
+            type: array
+            maxItems: 10000
+          - type: 'null'
+          title: Latencies
+          description: Array of latency values to ingest.
+        uniques:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 255
+              minLength: 1
+            type: array
+            maxItems: 10000
+          - type: 'null'
+          title: Uniques
+          description: Array of distinct string items for cardinality tracking.
+        events:
+          anyOf:
+          - additionalProperties:
+              type: integer
+              exclusiveMaximum: 9.223372036854776e+18
+              exclusiveMinimum: 0.0
+            propertyNames:
+              maxLength: 255
+              minLength: 1
+            type: object
+            maxProperties: 10000
+          - type: 'null'
+          title: Events
+          description: Dictionary mapping event names to their positive occurrence
+            counts.
+      type: object
+      title: EventBatch
+    EventCountResponse:
+      properties:
+        stream_id:
+          type: string
+          title: Stream Id
+        event_name:
+          type: string
+          title: Event Name
+        count:
+          type: integer
+          title: Count
+      type: object
+      required:
+      - stream_id
+      - event_name
+      - count
+      title: EventCountResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    MetricsResponse:
+      properties:
+        stream_id:
+          type: string
+          title: Stream Id
+        p50:
+          type: number
+          title: P50
+        p90:
+          type: number
+          title: P90
+        p99:
+          type: number
+          title: P99
+        p99_9:
+          type: number
+          title: P99 9
+        unique_count:
+          type: integer
+          title: Unique Count
+        total_events:
+          type: integer
+          title: Total Events
+        memory_footprint_bytes:
+          type: integer
+          title: Memory Footprint Bytes
+      type: object
+      required:
+      - stream_id
+      - p50
+      - p90
+      - p99
+      - p99_9
+      - unique_count
+      - total_events
+      - memory_footprint_bytes
+      title: MetricsResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
