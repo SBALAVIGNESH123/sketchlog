@@ -35,6 +35,16 @@ If you have a C++ compiler installed (e.g., GCC, Clang, or MSVC), `pip` will aut
 
 ---
 
+## Core Metrics Concepts
+
+SketchLog provides three fundamental metric types, mapped to optimized probabilistic data structures:
+
+- **Percentiles (`p50`, `p90`, `p99`, etc.)**: Powered by DDSketch. Perfect for tracking latency distributions. Provides guaranteed relative error bounds regardless of data scale.
+- **Frequency (`event_count`)**: Powered by Count-Min Sketch. Ideal for high-throughput discrete events like cache hits/misses, HTTP status codes, or database operations.
+- **Cardinality (`unique_count`)**: Powered by HyperLogLog. Used to count distinct items, like unique user IDs, IP addresses, or device identifiers, using minimal memory.
+
+---
+
 ## Quickstart
 
 ```python

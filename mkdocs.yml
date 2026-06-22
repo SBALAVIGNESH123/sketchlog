@@ -50,6 +50,7 @@ nav:
   - Benchmarks: benchmarks.md
   - Client SDKs: sdks.md
   - Integrations: integrations.md
+  - Alerting & Drift Detection: alerts.md
   - Grafana Dashboard: grafana.md
   - Runbooks: runbooks.md
   - Troubleshooting: troubleshooting.md

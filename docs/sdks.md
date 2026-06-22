@@ -77,6 +77,36 @@ func main() {
 }
 ```
 
+## Time-Windowed APIs
+
+In addition to the standard `StreamLog` endpoints, SketchLog supports rolling Time-Windowed retention in both SDKs.
+
+### TypeScript Windowing
+```typescript
+// Add events to a specific 5-minute rolling window
+await client.ingestWindowedEvents('my-stream', '5m', {
+  latencies: [120.5],
+  uniques: ['user_abc']
+});
+
+// Query the 5-minute window
+const metrics = await client.getWindowedMetrics('my-stream', '5m');
+```
+
+### Go Windowing
+```go
+batch := sketchlog.EventBatch{
+    Latencies: []float64{120.5},
+    Uniques:   []string{"user_abc"},
+}
+
+// Ingest into the 5-minute window
+err := client.IngestWindowedEvents(ctx, "my-stream", "5m", batch)
+
+// Query the window
+metrics, err := client.GetWindowedMetrics(ctx, "my-stream", "5m")
+```
+
 ## Production Requirements
 
 ### 1. Exponential Backoff and Jitter

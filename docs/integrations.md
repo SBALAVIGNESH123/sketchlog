@@ -48,6 +48,11 @@ exporter.start(port=9090)
 log.add_latency(42.0)
 ```
 
+### Standalone Server Metrics
+If you are running the SketchLog standalone server, it exposes an aggregated `/metrics` endpoint by default. Alongside stream latencies, it exports the background AlertEngine metrics:
+- `sketchlog_alerts_fired_total`: Counter tracking the number of anomaly alerts triggered.
+- `sketchlog_webhook_deliveries_failed_total`: Counter tracking the number of failed webhook attempts.
+
 ## FastAPI / Starlette Middleware
 
 Track request latency, endpoint hits, and status codes across your entire API without configuring separate prometheus clients or statsd servers.

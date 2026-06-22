@@ -100,3 +100,21 @@ Delete a stream entirely, resetting its internal sketches and clearing memory.
 ### 5. Kubernetes Probes
 - `GET /health`: Returns `{"status": "ok"}`
 - `GET /ready`: Returns `{"status": "ready"}`
+
+## Deployment Guide
+
+When deploying SketchLog Server in a production environment (like Kubernetes or AWS ECS), consider the following:
+
+### Graceful Shutdown
+
+The SketchLog server uses FastAPI's `lifespan` context manager to manage background tasks. When the server receives a `SIGTERM` (e.g., during a rolling deployment), it will:
+1. Stop accepting new HTTP requests.
+2. Gracefully signal the background `AlertEngine` and `DriftSketch` threads to stop.
+3. Wait for up to 2 seconds for active background evaluations to finish before exiting.
+
+Ensure your container orchestrator provides at least a 5-second termination grace period (`terminationGracePeriodSeconds` in Kubernetes).
+
+### Prometheus Integration
+
+To monitor the health of the SketchLog server itself, the server exposes internal metrics via Prometheus.
+Access `GET /metrics` to scrape these counters and gauges. For a full list of exported metrics, refer to the [Integrations Guide](integrations.md).
