@@ -26,6 +26,7 @@ class AlertRule:
     min_drift_pct: float
     min_samples: int = 100
     sustained_windows: int = 1
+    direction_filter: Optional[str] = "up"
     webhook_url: Optional[str] = None
     webhook_secret: Optional[str] = None
 
@@ -108,25 +109,29 @@ class AlertEngine:
 
     def evaluate(self, current_time: float) -> None:
         with self._lock:
+            if not self.rules:
+                return
             rules_copy = list(self.rules)
+            min_thresh = min(r.min_drift_pct for r in rules_copy)
 
-        drifts = self.ds.drift(threshold=0.0)
+        drifts = self.ds.drift(threshold=min_thresh / 100.0)
         drift_map = {d["dimension"]: d for d in drifts}
 
-        for rule in rules_copy:
-            with self._lock:
+        webhooks_to_send = []
+
+        with self._lock:
+            for rule in rules_copy:
                 state = self.states[rule.name]
+                result = drift_map.get(rule.dimension)
 
-            result = drift_map.get(rule.dimension)
+                is_violating = False
+                if result:
+                    current_samples = result.get("current_samples", 0)
+                    if current_samples >= rule.min_samples:
+                        dir_match = (not rule.direction_filter) or (result.get("direction") == rule.direction_filter)
+                        if dir_match and result.get("drift_pct", 0) >= rule.min_drift_pct:
+                            is_violating = True
 
-            is_violating = False
-            if result:
-                current_samples = result.get("current_samples", 0)
-                if current_samples >= rule.min_samples:
-                    if result.get("direction") == "up" and result.get("drift_pct", 0) >= rule.min_drift_pct:
-                        is_violating = True
-
-            with self._lock:
                 if is_violating:
                     state.violation_count += 1
 
@@ -134,27 +139,26 @@ class AlertEngine:
                         if state.status != AlertStatus.FIRING:
                             state.status = AlertStatus.FIRING
                             state.last_fired_at = current_time
-                            if self.on_alert_fired:
-                                self.on_alert_fired()
-                            success = WebhookRouter.send_webhook(rule, result)
-                            if not success and rule.webhook_url and self.on_webhook_failed:
-                                self.on_webhook_failed()
+                            webhooks_to_send.append((rule, result, False))
                         elif current_time - state.last_fired_at >= 3600:
-                            success = WebhookRouter.send_webhook(rule, result)
-                            if not success and rule.webhook_url and self.on_webhook_failed:
-                                self.on_webhook_failed()
                             state.last_fired_at = current_time
+                            webhooks_to_send.append((rule, result, False))
                     else:
                         state.status = AlertStatus.PENDING
 
                 else:
                     if state.status == AlertStatus.FIRING:
-                        success = WebhookRouter.send_webhook(rule, result, is_recovery=True)
-                        if not success and rule.webhook_url and self.on_webhook_failed:
-                            self.on_webhook_failed()
+                        webhooks_to_send.append((rule, result, True))
 
                     state.violation_count = 0
                     state.status = AlertStatus.OK
+
+        for rule, result, is_recovery in webhooks_to_send:
+            if not is_recovery and self.on_alert_fired:
+                self.on_alert_fired()
+            success = WebhookRouter.send_webhook(rule, result, is_recovery=is_recovery)
+            if not success and rule.webhook_url and self.on_webhook_failed:
+                self.on_webhook_failed()
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
