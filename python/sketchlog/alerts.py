@@ -50,7 +50,7 @@ class WebhookRouter:
         }).encode('utf-8')
 
         req = urllib.request.Request(rule.webhook_url, data=data, headers={"Content-Type": "application/json"})
-        
+
         if rule.webhook_secret:
             signature = hmac.new(rule.webhook_secret.encode('utf-8'), data, hashlib.sha256).hexdigest()
             req.add_header("X-Signature", f"sha256={signature}")
@@ -62,7 +62,7 @@ class WebhookRouter:
             except Exception as e:
                 logger.warning(f"Webhook delivery failed for {rule.name}: {e}")
                 time.sleep(2 ** attempt)
-        
+
         return False
 
 class AlertEngine:
@@ -74,7 +74,7 @@ class AlertEngine:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
-        
+
         # Callbacks for metrics
         self.on_alert_fired: Optional[Callable[[], None]] = None
         self.on_webhook_failed: Optional[Callable[[], None]] = None
@@ -100,14 +100,14 @@ class AlertEngine:
     def evaluate(self, current_time: float) -> None:
         with self._lock:
             rules_copy = list(self.rules)
-            
+
         drifts = self.ds.drift(threshold=0.0)
         drift_map = {d["dimension"]: d for d in drifts}
 
         for rule in rules_copy:
             with self._lock:
                 state = self.states[rule.name]
-            
+
             result = drift_map.get(rule.dimension)
 
             is_violating = False
@@ -120,7 +120,7 @@ class AlertEngine:
             with self._lock:
                 if is_violating:
                     state.violation_count += 1
-                    
+
                     if state.violation_count >= rule.sustained_windows:
                         if state.status != AlertStatus.FIRING:
                             state.status = AlertStatus.FIRING
@@ -140,7 +140,7 @@ class AlertEngine:
                 else:
                     if state.status == AlertStatus.FIRING:
                         WebhookRouter.send_webhook(rule, result, is_recovery=True)
-                    
+
                     state.violation_count = 0
                     state.status = AlertStatus.OK
 

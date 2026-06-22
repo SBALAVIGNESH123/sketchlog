@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable
+from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable, AsyncGenerator
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, status, Request, Response
 from pydantic import BaseModel, Field, model_validator
@@ -49,7 +49,7 @@ alert_engine.on_alert_fired = lambda: ALERTS_FIRED.inc()
 alert_engine.on_webhook_failed = lambda: WEBHOOK_FAILURES.inc()
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     alert_engine.start()
     yield
     alert_engine.stop()
