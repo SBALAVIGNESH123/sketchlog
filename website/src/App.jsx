@@ -8,7 +8,7 @@ function App() {
   return (
     <>
       <div className="bg-glow"></div>
-      
+
       {/* Navbar Placeholder */}
       <header className="navbar glass-panel">
         <div className="container nav-content">

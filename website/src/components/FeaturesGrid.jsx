@@ -40,7 +40,7 @@ export function FeaturesGrid() {
         <h2>Engineering at the Edge</h2>
         <p className="subtitle">Built for platform engineers who need absolute reliability and predictable resource utilization under massive scale.</p>
       </div>
-      
+
       <div className="grid">
         {features.map((feature, i) => (
           <div key={i} className={`glass-panel feature-card delay-${(i % 3 + 1) * 100} animate-fade-in-up`}>
@@ -54,20 +54,20 @@ export function FeaturesGrid() {
       <style>{`
         .text-center { text-align: center; }
         .features-header { margin-bottom: 4rem; }
-        
+
         .grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
           gap: 2rem;
         }
-        
+
         .feature-card {
           padding: 2rem;
           display: flex;
           flex-direction: column;
           align-items: flex-start;
         }
-        
+
         .feature-icon {
           font-size: 2.5rem;
           margin-bottom: 1.5rem;
@@ -80,7 +80,7 @@ export function FeaturesGrid() {
           border-radius: 12px;
           border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        
+
         .feature-card h3 { margin-bottom: 0.75rem; }
         .feature-card p { color: var(--color-text-muted); font-size: 0.95rem; }
       `}</style>

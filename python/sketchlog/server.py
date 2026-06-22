@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable, AsyncGenerator
+from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable, AsyncGenerator, Tuple
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, status, Request, Response
 from pydantic import BaseModel, Field, model_validator
@@ -80,6 +80,7 @@ if MAX_REQUEST_BYTES < 1:
 
 NODE_ID = os.environ.get("SKETCHLOG_NODE_ID", f"node-{os.getpid()}")
 PEERS = [p.strip() for p in os.environ.get("SKETCHLOG_PEERS", "").split(",") if p.strip()]
+CLUSTER_SECRET = os.environ.get("SKETCHLOG_CLUSTER_SECRET")
 
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
@@ -174,41 +175,51 @@ class StreamRegistry:
     def __init__(self, max_size: int):
         self.max_size = max_size
         self._streams: OrderedDict[str, ThreadSafeStreamLog] = OrderedDict()
+        from threading import Lock
+        self._lock = Lock()
+
+    def snapshot_items(self) -> List[Tuple[str, ThreadSafeStreamLog]]:
+        with self._lock:
+            return list(self._streams.items())
 
     def get_or_create(self, stream_id: str) -> ThreadSafeStreamLog:
-        if stream_id in self._streams:
-            self._streams.move_to_end(stream_id)
-            return self._streams[stream_id]
+        with self._lock:
+            if stream_id in self._streams:
+                self._streams.move_to_end(stream_id)
+                return self._streams[stream_id]
 
-        if len(self._streams) >= self.max_size:
-            # Evict oldest
-            evicted_id, _ = self._streams.popitem(last=False)
-            STREAM_EVICTIONS_TOTAL.inc()
-            logger.info("stream_evicted", stream_id=evicted_id)
+            if len(self._streams) >= self.max_size:
+                # Evict oldest
+                evicted_id, _ = self._streams.popitem(last=False)
+                STREAM_EVICTIONS_TOTAL.inc()
+                logger.info("stream_evicted", stream_id=evicted_id)
 
-        stream = ThreadSafeStreamLog(deterministic=bool(PEERS))
-        self._streams[stream_id] = stream
-        ACTIVE_STREAMS.set(len(self._streams))
-        return stream
+            stream = ThreadSafeStreamLog(deterministic=bool(PEERS))
+            self._streams[stream_id] = stream
+            ACTIVE_STREAMS.set(len(self._streams))
+            return stream
 
     def get(self, stream_id: str) -> Optional[ThreadSafeStreamLog]:
-        if stream_id in self._streams:
-            self._streams.move_to_end(stream_id)
-            return self._streams[stream_id]
-        return None
+        with self._lock:
+            if stream_id in self._streams:
+                self._streams.move_to_end(stream_id)
+                return self._streams[stream_id]
+            return None
 
     def peek(self, stream_id: str) -> Optional[ThreadSafeStreamLog]:
-        return self._streams.get(stream_id)
+        with self._lock:
+            return self._streams.get(stream_id)
 
     def delete(self, stream_id: str) -> bool:
-        if stream_id in self._streams:
-            del self._streams[stream_id]
-            ACTIVE_STREAMS.set(len(self._streams))
-            return True
-        return False
+        with self._lock:
+            if stream_id in self._streams:
+                del self._streams[stream_id]
+                ACTIVE_STREAMS.set(len(self._streams))
+                return True
+            return False
 
 registry = StreamRegistry(max_size=MAX_STREAMS)
-cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry._streams)
+cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry, cluster_secret=CLUSTER_SECRET)
 
 # Models
 # C++ extensions accept uint64_t but typically bounded positive integers max at 2^63-1 for safe signed limits in generic protocols.
@@ -289,7 +300,12 @@ async def flake_endpoint() -> Dict[str, str]:
 async def internal_sync(request: Request) -> Dict[str, str]:
     if not PEERS:
         raise HTTPException(status_code=400, detail="Clustering is not enabled on this node")
-    
+
+    if CLUSTER_SECRET:
+        token = request.headers.get("X-SketchLog-Cluster-Token")
+        if not token or token != CLUSTER_SECRET:
+            raise HTTPException(status_code=401, detail="Unauthorized cluster node")
+
     try:
         data = await request.json()
         node_id = data["node_id"]
@@ -338,15 +354,21 @@ async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
 @app.get("/v1/streams/{stream_id:path}/metrics", response_model=MetricsResponse)
 async def get_metrics(stream_id: str) -> MetricsResponse:
     local_stream = registry.get(stream_id)
-    
+
     if not PEERS:
         if not local_stream:
             raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
         stream_to_report = local_stream._log
     else:
         # Clustered mode: fetch merged stats across all peers
+        # Check if the stream actually exists locally or remotely.
         stream_to_report = cluster_manager.get_merged_stream(stream_id, local_stream)
-        if stream_to_report.total_events == 0:
+        has_remote = False
+        with cluster_manager._lock:
+            if stream_id in cluster_manager.peer_snapshots and cluster_manager.peer_snapshots[stream_id]:
+                has_remote = True
+
+        if not local_stream and not has_remote:
             raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
 
     return MetricsResponse(

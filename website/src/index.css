@@ -4,10 +4,10 @@
   --color-bg: #09090b;
   --color-surface: #18181b;
   --color-surface-hover: #27272a;
-  
+
   --color-text: #f4f4f5;
   --color-text-muted: #a1a1aa;
-  
+
   --color-primary: #06b6d4; /* Cyan */
   --color-primary-glow: rgba(6, 182, 212, 0.5);
   --color-secondary: #a855f7; /* Purple */
@@ -20,6 +20,15 @@
   --border-radius: 12px;
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Fallback aliases for App.css */
+  --accent: #f43f5e;
+  --accent-bg: rgba(244, 63, 94, 0.1);
+  --accent-border: rgba(244, 63, 94, 0.3);
+  --border: #27272a;
+  --text-h: #f4f4f5;
+  --social-bg: #18181b;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -61,6 +70,7 @@ body {
 
 .section {
   padding: 6rem 0;
+  scroll-margin-top: 80px;
 }
 
 /* Glassmorphism */

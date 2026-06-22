@@ -13,18 +13,19 @@ from sketchlog.concurrent import ThreadSafeStreamLog
 logger = logging.getLogger(__name__)
 
 class ClusterManager:
-    def __init__(self, node_id: str, peers: List[str], registry: Dict[str, ThreadSafeStreamLog], sync_interval: float = 5.0, heartbeat_timeout: float = 60.0):
+    def __init__(self, node_id: str, peers: List[str], registry: Any, sync_interval: float = 5.0, heartbeat_timeout: float = 60.0, cluster_secret: Optional[str] = None):
         self.node_id = node_id
         # Expecting peers to be a list of base URLs like ["http://node2:8000", "http://node3:8000"]
         self.peers = [p for p in peers if p]
         self.registry = registry
         self.sync_interval = sync_interval
         self.heartbeat_timeout = heartbeat_timeout
-        
+        self.cluster_secret = cluster_secret
+
         # peer_snapshots[stream_id][node_id] = (StreamLog, last_seen_time)
         self.peer_snapshots: Dict[str, Dict[str, Tuple[StreamLog, float]]] = {}
         self._lock = Lock()
-        
+
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -54,7 +55,7 @@ class ClusterManager:
 
         snapshots = {}
         # We need a point-in-time snapshot of every stream in the registry.
-        for stream_id, ts_log in list(self.registry.items()):
+        for stream_id, ts_log in self.registry.snapshot_items():
             try:
                 with ts_log._lock:
                     data = ts_log._log.to_dict()
@@ -64,23 +65,26 @@ class ClusterManager:
                 return
             except Exception as e:
                 logger.error(f"Failed to serialize stream {stream_id}: {e}")
-                
+
         if not snapshots:
             return
 
-        payload = json.dumps({
+        payload = {
             "node_id": self.node_id,
             "streams": snapshots
-        }).encode("utf-8")
+        }
 
-        for peer_url in self.peers:
-            url = f"{peer_url.rstrip('/')}/_internal/sync"
-            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        headers = {"Content-Type": "application/json"}
+        if self.cluster_secret:
+            headers["X-SketchLog-Cluster-Token"] = self.cluster_secret
+
+        for peer in self.peers:
+            url = f"{peer.rstrip('/')}/_internal/sync"
             try:
-                with urllib.request.urlopen(req, timeout=2.0):
+                # Fire and forget. We use a short timeout because gossip should not block.
+                req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=2.0) as _:
                     pass
-            except urllib.error.URLError as e:
-                logger.debug(f"Failed to sync with peer {url}: {e.reason}")
             except Exception as e:
                 logger.debug(f"Failed to sync with peer {url}: {e}")
 
@@ -90,11 +94,17 @@ class ClusterManager:
             for stream_id, data in streams_data.items():
                 if stream_id not in self.peer_snapshots:
                     self.peer_snapshots[stream_id] = {}
+
+                # Cap the maximum number of peers per stream to prevent memory exhaustion
+                # from an unbounded number of spoofed node_ids.
+                if len(self.peer_snapshots[stream_id]) >= 50 and node_id not in self.peer_snapshots[stream_id]:
+                    continue
+
                 try:
                     log = StreamLog.from_dict(data)
                     self.peer_snapshots[stream_id][node_id] = (log, current_time)
                 except Exception as e:
-                    logger.error(f"Failed to parse snapshot from {node_id} for stream {stream_id}: {e}")
+                    logger.warning(f"Failed to deserialize snapshot from {node_id} for stream {stream_id}: {e}")
 
     def evict_dead_nodes(self) -> None:
         current_time = time.time()
@@ -112,16 +122,16 @@ class ClusterManager:
         """Returns the merged StreamLog for a stream."""
         # Create a fresh StreamLog to hold the merge
         merged = StreamLog(deterministic=True)
-        
+
         # Merge local data
         if local_log:
             with local_log._lock:
                 merged.merge(local_log._log)
-                
+
         # Merge peer data
         with self._lock:
             peer_data = self.peer_snapshots.get(stream_id, {})
             for log, _ in peer_data.values():
                 merged.merge(log)
-                
+
         return merged

@@ -13,11 +13,11 @@ def cluster():
     env1 = os.environ.copy()
     env1["SKETCHLOG_NODE_ID"] = "node1"
     env1["SKETCHLOG_PEERS"] = "http://127.0.0.1:8002,http://127.0.0.1:8003"
-    
+
     env2 = os.environ.copy()
     env2["SKETCHLOG_NODE_ID"] = "node2"
     env2["SKETCHLOG_PEERS"] = "http://127.0.0.1:8001,http://127.0.0.1:8003"
-    
+
     env3 = os.environ.copy()
     env3["SKETCHLOG_NODE_ID"] = "node3"
     env3["SKETCHLOG_PEERS"] = "http://127.0.0.1:8001,http://127.0.0.1:8002"
@@ -46,13 +46,13 @@ def test_cluster_merge(cluster):
         "latencies": [10.0],
         "uniques": ["user_A"]
     })
-    
+
     # Node 2: Latency 20ms, Unique "user_B"
     httpx.post(f"{urls[1]}/v1/streams/my-cluster-stream/events", json={
         "latencies": [20.0],
         "uniques": ["user_B"]
     })
-    
+
     # Node 3: Latency 30ms, Unique "user_C"
     httpx.post(f"{urls[2]}/v1/streams/my-cluster-stream/events", json={
         "latencies": [30.0],

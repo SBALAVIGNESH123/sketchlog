@@ -23,7 +23,7 @@ export function HeroSection() {
           </div>
         </div>
       </div>
-      
+
       <style>{`
         .hero-section {
           text-align: center;
