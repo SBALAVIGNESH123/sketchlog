@@ -29,6 +29,14 @@ class AlertRule:
     webhook_url: Optional[str] = None
     webhook_secret: Optional[str] = None
 
+    def __post_init__(self) -> None:
+        if self.sustained_windows <= 0:
+            raise ValueError("sustained_windows must be > 0")
+        if self.min_samples < 0:
+            raise ValueError("min_samples must be >= 0")
+        if self.min_drift_pct < 0:
+            raise ValueError("min_drift_pct must be >= 0")
+
 @dataclass
 class AlertState:
     status: AlertStatus = AlertStatus.OK
@@ -61,7 +69,8 @@ class WebhookRouter:
                     return True
             except Exception as e:
                 logger.warning(f"Webhook delivery failed for {rule.name}: {e}")
-                time.sleep(2 ** attempt)
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
 
         return False
 
@@ -124,6 +133,7 @@ class AlertEngine:
                     if state.violation_count >= rule.sustained_windows:
                         if state.status != AlertStatus.FIRING:
                             state.status = AlertStatus.FIRING
+                            state.last_fired_at = current_time
                             if self.on_alert_fired:
                                 self.on_alert_fired()
                             success = WebhookRouter.send_webhook(rule, result)
@@ -139,7 +149,9 @@ class AlertEngine:
 
                 else:
                     if state.status == AlertStatus.FIRING:
-                        WebhookRouter.send_webhook(rule, result, is_recovery=True)
+                        success = WebhookRouter.send_webhook(rule, result, is_recovery=True)
+                        if not success and rule.webhook_url and self.on_webhook_failed:
+                            self.on_webhook_failed()
 
                     state.violation_count = 0
                     state.status = AlertStatus.OK
