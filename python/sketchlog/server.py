@@ -1,4 +1,6 @@
 import os
+import json
+import logging
 from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable, AsyncGenerator, Tuple
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, status, Request, Response
@@ -52,6 +54,9 @@ alert_engine.on_webhook_failed = lambda: WEBHOOK_FAILURES.inc()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    if PEERS:
+        logger.warning("Clustering is enabled (PEERS is set). deterministic=True is forced for all streams, "
+                       "bypassing the C++ high-performance path. This incurs a significant (~46x) performance penalty.")
     alert_engine.start()
     cluster_manager.start()
     yield
@@ -84,7 +89,7 @@ CLUSTER_SECRET = os.environ.get("SKETCHLOG_CLUSTER_SECRET")
 
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
-        if request.method in ["POST", "PUT", "PATCH"]:
+        if request.method in ["POST", "PUT", "PATCH"] and request.url.path != "/_internal/sync":
             content_length = request.headers.get("content-length")
             if content_length:
                 try:
@@ -111,7 +116,7 @@ class LimitUploadSize(BaseHTTPMiddleware):
                 elif message["type"] == "http.disconnect":
                     more_body = False
 
-            body_bytes = bytes(body)
+            body_bytes: Optional[bytes] = bytes(body)
 
             from typing import MutableMapping
             async def limited_receive() -> MutableMapping[str, Any]:
@@ -306,13 +311,29 @@ async def internal_sync(request: Request) -> Dict[str, str]:
         if not token or token != CLUSTER_SECRET:
             raise HTTPException(status_code=401, detail="Unauthorized cluster node")
 
+    # Enforce a 60MB limit on the internal sync endpoint to prevent malicious large payloads
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > 60_000_000:
+                raise HTTPException(status_code=413, detail="Request body too large for cluster sync (>60MB)")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length")
+
     try:
-        data = await request.json()
+        body_bytes = bytearray()
+        async for chunk in request.stream():
+            body_bytes.extend(chunk)
+            if len(body_bytes) > 60_000_000:
+                raise HTTPException(status_code=413, detail="Request body too large for cluster sync (>60MB)")
+
+        data = json.loads(body_bytes)
         node_id = data["node_id"]
+        timestamp = data.get("timestamp")
         streams = data["streams"]
-        cluster_manager.receive_snapshot(node_id, streams)
+        cluster_manager.receive_snapshot(node_id, streams, timestamp=timestamp)
         return {"status": "ok"}
-    except Exception as e:
+    except (KeyError, ValueError) as e:
         logger.error("internal_sync_failed", error=str(e))
         raise HTTPException(status_code=400, detail="Invalid snapshot payload")
 
@@ -358,15 +379,12 @@ async def get_metrics(stream_id: str) -> MetricsResponse:
     if not PEERS:
         if not local_stream:
             raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
-        stream_to_report = local_stream._log
+        stream_to_report = local_stream.get_snapshot()
     else:
         # Clustered mode: fetch merged stats across all peers
         # Check if the stream actually exists locally or remotely.
         stream_to_report = cluster_manager.get_merged_stream(stream_id, local_stream)
-        has_remote = False
-        with cluster_manager._lock:
-            if stream_id in cluster_manager.peer_snapshots and cluster_manager.peer_snapshots[stream_id]:
-                has_remote = True
+        has_remote = cluster_manager.has_peer_data(stream_id)
 
         if not local_stream and not has_remote:
             raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")

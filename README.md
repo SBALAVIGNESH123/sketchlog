@@ -106,6 +106,20 @@ batch := sketchlog.EventBatch{
 err := client.IngestEvents(ctx, "production_api", batch)
 ```
 
+## Distributed Clustering (Beta)
+
+SketchLog supports multi-node clustering without requiring external coordination services like Redis.
+
+You can run a cluster using the following environment variables:
+```bash
+SKETCHLOG_NODE_ID="node-1"
+SKETCHLOG_PEERS="http://node2:8000,http://node3:8000"
+SKETCHLOG_CLUSTER_SECRET="your-secret-token"
+uvicorn sketchlog.server:app --port 8000
+```
+
+> **Performance Trade-off**: Enabling clustering forces `deterministic=True` for all streams, bypassing the C++ high-performance path and using the pure Python backend. This is necessary because C++ data structures currently do not support serialization and snapshot extraction. Be aware that enabling clustering incurs a significant (~46x) performance penalty for metrics ingestion on the server.
+
 ## Community
 
 Join us in Slack! [Join SketchLog Slack](https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ)

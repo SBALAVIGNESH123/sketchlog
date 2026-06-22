@@ -46,7 +46,7 @@ export class SketchLogClient {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-        
+
         // Combine provided signal with our timeout signal so neither is ignored
         const activeSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
 
@@ -57,7 +57,7 @@ export class SketchLogClient {
           dispatcher: this.agent,
           signal: activeSignal as any,
         });
-        
+
         clearTimeout(timeoutId);
 
         if (res.status >= 200 && res.status < 300) {
