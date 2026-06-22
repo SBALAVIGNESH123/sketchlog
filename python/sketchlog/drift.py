@@ -50,6 +50,8 @@ class DriftResult(TypedDict):
     dimension: str
     current_p99: float
     previous_p99: float
+    current_samples: int
+    previous_samples: int
     drift_ratio: float
     drift_pct: float
     direction: str
@@ -205,6 +207,8 @@ class DriftSketch:
                         "dimension": name,
                         "current_p99": round(curr_p99, 4),
                         "previous_p99": 0.0,
+                        "current_samples": curr_count,
+                        "previous_samples": prev_count,
                         "drift_ratio": float('inf'),
                         "drift_pct": float('inf'),
                         "direction": "new",
@@ -219,6 +223,8 @@ class DriftSketch:
                         "dimension": name,
                         "current_p99": round(curr_p99, 4),
                         "previous_p99": round(prev_p99, 4),
+                        "current_samples": curr_count,
+                        "previous_samples": prev_count,
                         "drift_ratio": round(ratio, 4),
                         "drift_pct": round((ratio - 1.0) * 100, 2),
                         "direction": "up" if ratio > 1.0 else "down",

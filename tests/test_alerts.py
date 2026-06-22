@@ -34,7 +34,7 @@ def test_alert_state_transitions(mock_webhook):
 
     # Inject data that drifts > 20%
     ds.rotate_all()
-    ds.add_batch("api_latency", [100, 100, 100]) # 10 -> 100 is 900% drift
+    ds.add_batch("api_latency", [100] * 10) # 10 -> 100 is 900% drift
 
     # First violation
     engine.evaluate(current_time=101.0)
@@ -44,7 +44,7 @@ def test_alert_state_transitions(mock_webhook):
 
     # Second violation
     ds.rotate_all()
-    ds.add_batch("api_latency", [1000, 1000, 1000]) # 100 -> 1000 is 900% drift
+    ds.add_batch("api_latency", [1000] * 10) # 100 -> 1000 is 900% drift
     engine.evaluate(current_time=102.0)
     assert engine.states["test-alert"].status == AlertStatus.FIRING
     assert engine.states["test-alert"].violation_count == 2

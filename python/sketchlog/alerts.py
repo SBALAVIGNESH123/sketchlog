@@ -5,7 +5,7 @@ import urllib.error
 import threading
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
 import hmac
 import hashlib
@@ -37,7 +37,7 @@ class AlertState:
 
 class WebhookRouter:
     @staticmethod
-    def send_webhook(rule: AlertRule, payload: dict, is_recovery: bool = False):
+    def send_webhook(rule: AlertRule, payload: Any, is_recovery: bool = False) -> bool:
         if not rule.webhook_url:
             return False
 
@@ -49,96 +49,102 @@ class WebhookRouter:
             "details": payload
         }).encode('utf-8')
 
-        headers = {'Content-Type': 'application/json'}
+        req = urllib.request.Request(rule.webhook_url, data=data, headers={"Content-Type": "application/json"})
+        
         if rule.webhook_secret:
-            signature = hmac.new(rule.webhook_secret.encode(), data, hashlib.sha256).hexdigest()
-            headers['X-Signature'] = f"sha256={signature}"
+            signature = hmac.new(rule.webhook_secret.encode('utf-8'), data, hashlib.sha256).hexdigest()
+            req.add_header("X-Signature", f"sha256={signature}")
 
-        req = urllib.request.Request(rule.webhook_url, data=data, headers=headers, method='POST')
-
-        # Simple exponential backoff retry
         for attempt in range(3):
             try:
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    if response.status in (200, 201, 202, 204):
-                        return True
+                with urllib.request.urlopen(req, timeout=5):
+                    return True
             except Exception as e:
-                logger.warning(f"Webhook delivery failed attempt {attempt+1}: {e}")
+                logger.warning(f"Webhook delivery failed for {rule.name}: {e}")
                 time.sleep(2 ** attempt)
+        
         return False
 
 class AlertEngine:
-    def __init__(self, drift_sketch: DriftSketch, poll_interval: float = 60.0):
-        self.drift_sketch = drift_sketch
+    def __init__(self, drift_sketch: DriftSketch, poll_interval: float = 10.0) -> None:
+        self.ds = drift_sketch
+        self.poll_interval = poll_interval
         self.rules: List[AlertRule] = []
         self.states: Dict[str, AlertState] = {}
-        self.poll_interval = poll_interval
         self._stop_event = threading.Event()
-        self._thread = None
-        self.metrics = {
-            "alerts_fired": 0,
-            "webhook_failures": 0
-        }
+        self._thread: Optional[threading.Thread] = None
+        self._lock = threading.Lock()
+        
+        # Callbacks for metrics
+        self.on_alert_fired: Optional[Callable[[], None]] = None
+        self.on_webhook_failed: Optional[Callable[[], None]] = None
 
-    def add_rule(self, rule: AlertRule):
-        self.rules.append(rule)
-        self.states[rule.name] = AlertState()
+    def add_rule(self, rule: AlertRule) -> None:
+        with self._lock:
+            self.rules.append(rule)
+            if rule.name not in self.states:
+                self.states[rule.name] = AlertState()
 
-    def start(self):
-        if self._thread is None or not self._thread.is_alive():
-            self._stop_event.clear()
-            self._thread = threading.Thread(target=self._run, daemon=True)
-            self._thread.start()
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         self._stop_event.set()
         if self._thread:
-            self._thread.join()
+            self._thread.join(timeout=2.0)
 
-    def evaluate(self, current_time=None):
-        if current_time is None:
-            current_time = time.time()
-
-        # Get drift results
-        drifts = self.drift_sketch.drift(threshold=0.0) # Evaluate all, we will filter by rule
+    def evaluate(self, current_time: float) -> None:
+        with self._lock:
+            rules_copy = list(self.rules)
+            
+        drifts = self.ds.drift(threshold=0.0)
         drift_map = {d["dimension"]: d for d in drifts}
 
-        for rule in self.rules:
-            state = self.states[rule.name]
-            d = drift_map.get(rule.dimension)
+        for rule in rules_copy:
+            with self._lock:
+                state = self.states[rule.name]
+            
+            result = drift_map.get(rule.dimension)
 
-            # Check conditions
             is_violating = False
-            if d:
-                if abs(d["drift_pct"]) >= rule.min_drift_pct:
-                    is_violating = True
+            if result:
+                current_samples = result.get("current_samples", 0)
+                if current_samples >= rule.min_samples:
+                    if result.get("direction") == "up" and result.get("drift_pct", 0) >= rule.min_drift_pct:
+                        is_violating = True
 
-            if is_violating:
-                state.violation_count += 1
-                if state.status != AlertStatus.FIRING:
+            with self._lock:
+                if is_violating:
+                    state.violation_count += 1
+                    
                     if state.violation_count >= rule.sustained_windows:
-                        state.status = AlertStatus.FIRING
-                        state.last_fired_at = current_time
-                        self.metrics["alerts_fired"] += 1
-                        success = WebhookRouter.send_webhook(rule, d)
-                        if not success and rule.webhook_url:
-                            self.metrics["webhook_failures"] += 1
+                        if state.status != AlertStatus.FIRING:
+                            state.status = AlertStatus.FIRING
+                            if self.on_alert_fired:
+                                self.on_alert_fired()
+                            success = WebhookRouter.send_webhook(rule, result)
+                            if not success and rule.webhook_url and self.on_webhook_failed:
+                                self.on_webhook_failed()
+                        elif current_time - state.last_fired_at >= 3600:
+                            success = WebhookRouter.send_webhook(rule, result)
+                            if not success and rule.webhook_url and self.on_webhook_failed:
+                                self.on_webhook_failed()
+                            state.last_fired_at = current_time
                     else:
                         state.status = AlertStatus.PENDING
-            else:
-                # Recovering
-                if state.status == AlertStatus.FIRING:
-                    success = WebhookRouter.send_webhook(rule, {}, is_recovery=True)
-                    if not success and rule.webhook_url:
-                        self.metrics["webhook_failures"] += 1
-                state.status = AlertStatus.OK
-                state.violation_count = 0
 
-    def _run(self):
+                else:
+                    if state.status == AlertStatus.FIRING:
+                        WebhookRouter.send_webhook(rule, result, is_recovery=True)
+                    
+                    state.violation_count = 0
+                    state.status = AlertStatus.OK
+
+    def _run_loop(self) -> None:
         while not self._stop_event.is_set():
-            try:
-                self.evaluate()
-            except Exception as e:
-                logger.error(f"Alert engine error: {e}")
-            # Wait with interrupt capability
+            self.evaluate(time.time())
             self._stop_event.wait(self.poll_interval)

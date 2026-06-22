@@ -11,6 +11,9 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 
 from sketchlog import StreamLog
+from sketchlog.drift import DriftSketch
+from sketchlog.alerts import AlertEngine
+from prometheus_client import CollectorRegistry
 
 if not structlog.is_configured():
     structlog.configure(
@@ -23,10 +26,11 @@ if not structlog.is_configured():
     )
 logger = structlog.get_logger("sketchlog.server")
 
+from contextlib import asynccontextmanager
+
 # Initialize global alerting engine
 global_drift_sketch = DriftSketch(window="1m")
 alert_engine = AlertEngine(global_drift_sketch, poll_interval=10.0)
-alert_engine.start()
 
 # Prometheus Metrics
 REGISTRY = CollectorRegistry()
@@ -41,10 +45,20 @@ REJECTIONS_TOTAL = Counter("sketchlog_rejections_total", "Total rejected operati
 ALERTS_FIRED = Counter("sketchlog_alerts_fired_total", "Total alerts fired", registry=REGISTRY)
 WEBHOOK_FAILURES = Counter("sketchlog_webhook_deliveries_failed_total", "Total failed webhook deliveries", registry=REGISTRY)
 
+alert_engine.on_alert_fired = lambda: ALERTS_FIRED.inc()
+alert_engine.on_webhook_failed = lambda: WEBHOOK_FAILURES.inc()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    alert_engine.start()
+    yield
+    alert_engine.stop()
+
 app = FastAPI(
     title="SketchLog Server",
     description="Standalone network service for SketchLog event streaming and metrics aggregation.",
     version="1.0.1",
+    lifespan=lifespan,
 )
 
 # Configuration
@@ -248,7 +262,7 @@ async def readiness_check() -> Dict[str, str]:
 
 @app.get("/metrics")
 async def get_prometheus_metrics() -> Response:
-    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(content=generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
 
 # Test endpoint for SDK retry validation
 # Intentionally non-thread-safe state for deterministic single-client conformance testing.
