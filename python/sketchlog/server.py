@@ -11,8 +11,10 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 
 from sketchlog import StreamLog
+from sketchlog.concurrent import ThreadSafeStreamLog
 from sketchlog.drift import DriftSketch
 from sketchlog.alerts import AlertEngine
+from sketchlog.cluster import ClusterManager
 from prometheus_client import CollectorRegistry
 
 if not structlog.is_configured():
@@ -51,7 +53,9 @@ alert_engine.on_webhook_failed = lambda: WEBHOOK_FAILURES.inc()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     alert_engine.start()
+    cluster_manager.start()
     yield
+    cluster_manager.stop()
     alert_engine.stop()
 
 app = FastAPI(
@@ -73,6 +77,9 @@ if MAX_BATCH_SIZE < 1:
 MAX_REQUEST_BYTES = int(os.environ.get("SKETCHLOG_MAX_REQUEST_BYTES", "1048576"))
 if MAX_REQUEST_BYTES < 1:
     raise ValueError("SKETCHLOG_MAX_REQUEST_BYTES must be >= 1")
+
+NODE_ID = os.environ.get("SKETCHLOG_NODE_ID", f"node-{os.getpid()}")
+PEERS = [p.strip() for p in os.environ.get("SKETCHLOG_PEERS", "").split(",") if p.strip()]
 
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
@@ -166,9 +173,9 @@ app.add_middleware(CorrelationIdMiddleware)
 class StreamRegistry:
     def __init__(self, max_size: int):
         self.max_size = max_size
-        self._streams: OrderedDict[str, StreamLog] = OrderedDict()
+        self._streams: OrderedDict[str, ThreadSafeStreamLog] = OrderedDict()
 
-    def get_or_create(self, stream_id: str) -> StreamLog:
+    def get_or_create(self, stream_id: str) -> ThreadSafeStreamLog:
         if stream_id in self._streams:
             self._streams.move_to_end(stream_id)
             return self._streams[stream_id]
@@ -179,18 +186,18 @@ class StreamRegistry:
             STREAM_EVICTIONS_TOTAL.inc()
             logger.info("stream_evicted", stream_id=evicted_id)
 
-        stream = StreamLog()
+        stream = ThreadSafeStreamLog(deterministic=bool(PEERS))
         self._streams[stream_id] = stream
         ACTIVE_STREAMS.set(len(self._streams))
         return stream
 
-    def get(self, stream_id: str) -> Optional[StreamLog]:
+    def get(self, stream_id: str) -> Optional[ThreadSafeStreamLog]:
         if stream_id in self._streams:
             self._streams.move_to_end(stream_id)
             return self._streams[stream_id]
         return None
 
-    def peek(self, stream_id: str) -> Optional[StreamLog]:
+    def peek(self, stream_id: str) -> Optional[ThreadSafeStreamLog]:
         return self._streams.get(stream_id)
 
     def delete(self, stream_id: str) -> bool:
@@ -201,6 +208,7 @@ class StreamRegistry:
         return False
 
 registry = StreamRegistry(max_size=MAX_STREAMS)
+cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry._streams)
 
 # Models
 # C++ extensions accept uint64_t but typically bounded positive integers max at 2^63-1 for safe signed limits in generic protocols.
@@ -277,6 +285,21 @@ async def flake_endpoint() -> Dict[str, str]:
     _flake_counter = 0
     return {"status": "success"}
 
+@app.post("/_internal/sync", include_in_schema=False)
+async def internal_sync(request: Request) -> Dict[str, str]:
+    if not PEERS:
+        raise HTTPException(status_code=400, detail="Clustering is not enabled on this node")
+    
+    try:
+        data = await request.json()
+        node_id = data["node_id"]
+        streams = data["streams"]
+        cluster_manager.receive_snapshot(node_id, streams)
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error("internal_sync_failed", error=str(e))
+        raise HTTPException(status_code=400, detail="Invalid snapshot payload")
+
 @app.post("/v1/streams/{stream_id:path}/events", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
     if len(stream_id) > 255:
@@ -314,19 +337,27 @@ async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
 
 @app.get("/v1/streams/{stream_id:path}/metrics", response_model=MetricsResponse)
 async def get_metrics(stream_id: str) -> MetricsResponse:
-    stream = registry.get(stream_id)
-    if not stream:
-        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+    local_stream = registry.get(stream_id)
+    
+    if not PEERS:
+        if not local_stream:
+            raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+        stream_to_report = local_stream._log
+    else:
+        # Clustered mode: fetch merged stats across all peers
+        stream_to_report = cluster_manager.get_merged_stream(stream_id, local_stream)
+        if stream_to_report.total_events == 0:
+            raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
 
     return MetricsResponse(
         stream_id=stream_id,
-        p50=stream.percentile(0.50),
-        p90=stream.percentile(0.90),
-        p99=stream.percentile(0.99),
-        p99_9=stream.percentile(0.999),
-        unique_count=stream.unique_count(),
-        total_events=stream.total_events,
-        memory_footprint_bytes=stream.memory_bytes()
+        p50=stream_to_report.percentile(0.50),
+        p90=stream_to_report.percentile(0.90),
+        p99=stream_to_report.percentile(0.99),
+        p99_9=stream_to_report.percentile(0.999),
+        unique_count=stream_to_report.unique_count(),
+        total_events=stream_to_report.total_events,
+        memory_footprint_bytes=stream_to_report.memory_bytes()
     )
 
 @app.get("/v1/streams/{stream_id:path}/events", response_model=EventCountResponse)

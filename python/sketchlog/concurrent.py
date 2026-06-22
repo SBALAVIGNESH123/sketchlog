@@ -14,6 +14,10 @@ class ThreadSafeStreamLog:
         with self._lock:
             self._log.add_latency(value)
 
+    def add_batch(self, values: Iterable[float]) -> None:
+        with self._lock:
+            self._log.add_batch(values)
+
     def add_event(self, name: EventKey, count: int = 1) -> None:
         with self._lock:
             self._log.add_event(name, count)
