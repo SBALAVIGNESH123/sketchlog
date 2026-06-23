@@ -261,7 +261,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             if (!d.contains("version") || d["version"].cast<int>() != 1) {
                 throw std::invalid_argument("Unsupported or missing serialization version");
             }
-            
+
             py::dict lat_d = d["latency"].cast<py::dict>();
             py::dict uni_d = d["uniques"].cast<py::dict>();
             py::dict ev_d = d["events"].cast<py::dict>();

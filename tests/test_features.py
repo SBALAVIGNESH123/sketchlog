@@ -30,7 +30,7 @@ def test_serialization():
 
         j_cpp = cpp_log.to_json()
         cpp_log2 = StreamLog.from_json(j_cpp)
-        
+
         assert abs(cpp_log.p99() - cpp_log2.p99()) < 0.001
         assert cpp_log.total_events == cpp_log2.total_events
 

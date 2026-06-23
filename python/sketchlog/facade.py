@@ -614,13 +614,13 @@ class StreamLog:
     def from_dict(cls, data: Dict[str, Any]) -> "StreamLog":
         if not isinstance(data, dict):
             raise ValueError("StreamLog data must be a dictionary")
-        
+
         deterministic = data.get('deterministic', False)
         if _cpp is not None and not deterministic:
             backend = _cpp.StreamLog.from_dict(data)
         else:
             backend = _PythonStreamLog.from_dict(data)
-            
+
         log = cls(
             relative_accuracy=data['latency']['alpha'],
             hll_precision=data['uniques']['precision'],
