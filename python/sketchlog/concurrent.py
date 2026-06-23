@@ -82,6 +82,50 @@ class ThreadSafeStreamLog:
         with self._lock:
             self._log.reset()
 
+    def merge(self, other: Union["ThreadSafeStreamLog", StreamLog]) -> None:
+        if isinstance(other, ThreadSafeStreamLog):
+            # To avoid deadlocks, take a snapshot of the other log first
+            other_snap = other.get_snapshot()
+            with self._lock:
+                self._log.merge(other_snap)
+        else:
+            with self._lock:
+                self._log.merge(other)
+
+    def memory_breakdown(self) -> Dict[str, int]:
+        with self._lock:
+            return self._log.memory_breakdown()
+
+    def to_dict(self) -> Dict[str, Any]:
+        with self._lock:
+            return self._log.to_dict()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ThreadSafeStreamLog":
+        instance = cls()
+        instance._log = StreamLog.from_dict(data)
+        return instance
+
+    def to_json(self) -> str:
+        with self._lock:
+            return self._log.to_json()
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "ThreadSafeStreamLog":
+        instance = cls()
+        instance._log = StreamLog.from_json(json_str)
+        return instance
+
+    def save(self, path: str) -> None:
+        with self._lock:
+            self._log.save(path)
+
+    @classmethod
+    def load(cls, path: str) -> "ThreadSafeStreamLog":
+        instance = cls()
+        instance._log = StreamLog.load(path)
+        return instance
+
     def __repr__(self) -> str:
         with self._lock:
             return f"ThreadSafe{repr(self._log)}"
