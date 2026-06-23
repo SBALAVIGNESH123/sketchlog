@@ -599,7 +599,7 @@ class StreamLog:
         self._backend.merge(other._backend)
 
     def to_dict(self) -> Dict[str, Any]:
-        return self._backend.to_dict()
+        return self._backend.to_dict()  # type: ignore[no-any-return]
 
     def to_json(self) -> str:
         import json

@@ -124,6 +124,20 @@ void DDSketch::set_state(const State& s) {
     if (std::abs(alpha_ - s.alpha) > 1e-9) {
         throw std::invalid_argument("Cannot restore state with mismatched alpha");
     }
+    auto validate_store = [](const std::vector<int64_t>& bins, int offset, int min_idx, int max_idx, bool empty) {
+        if (!empty) {
+            if (min_idx > max_idx) {
+                throw std::invalid_argument("Cannot restore state with min_index > max_index");
+            }
+            if (max_idx - offset >= static_cast<int>(bins.size()) || min_idx - offset < 0) {
+                throw std::invalid_argument("Cannot restore state with indices outside bin range");
+            }
+        }
+    };
+
+    validate_store(s.pos_bins, s.pos_offset, s.pos_min_index, s.pos_max_index, s.pos_empty);
+    validate_store(s.neg_bins, s.neg_offset, s.neg_min_index, s.neg_max_index, s.neg_empty);
+
     zero_count_ = s.zero_count;
     count_ = s.count;
     min_value_ = s.min_value;

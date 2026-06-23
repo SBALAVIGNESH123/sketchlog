@@ -215,7 +215,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             py::dict pos;
             for (size_t i = 0; i < lat.pos_bins.size(); ++i) {
                 if (lat.pos_bins[i] > 0) {
-                    pos[py::int_(lat.pos_offset + static_cast<int>(i))] = lat.pos_bins[i];
+                    pos[py::str(std::to_string(lat.pos_offset + static_cast<int>(i)))] = lat.pos_bins[i];
                 }
             }
             latency["positive"] = pos;
@@ -223,7 +223,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             py::dict neg;
             for (size_t i = 0; i < lat.neg_bins.size(); ++i) {
                 if (lat.neg_bins[i] > 0) {
-                    neg[py::int_(lat.neg_offset + static_cast<int>(i))] = lat.neg_bins[i];
+                    neg[py::str(std::to_string(lat.neg_offset + static_cast<int>(i)))] = lat.neg_bins[i];
                 }
             }
             latency["negative"] = neg;

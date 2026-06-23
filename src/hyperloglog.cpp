@@ -103,6 +103,12 @@ void HyperLogLog::set_state(const State& s) {
     if (s.registers.size() != registers_.size()) {
         throw std::invalid_argument("Cannot restore state with mismatched register count");
     }
+    uint8_t max_val = 64 - p_ + 1;
+    for (uint8_t val : s.registers) {
+        if (val > max_val) {
+            throw std::invalid_argument("Cannot restore state with invalid register values");
+        }
+    }
     registers_ = s.registers;
 }
 

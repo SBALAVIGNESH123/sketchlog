@@ -46,6 +46,11 @@ void CountMinSketch::set_state(const State& s) {
     if (s.table.size() != table_.size()) {
         throw std::invalid_argument("Cannot restore state with mismatched table size");
     }
+    for (int64_t count : s.table) {
+        if (count < 0) {
+            throw std::invalid_argument("Cannot restore state with negative counts in CMS table");
+        }
+    }
     total_count_ = s.total_count;
     table_ = s.table;
 }

@@ -25,7 +25,8 @@ def test_serialization():
     if HAS_CPP:
         cpp_log = StreamLog(deterministic=False)
         cpp_log.add_batch([rnd.lognormvariate(2, 1) for _ in range(100_000)])
-        for i in range(5000): cpp_log.add_unique(str(i))
+        for i in range(5000):
+            cpp_log.add_unique(str(i))
         cpp_log.add_event("api_call", 1000)
 
         j_cpp = cpp_log.to_json()
