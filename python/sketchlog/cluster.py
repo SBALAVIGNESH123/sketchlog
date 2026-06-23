@@ -96,7 +96,7 @@ class ClusterManager:
             size_estimate += len(chunk.encode('utf-8'))
             if size_estimate > 50_000_000:
                 break
-                
+
         if size_estimate > 50_000_000:
             logger.error("Gossip payload too large (>50MB). Skipping sync to prevent memory exhaustion.")
             return
