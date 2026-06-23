@@ -490,10 +490,24 @@ class StreamLog:
 
     def __init__(self, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5, deterministic: bool = False) -> None:
         self._deterministic = deterministic
+        self._relative_accuracy = relative_accuracy
+        self._hll_precision = hll_precision
+        self._cms_width = cms_width
+        self._cms_depth = cms_depth
         if _cpp is not None and not deterministic:
             self._backend = _cpp.StreamLog(relative_accuracy, hll_precision, cms_width, cms_depth)
         else:
             self._backend = _PythonStreamLog(relative_accuracy, hll_precision, cms_width, cms_depth, deterministic)
+
+    def clone_empty(self) -> "StreamLog":
+        """Create a new, empty StreamLog with the exact same configuration."""
+        return StreamLog(
+            relative_accuracy=self._relative_accuracy,
+            hll_precision=self._hll_precision,
+            cms_width=self._cms_width,
+            cms_depth=self._cms_depth,
+            deterministic=self._deterministic
+        )
 
     def add_latency(self, value: float) -> None:
         self._backend.add_latency(value)

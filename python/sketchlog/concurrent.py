@@ -14,9 +14,20 @@ class ThreadSafeStreamLog:
         with self._lock:
             self._log.add_latency(value)
 
+    def add_batch(self, values: Iterable[float]) -> None:
+        with self._lock:
+            self._log.add_batch(values)
+
     def add_event(self, name: EventKey, count: int = 1) -> None:
         with self._lock:
             self._log.add_event(name, count)
+
+    def get_snapshot(self) -> StreamLog:
+        with self._lock:
+            # Create a deep copy of the underlying log
+            snapshot = self._log.clone_empty()
+            snapshot.merge(self._log)
+            return snapshot
 
     def add_unique(self, item: Union[str, bytes, int]) -> None:
         with self._lock:

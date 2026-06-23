@@ -37,6 +37,12 @@ Issues = "https://github.com/SBALAVIGNESH123/sketchlog/issues"
 docs = [
     "mkdocs-material>=9.5.0",
 ]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "hypothesis"
+]
 dev = [
     "pytest",
     "pytest-asyncio",

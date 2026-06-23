@@ -1,7 +1,7 @@
 import pytest
 import time
 from sketchlog.drift import DriftSketch
-from sketchlog.alerts import AlertEngine, AlertRule, AlertState, AlertStatus, WebhookRouter
+from sketchlog.alerts import AlertEngine, AlertRule, AlertState, AlertStatus, WebhookRouter, AutoPilotRule, CUSUMState
 from unittest.mock import patch, MagicMock
 
 @pytest.fixture
@@ -77,3 +77,37 @@ def test_webhook_retry_backoff():
             assert mock_urlopen.call_count == 3
             mock_sleep.assert_any_call(1)
             mock_sleep.assert_any_call(2)
+
+def test_autopilot_alert(mock_webhook):
+    ds = DriftSketch(window="1m")
+    engine = AlertEngine(ds, poll_interval=1.0)
+
+    rule = AutoPilotRule(
+        name="test-autopilot",
+        dimension="cpu_usage",
+        sensitivity=3.0,
+        min_samples=5,
+        sustained_windows=1,
+        webhook_url="http://dummy"
+    )
+    engine.add_rule(rule)
+
+    # Initial baseline
+    ds.add_batch("cpu_usage", [50, 52, 48, 51, 49, 50] * 2)
+
+    # Stable perfectly flat baseline: mean ~50, p99 is exactly 52.0 every window
+    for _ in range(5):
+        ds.rotate_all()
+        ds.add_batch("cpu_usage", [50, 52, 48, 51, 49, 50] * 2)
+        engine.evaluate(current_time=time.time())
+
+    assert engine.states["test-autopilot"]["cpu_usage"].status == AlertStatus.OK
+    assert mock_webhook.call_count == 0
+
+    # Step change to 90
+    ds.rotate_all()
+    ds.add_batch("cpu_usage", [90, 92, 88, 91, 89, 90] * 2)
+    engine.evaluate(current_time=time.time())
+
+    assert engine.states["test-autopilot"]["cpu_usage"].status == AlertStatus.FIRING
+    assert mock_webhook.call_count == 1
