@@ -554,7 +554,23 @@ class StreamLog:
 
     def memory_breakdown(self) -> Dict[str, Any]:
         if hasattr(self._backend, "memory_breakdown"):
-            return self._backend.memory_breakdown()  # type: ignore[no-any-return]
+            bkd = self._backend.memory_breakdown()
+            if "total_bytes" in bkd:
+                return bkd # type: ignore[no-any-return]
+            return {
+                'ddsketch_bytes': bkd.get('latency', 0),
+                'ddsketch_kb': round(bkd.get('latency', 0) / 1024, 2),
+                'ddsketch_buckets': 0,
+                'hyperloglog_bytes': bkd.get('uniques', 0),
+                'hyperloglog_kb': round(bkd.get('uniques', 0) / 1024, 2),
+                'hyperloglog_registers': 0,
+                'countmin_bytes': bkd.get('events', 0),
+                'countmin_kb': round(bkd.get('events', 0) / 1024, 2),
+                'countmin_cells': 0,
+                'total_bytes': bkd.get('total', 0),
+                'total_kb': round(bkd.get('total', 0) / 1024, 2),
+            }
+
         total = self._backend.memory_bytes()
         return {
             'ddsketch_bytes': total // 3,
@@ -583,9 +599,7 @@ class StreamLog:
         self._backend.merge(other._backend)
 
     def to_dict(self) -> Dict[str, Any]:
-        if not isinstance(self._backend, _PythonStreamLog):
-            raise NotImplementedError("Serialization is not supported when using the C++ backend. Initialize with deterministic=True to force the Python backend.")
-        return self._backend.to_dict()
+        return self._backend.to_dict()  # type: ignore[no-any-return]
 
     def to_json(self) -> str:
         import json
@@ -598,13 +612,21 @@ class StreamLog:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "StreamLog":
-        backend = _PythonStreamLog.from_dict(data)
+        if not isinstance(data, dict):
+            raise ValueError("StreamLog data must be a dictionary")
+
+        deterministic = data.get('deterministic', False)
+        if _cpp is not None and not deterministic:
+            backend = _cpp.StreamLog.from_dict(data)
+        else:
+            backend = _PythonStreamLog.from_dict(data)
+
         log = cls(
             relative_accuracy=data['latency']['alpha'],
             hll_precision=data['uniques']['precision'],
             cms_width=data['events']['width'],
             cms_depth=data['events']['depth'],
-            deterministic=data.get('deterministic', False)
+            deterministic=deterministic
         )
         log._backend = backend
         return log

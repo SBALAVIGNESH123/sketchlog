@@ -37,6 +37,20 @@ public:
     /// Zero-out all counters.
     void reset() noexcept;
 
+    /// State structure for serialization
+    struct State {
+        size_t width;
+        size_t depth;
+        int64_t total_count;
+        std::vector<int64_t> table;
+    };
+
+    /// Get current state for serialization
+    [[nodiscard]] State get_state() const;
+
+    /// Restore state from a serialization payload
+    void set_state(const State& state);
+
 private:
     size_t width_;
     size_t depth_;

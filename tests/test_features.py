@@ -19,13 +19,21 @@ def test_serialization():
     assert abs(log.p99() - log2.p99()) < 0.001, "Serialization mismatch!"
     assert log.total_events == log2.total_events
 
-    # Regression: check C++ backend throws correctly
+    # Verify C++ backend serialization works and has parity
     import pytest
     from sketchlog import HAS_CPP
     if HAS_CPP:
         cpp_log = StreamLog(deterministic=False)
-        with pytest.raises(NotImplementedError, match="Serialization is not supported"):
-            cpp_log.to_dict()
+        cpp_log.add_batch([rnd.lognormvariate(2, 1) for _ in range(100_000)])
+        for i in range(5000):
+            cpp_log.add_unique(str(i))
+        cpp_log.add_event("api_call", 1000)
+
+        j_cpp = cpp_log.to_json()
+        cpp_log2 = StreamLog.from_json(j_cpp)
+
+        assert abs(cpp_log.p99() - cpp_log2.p99()) < 0.001
+        assert cpp_log.total_events == cpp_log2.total_events
 
         # Regression: check restored backend (even if deterministic=False) serializes successfully
         # We can create a JSON string from a python backend and load it

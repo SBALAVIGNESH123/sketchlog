@@ -46,6 +46,31 @@ public:
     /// Reset the sketch to its initial empty state.
     void reset();
 
+    /// State structure for serialization
+    struct State {
+        double alpha;
+        int64_t zero_count;
+        size_t count;
+        double min_value;
+        double max_value;
+        std::vector<int64_t> pos_bins;
+        int pos_offset;
+        int pos_min_index;
+        int pos_max_index;
+        bool pos_empty;
+        std::vector<int64_t> neg_bins;
+        int neg_offset;
+        int neg_min_index;
+        int neg_max_index;
+        bool neg_empty;
+    };
+
+    /// Get current state for serialization
+    [[nodiscard]] State get_state() const;
+
+    /// Restore state from a serialization payload
+    void set_state(const State& state);
+
 private:
     // ── Logarithmic index mapping ──────────────────────────────────────
     //   gamma = (1 + alpha) / (1 - alpha)
