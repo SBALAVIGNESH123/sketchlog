@@ -41,6 +41,18 @@ public:
     /// Return the precision parameter p.
     uint8_t precision() const noexcept { return p_; }
 
+    /// State structure for serialization
+    struct State {
+        uint8_t precision;
+        std::vector<uint8_t> registers;
+    };
+
+    /// Get current state for serialization
+    [[nodiscard]] State get_state() const;
+
+    /// Restore state from a serialization payload
+    void set_state(const State& state);
+
 private:
     uint8_t              p_;          // precision, 4–18
     uint32_t             m_;          // register count = 1 << p_

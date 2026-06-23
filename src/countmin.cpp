@@ -30,6 +30,26 @@ void CountMinSketch::reset() noexcept {
     total_count_ = 0;
 }
 
+CountMinSketch::State CountMinSketch::get_state() const {
+    State s;
+    s.width = width_;
+    s.depth = depth_;
+    s.total_count = total_count_;
+    s.table = table_;
+    return s;
+}
+
+void CountMinSketch::set_state(const State& s) {
+    if (s.width != width_ || s.depth != depth_) {
+        throw std::invalid_argument("Cannot restore state with mismatched CMS dimensions");
+    }
+    if (s.table.size() != table_.size()) {
+        throw std::invalid_argument("Cannot restore state with mismatched table size");
+    }
+    total_count_ = s.total_count;
+    table_ = s.table;
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // Seed initialisation — deterministic splitmix64 from a fixed seed
 // ════════════════════════════════════════════════════════════════════════

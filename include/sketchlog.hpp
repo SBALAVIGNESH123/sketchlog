@@ -118,6 +118,23 @@ public:
     /** Merge another StreamLog into this one. */
     void merge(const StreamLog& other);
 
+    // ─── State Serialization ─────────────────────────────────────────
+
+    DDSketch::State get_latency_state() const { return latency_.get_state(); }
+    void set_latency_state(const DDSketch::State& s) { latency_.set_state(s); }
+
+    CountMinSketch::State get_events_state() const { return events_.get_state(); }
+    void set_events_state(const CountMinSketch::State& s) { events_.set_state(s); }
+
+    HyperLogLog::State get_uniques_state() const { return uniques_.get_state(); }
+    void set_uniques_state(const HyperLogLog::State& s) { uniques_.set_state(s); }
+
+    void set_total_events(uint64_t t) { total_events_ = t; }
+
+    size_t latency_memory_bytes() const { return latency_.memory_bytes(); }
+    size_t events_memory_bytes() const { return events_.memory_bytes(); }
+    size_t uniques_memory_bytes() const { return uniques_.memory_bytes(); }
+
 private:
     DDSketch latency_;
     CountMinSketch events_;
