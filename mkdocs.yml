@@ -45,16 +45,10 @@ markdown_extensions:
   - md_in_html
 
 nav:
-  - Getting Started: index.md
-  - Architecture & Concepts: architecture.md
-  - Benchmarks: benchmarks.md
-  - Client SDKs: sdks.md
-  - Integrations: integrations.md
-  - Grafana Dashboard: grafana.md
-  - Runbooks: runbooks.md
-  - Troubleshooting: troubleshooting.md
-  - API Reference: api.md
-  - Standalone Server: server.md
+  - Overview:
+      - Getting Started: index.md
+      - Architecture & Concepts: architecture.md
+      - Benchmarks: benchmarks.md
   - 10x Features:
       - Anomaly Auto-Pilot: features/anomaly_auto_pilot.md
       - Streaming SQL: features/streaming_sql.md
@@ -65,8 +59,18 @@ nav:
       - WASM Runtime: features/wasm_runtime.md
       - Live Dashboard SDK: features/live_dashboard_sdk.md
       - Multi-Tenancy: features/multi_tenancy.md
-  - Security Threat Model: threat_model.md
-  - Formal Guarantees: guarantees.md
-  - Compatibility Guarantees: compatibility.md
+  - Guides:
+      - Client SDKs: sdks.md
+      - Integrations: integrations.md
+      - Grafana Dashboard: grafana.md
+      - Standalone Server: server.md
+  - Operations:
+      - Runbooks: runbooks.md
+      - Troubleshooting: troubleshooting.md
+  - Reference:
+      - API Reference: api.md
+      - Security Threat Model: threat_model.md
+      - Formal Guarantees: guarantees.md
+      - Compatibility Guarantees: compatibility.md
   - Contributing: contributing.md
 
