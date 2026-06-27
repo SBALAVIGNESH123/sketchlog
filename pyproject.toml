@@ -73,7 +73,7 @@ server = [
 where = ["python"]
 
 [tool.setuptools.package-data]
-sketchlog = ["py.typed"]
+sketchlog = ["py.typed", "ebpf/bpf_code.c"]
 
 
 

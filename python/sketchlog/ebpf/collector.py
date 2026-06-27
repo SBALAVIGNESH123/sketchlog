@@ -8,13 +8,18 @@ from typing import Optional, List, Dict, Any
 
 from sketchlog.facade import StreamLog
 
-# Optional dependency check for BCC
-try:
-    from bcc import BPF  # type: ignore
-    HAS_BCC = True
-except ImportError:
-    HAS_BCC = False
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
     BPF: Any = None
+    HAS_BCC: bool = False
+else:
+    try:
+        from bcc import BPF
+        HAS_BCC = True
+    except ImportError:
+        HAS_BCC = False
+        BPF = None
 
 class EBPFCollector:
     """
