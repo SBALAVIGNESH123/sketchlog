@@ -237,8 +237,9 @@ class ClusterManager:
         version_vector: Dict[str, Dict[str, float]] = {}
 
         # 1. Local streams
-        for stream_id, stream in self.registry.snapshot_items():
-            version_vector[stream_id] = {self.node_id: getattr(stream, "last_updated", time.time())}
+        for ns, sid, stream in self.registry.snapshot_items():
+            full_id = f"{ns}::{sid}"
+            version_vector[full_id] = {self.node_id: getattr(stream, "last_updated", time.time())}
 
         # 2. Peer streams
         with self._lock:
@@ -273,12 +274,14 @@ class ClusterManager:
                         sync_payload["streams"][stream_id] = {}
                         for nid in nids:
                             if nid == self.node_id:
-                                stream = self.registry.get(stream_id)
-                                if stream:
-                                    try:
-                                        sync_payload["streams"][stream_id][nid] = stream.get_snapshot().to_dict()
-                                    except Exception:
-                                        pass
+                                parts = stream_id.split("::", 1)
+                                if len(parts) == 2:
+                                    stream = self.registry.get(parts[0], parts[1])
+                                    if stream:
+                                        try:
+                                            sync_payload["streams"][stream_id][nid] = stream.get_snapshot().to_dict()
+                                        except Exception:
+                                            pass
                             else:
                                 with self._lock:
                                     if stream_id in self.peer_snapshots and nid in self.peer_snapshots[stream_id]:
@@ -302,20 +305,19 @@ class ClusterManager:
 
         # 1. Compare what they have vs what we have
         # A. Local streams
-        for stream_id, _ in self.registry.snapshot_items():
+        for ns, sid, stream in self.registry.snapshot_items():
+            stream_id = f"{ns}::{sid}"
             remote_stream = remote_versions.get(stream_id, {})
             remote_node_ts = remote_stream.get(self.node_id, 0)
-            local_node_ts = getattr(self.registry.get(stream_id), "last_updated", local_ts)
+            local_node_ts = getattr(stream, "last_updated", local_ts)
             # If they don't have our local stream or it's old
             if local_node_ts > remote_node_ts:
-                stream = self.registry.get(stream_id)
-                if stream:
-                    try:
-                        if stream_id not in updates_to_send:
-                            updates_to_send[stream_id] = {}
-                        updates_to_send[stream_id][self.node_id] = stream.get_snapshot().to_dict()
-                    except Exception:
-                        pass
+                try:
+                    if stream_id not in updates_to_send:
+                        updates_to_send[stream_id] = {}
+                    updates_to_send[stream_id][self.node_id] = stream.get_snapshot().to_dict()
+                except Exception:
+                    pass
 
         # B. Peer streams comparison
         with self._lock:
@@ -379,19 +381,19 @@ class ClusterManager:
                     except Exception as e:
                         logger.warning(f"Failed to deserialize snapshot from {sender_node_id} for stream {stream_id}, origin {nid}: {e}")
 
-    def get_merged_stream(self, stream_id: str, local_stream: Optional[Any]) -> StreamLog:
-        merged = local_stream.get_snapshot() if local_stream else StreamLog(deterministic=True)
+    def has_peer_data(self, namespace: str, stream_id: str) -> bool:
+        full_id = f"{namespace}::{stream_id}"
         with self._lock:
-            if stream_id in self.peer_snapshots:
-                for node_id, (peer_log, _) in self.peer_snapshots[stream_id].items():
-                    # Check if node is dead, if so, we can exclude its data or keep it?
-                    # Let's keep it until it's evicted from peer_snapshots
+            return full_id in self.peer_snapshots
+
+    def get_merged_stream(self, namespace: str, stream_id: str, local_stream: Optional[Any]) -> StreamLog:
+        merged = local_stream.get_snapshot() if local_stream else StreamLog(deterministic=True)
+        full_id = f"{namespace}::{stream_id}"
+        with self._lock:
+            if full_id in self.peer_snapshots:
+                for node_id, (peer_log, _) in self.peer_snapshots[full_id].items():
                     merged.merge(peer_log)
         return merged
-
-    def has_peer_data(self, stream_id: str) -> bool:
-        with self._lock:
-            return stream_id in self.peer_snapshots and bool(self.peer_snapshots[stream_id])
 
     def _http_post(self, url: str, payload: Dict[str, Any], fire_and_forget: bool = False) -> Optional[Dict[str, Any]]:
         payload_bytes = json.dumps(payload).encode('utf-8')

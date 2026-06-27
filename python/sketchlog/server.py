@@ -74,10 +74,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configuration
-MAX_STREAMS = int(os.environ.get("SKETCHLOG_MAX_STREAMS", "1000"))
-if MAX_STREAMS < 1:
-    raise ValueError("SKETCHLOG_MAX_STREAMS must be >= 1")
+NAMESPACE_MEMORY_QUOTA_MB = int(os.environ.get("SKETCHLOG_NAMESPACE_QUOTA_MB", "50"))
+STREAM_UPPER_BOUND_BYTES = 130 * 1024 # Approx 130KB max per stream
+MAX_STREAMS_PER_NAMESPACE = (NAMESPACE_MEMORY_QUOTA_MB * 1024 * 1024) // STREAM_UPPER_BOUND_BYTES
+if MAX_STREAMS_PER_NAMESPACE < 1:
+    MAX_STREAMS_PER_NAMESPACE = 1
 
 MAX_BATCH_SIZE = int(os.environ.get("SKETCHLOG_MAX_BATCH_SIZE", "10000"))
 if MAX_BATCH_SIZE < 1:
@@ -150,26 +151,27 @@ async def require_auth(request: Request, call_next: Callable[[Request], Awaitabl
     return await call_next(request)
 
 @app.get("/v1/streams/{stream_id:path}/diff")
-def diff_streams(stream_id: str, baseline_stream_id: str) -> Dict[str, Any]:
+@app.get("/v1/namespaces/{namespace}/streams/{stream_id:path}/diff")
+def diff_streams(stream_id: str, baseline_stream_id: str, namespace: str = "default") -> Dict[str, Any]:
     """
     Sketch Diffing — Visual & Programmatic Distribution Comparison.
     Compare any two time windows, deployments, or regions side-by-side.
     """
-    current_stream = registry.get(stream_id)
+    current_stream = registry.get(namespace, stream_id)
     if not current_stream:
-        has_curr = cluster_manager.has_peer_data(stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        has_curr = cluster_manager.has_peer_data(namespace, stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
         if not has_curr:
-            raise HTTPException(status_code=404, detail=f"Current stream '{stream_id}' not found.")
+            raise HTTPException(status_code=404, detail=f"Current stream '{stream_id}' not found in namespace '{namespace}'.")
 
-    baseline_stream = registry.get(baseline_stream_id)
+    baseline_stream = registry.get(namespace, baseline_stream_id)
     if not baseline_stream:
-        has_base = cluster_manager.has_peer_data(baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        has_base = cluster_manager.has_peer_data(namespace, baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
         if not has_base:
-            raise HTTPException(status_code=404, detail=f"Baseline stream '{baseline_stream_id}' not found.")
+            raise HTTPException(status_code=404, detail=f"Baseline stream '{baseline_stream_id}' not found in namespace '{namespace}'.")
 
     if PEERS or ADVERTISED_ADDRESS:
-        curr = cluster_manager.get_merged_stream(stream_id, current_stream)
-        base = cluster_manager.get_merged_stream(baseline_stream_id, baseline_stream)
+        curr = cluster_manager.get_merged_stream(namespace, stream_id, current_stream)
+        base = cluster_manager.get_merged_stream(namespace, baseline_stream_id, baseline_stream)
     else:
         assert current_stream is not None
         assert baseline_stream is not None
@@ -226,54 +228,77 @@ app.add_middleware(CorrelationIdMiddleware)
 
 # State
 class StreamRegistry:
-    def __init__(self, max_size: int):
-        self.max_size = max_size
-        self._streams: OrderedDict[str, ThreadSafeStreamLog] = OrderedDict()
+    def __init__(self, max_streams_per_namespace: int):
+        self.max_streams_per_ns = max_streams_per_namespace
+        from typing import DefaultDict
+        from collections import defaultdict
+        self._namespaces: DefaultDict[str, OrderedDict[str, ThreadSafeStreamLog]] = defaultdict(OrderedDict)
         from threading import Lock
         self._lock = Lock()
 
-    def snapshot_items(self) -> List[Tuple[str, ThreadSafeStreamLog]]:
+    def snapshot_items(self) -> List[Tuple[str, str, ThreadSafeStreamLog]]:
+        """Returns list of (namespace, stream_id, stream)"""
         with self._lock:
-            return list(self._streams.items())
+            items = []
+            for ns, streams in self._namespaces.items():
+                for sid, stream in streams.items():
+                    items.append((ns, sid, stream))
+            return items
 
-    def get_or_create(self, stream_id: str) -> ThreadSafeStreamLog:
+    def get_or_create(self, namespace: str, stream_id: str) -> ThreadSafeStreamLog:
         with self._lock:
-            if stream_id in self._streams:
-                self._streams.move_to_end(stream_id)
-                return self._streams[stream_id]
+            ns_streams = self._namespaces[namespace]
+            if stream_id in ns_streams:
+                ns_streams.move_to_end(stream_id)
+                return ns_streams[stream_id]
 
-            if len(self._streams) >= self.max_size:
-                # Evict oldest
-                evicted_id, _ = self._streams.popitem(last=False)
+            if len(ns_streams) >= self.max_streams_per_ns:
+                # Evict oldest in this namespace
+                evicted_id, _ = ns_streams.popitem(last=False)
                 STREAM_EVICTIONS_TOTAL.inc()
-                logger.info("stream_evicted", stream_id=evicted_id)
+                logger.info("stream_evicted", namespace=namespace, stream_id=evicted_id)
 
             stream = ThreadSafeStreamLog(deterministic=bool(PEERS or ADVERTISED_ADDRESS))
-            self._streams[stream_id] = stream
-            ACTIVE_STREAMS.set(len(self._streams))
+            ns_streams[stream_id] = stream
+            # Update global active streams count
+            ACTIVE_STREAMS.set(sum(len(ns) for ns in self._namespaces.values()))
             return stream
 
-    def get(self, stream_id: str) -> Optional[ThreadSafeStreamLog]:
+    def get(self, namespace: str, stream_id: str) -> Optional[ThreadSafeStreamLog]:
         with self._lock:
-            if stream_id in self._streams:
-                self._streams.move_to_end(stream_id)
-                return self._streams[stream_id]
+            ns_streams = self._namespaces.get(namespace)
+            if ns_streams and stream_id in ns_streams:
+                ns_streams.move_to_end(stream_id)
+                return ns_streams[stream_id]
             return None
 
-    def peek(self, stream_id: str) -> Optional[ThreadSafeStreamLog]:
+    def peek(self, namespace: str, stream_id: str) -> Optional[ThreadSafeStreamLog]:
         with self._lock:
-            return self._streams.get(stream_id)
+            ns_streams = self._namespaces.get(namespace)
+            if ns_streams:
+                return ns_streams.get(stream_id)
+            return None
 
-    def delete(self, stream_id: str) -> bool:
+    def delete(self, namespace: str, stream_id: str) -> bool:
         with self._lock:
-            if stream_id in self._streams:
-                del self._streams[stream_id]
-                ACTIVE_STREAMS.set(len(self._streams))
+            ns_streams = self._namespaces.get(namespace)
+            if ns_streams and stream_id in ns_streams:
+                del ns_streams[stream_id]
+                if not ns_streams:
+                    del self._namespaces[namespace]
+                ACTIVE_STREAMS.set(sum(len(ns) for ns in self._namespaces.values()))
                 return True
             return False
 
+    def get_namespace(self, namespace: str) -> List[ThreadSafeStreamLog]:
+        with self._lock:
+            ns_streams = self._namespaces.get(namespace)
+            if ns_streams:
+                return list(ns_streams.values())
+            return []
+
 SYNC_INTERVAL = float(os.environ.get("SKETCHLOG_SYNC_INTERVAL", "5.0"))
-registry = StreamRegistry(max_size=MAX_STREAMS)
+registry = StreamRegistry(max_streams_per_namespace=MAX_STREAMS_PER_NAMESPACE)
 cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry, cluster_secret=CLUSTER_SECRET, advertised_address=ADVERTISED_ADDRESS, sync_interval=SYNC_INTERVAL)
 
 # Models
@@ -427,10 +452,13 @@ async def mesh_gossip_sync(request: Request) -> Dict[str, str]:
         logger.error("mesh_gossip_sync_failed", error=str(e))
         raise HTTPException(status_code=400, detail="Invalid sync payload")
 
+@app.post("/v1/namespaces/{namespace}/streams/{stream_id:path}/events", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/v1/streams/{stream_id:path}/events", status_code=status.HTTP_202_ACCEPTED)
-async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
+async def ingest_events(stream_id: str, batch: EventBatch, namespace: str = "default") -> Dict[str, str]:
     if len(stream_id) > 255:
         raise HTTPException(status_code=422, detail="Stream ID too long")
+    if len(namespace) > 255:
+        raise HTTPException(status_code=422, detail="Namespace too long")
 
     # 1. Preflight counter capacity limit
     new_events = (len(batch.latencies) if batch.latencies else 0)
@@ -438,7 +466,7 @@ async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
         new_events += sum(batch.events.values())
 
     current_total = 0
-    existing_stream = registry.peek(stream_id)
+    existing_stream = registry.peek(namespace, stream_id)
     if existing_stream:
         current_total = existing_stream.total_events
 
@@ -446,7 +474,7 @@ async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
     if current_total + new_events > 9223372036854775807:
         raise HTTPException(status_code=422, detail="Total stream event capacity exceeded")
 
-    stream = registry.get_or_create(stream_id)
+    stream = registry.get_or_create(namespace, stream_id)
 
     if batch.latencies:
         stream.add_batch(batch.latencies)
@@ -462,22 +490,23 @@ async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
     EVENTS_INGESTED_TOTAL.inc(new_events)
     return {"status": "accepted"}
 
+@app.get("/v1/namespaces/{namespace}/streams/{stream_id:path}/metrics", response_model=MetricsResponse)
 @app.get("/v1/streams/{stream_id:path}/metrics", response_model=MetricsResponse)
-async def get_metrics(stream_id: str) -> MetricsResponse:
-    local_stream = registry.get(stream_id)
+async def get_metrics(stream_id: str, namespace: str = "default") -> MetricsResponse:
+    local_stream = registry.get(namespace, stream_id)
 
     if not PEERS and not ADVERTISED_ADDRESS:
         if not local_stream:
-            raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+            raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found in namespace '{namespace}'.")
         stream_to_report = local_stream.get_snapshot()
     else:
         # Clustered mode: fetch merged stats across all peers
         # Check if the stream actually exists locally or remotely.
-        stream_to_report = cluster_manager.get_merged_stream(stream_id, local_stream)
-        has_remote = cluster_manager.has_peer_data(stream_id)
+        stream_to_report = cluster_manager.get_merged_stream(namespace, stream_id, local_stream)
+        has_remote = cluster_manager.has_peer_data(namespace, stream_id)
 
         if not local_stream and not has_remote:
-            raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+            raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found in namespace '{namespace}'.")
 
     return MetricsResponse(
         stream_id=stream_id,
@@ -490,8 +519,9 @@ async def get_metrics(stream_id: str) -> MetricsResponse:
         memory_footprint_bytes=stream_to_report.memory_bytes()
     )
 
+@app.websocket("/v1/namespaces/{namespace}/streams/{stream_id:path}/ws")
 @app.websocket("/v1/streams/{stream_id:path}/ws")
-async def stream_ws(websocket: WebSocket, stream_id: str) -> None:
+async def stream_ws(websocket: WebSocket, stream_id: str, namespace: str = "default") -> None:
     if AUTH_TOKEN:
         token = websocket.headers.get("X-SketchLog-Auth-Token")
         if not token or not hmac.compare_digest(token.encode('utf-8'), AUTH_TOKEN.encode('utf-8')):
@@ -501,11 +531,11 @@ async def stream_ws(websocket: WebSocket, stream_id: str) -> None:
     await websocket.accept()
     try:
         while True:
-            local_stream = registry.get(stream_id)
+            local_stream = registry.get(namespace, stream_id)
             if not PEERS and not ADVERTISED_ADDRESS:
                 stream_to_report = local_stream.get_snapshot() if local_stream else None
             else:
-                stream_to_report = cluster_manager.get_merged_stream(stream_id, local_stream) if (local_stream or cluster_manager.has_peer_data(stream_id)) else None
+                stream_to_report = cluster_manager.get_merged_stream(namespace, stream_id, local_stream) if (local_stream or cluster_manager.has_peer_data(namespace, stream_id)) else None
 
             if stream_to_report:
                 await websocket.send_json(stream_to_report.to_dict())
@@ -516,11 +546,12 @@ async def stream_ws(websocket: WebSocket, stream_id: str) -> None:
     except WebSocketDisconnect:
         pass
 
+@app.get("/v1/namespaces/{namespace}/streams/{stream_id:path}/events", response_model=EventCountResponse)
 @app.get("/v1/streams/{stream_id:path}/events", response_model=EventCountResponse)
-async def get_event_count(stream_id: str, name: str) -> EventCountResponse:
-    stream = registry.get(stream_id)
+async def get_event_count(stream_id: str, name: str, namespace: str = "default") -> EventCountResponse:
+    stream = registry.get(namespace, stream_id)
     if not stream:
-        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found in namespace '{namespace}'.")
 
     return EventCountResponse(
         stream_id=stream_id,
@@ -528,23 +559,24 @@ async def get_event_count(stream_id: str, name: str) -> EventCountResponse:
         count=stream.event_count(name)
     )
 
+@app.post("/v1/namespaces/{namespace}/streams/{stream_id:path}/slo/evaluate", response_model=SLOResponse)
 @app.post("/v1/streams/{stream_id:path}/slo/evaluate", response_model=SLOResponse)
-async def evaluate_slo(stream_id: str, req: SLOEvaluationRequest) -> SLOResponse:
-    current_stream = registry.get(stream_id)
+async def evaluate_slo(stream_id: str, req: SLOEvaluationRequest, namespace: str = "default") -> SLOResponse:
+    current_stream = registry.get(namespace, stream_id)
     if not current_stream:
-        has_curr = cluster_manager.has_peer_data(stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        has_curr = cluster_manager.has_peer_data(namespace, stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
         if not has_curr:
-            raise HTTPException(status_code=404, detail=f"Current stream '{stream_id}' not found.")
+            raise HTTPException(status_code=404, detail=f"Current stream '{stream_id}' not found in namespace '{namespace}'.")
 
-    baseline_stream = registry.get(req.baseline_stream_id)
+    baseline_stream = registry.get(namespace, req.baseline_stream_id)
     if not baseline_stream:
-        has_base = cluster_manager.has_peer_data(req.baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        has_base = cluster_manager.has_peer_data(namespace, req.baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
         if not has_base:
-            raise HTTPException(status_code=404, detail=f"Baseline stream '{req.baseline_stream_id}' not found.")
+            raise HTTPException(status_code=404, detail=f"Baseline stream '{req.baseline_stream_id}' not found in namespace '{namespace}'.")
 
     if PEERS or ADVERTISED_ADDRESS:
-        curr = cluster_manager.get_merged_stream(stream_id, current_stream)
-        base = cluster_manager.get_merged_stream(req.baseline_stream_id, baseline_stream)
+        curr = cluster_manager.get_merged_stream(namespace, stream_id, current_stream)
+        base = cluster_manager.get_merged_stream(namespace, req.baseline_stream_id, baseline_stream)
     else:
         assert current_stream is not None
         assert baseline_stream is not None
@@ -567,11 +599,48 @@ async def evaluate_slo(stream_id: str, req: SLOEvaluationRequest) -> SLOResponse
         **metrics
     )
 
+@app.delete("/v1/namespaces/{namespace}/streams/{stream_id:path}", status_code=status.HTTP_204_NO_CONTENT)
 @app.delete("/v1/streams/{stream_id:path}", status_code=status.HTTP_204_NO_CONTENT)
-async def reset_stream(stream_id: str) -> None:
-    success = registry.delete(stream_id)
+async def reset_stream(stream_id: str, namespace: str = "default") -> None:
+    success = registry.delete(namespace, stream_id)
     if not success:
-        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
+        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found in namespace '{namespace}'.")
+
+@app.get("/v1/namespaces/aggregate", response_model=MetricsResponse)
+async def aggregate_streams(namespaces: str, stream_id: str) -> MetricsResponse:
+    ns_list = [ns.strip() for ns in namespaces.split(",") if ns.strip()]
+    if not ns_list:
+        raise HTTPException(status_code=400, detail="No namespaces provided.")
+
+    merged = StreamLog(deterministic=bool(PEERS or ADVERTISED_ADDRESS))
+    found_any = False
+    
+    for ns in ns_list:
+        local_stream = registry.get(ns, stream_id)
+        if local_stream:
+            merged.merge(local_stream.get_snapshot())
+            found_any = True
+        
+        if PEERS or ADVERTISED_ADDRESS:
+            has_remote = cluster_manager.has_peer_data(ns, stream_id)
+            if has_remote:
+                remote_merged = cluster_manager.get_merged_stream(ns, stream_id, None)
+                merged.merge(remote_merged)
+                found_any = True
+
+    if not found_any:
+        raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found in any of the specified namespaces.")
+
+    return MetricsResponse(
+        stream_id=stream_id,
+        p50=merged.percentile(0.50),
+        p90=merged.percentile(0.90),
+        p99=merged.percentile(0.99),
+        p99_9=merged.percentile(0.999),
+        unique_count=merged.unique_count(),
+        total_events=merged.total_events,
+        memory_footprint_bytes=merged.memory_bytes()
+    )
 
 def main() -> None:
     import uvicorn
