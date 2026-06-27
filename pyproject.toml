@@ -68,7 +68,7 @@ server = [
     "prometheus-client>=0.17.0",
     "asgi-correlation-id>=4.2.0",
     "psutil",
-    "sqlalchemy>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite"
 ]
 
