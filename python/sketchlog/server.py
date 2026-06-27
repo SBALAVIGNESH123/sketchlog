@@ -139,7 +139,8 @@ app.add_middleware(LimitUploadSize)
 async def require_auth(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     if AUTH_TOKEN and request.url.path.startswith("/v1/"):
         token = request.headers.get("X-SketchLog-Auth-Token")
-        if not token or token != AUTH_TOKEN:
+        import hmac
+        if not token or not hmac.compare_digest(token.encode('utf-8'), AUTH_TOKEN.encode('utf-8')):
             return Response(status_code=401, content=b'{"detail":"Unauthorized"}', headers={"Content-Type": "application/json"})
     return await call_next(request)
 
@@ -434,6 +435,8 @@ def main() -> None:
     tls_cert = os.environ.get("SKETCHLOG_TLS_CERT")
     tls_key = os.environ.get("SKETCHLOG_TLS_KEY")
     kwargs: Dict[str, Any] = {}
+    if bool(tls_cert) != bool(tls_key):
+        raise ValueError("Both SKETCHLOG_TLS_CERT and SKETCHLOG_TLS_KEY must be provided for TLS, but only one was found.")
     if tls_cert and tls_key:
         kwargs["ssl_certfile"] = tls_cert
         kwargs["ssl_keyfile"] = tls_key
