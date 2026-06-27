@@ -1,4 +1,7 @@
+import math
+import sys
 from typing import List, Tuple, Dict, Any
+from functools import cached_property
 from sketchlog.facade import StreamLog
 
 def get_cdf(stream: StreamLog) -> List[Tuple[float, float]]:
@@ -15,11 +18,8 @@ def get_cdf(stream: StreamLog) -> List[Tuple[float, float]]:
 
     def bucket_value(idx: int) -> float:
         try:
-            import math
-            import sys
             return float((2.0 / (1.0 + gamma)) * math.pow(gamma, idx))
         except OverflowError:
-            import sys
             return sys.float_info.max if idx > 0 else 0.0
 
     points = []
@@ -161,11 +161,11 @@ class SketchDiff:
         self.cdf1 = get_cdf(stream1)
         self.cdf2 = get_cdf(stream2)
 
-    @property
+    @cached_property
     def ks_statistic(self) -> float:
         return ks_statistic(self.cdf1, self.cdf2)
 
-    @property
+    @cached_property
     def wasserstein_distance(self) -> float:
         return wasserstein_distance(self.cdf1, self.cdf2)
 
