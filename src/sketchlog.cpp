@@ -28,6 +28,24 @@ void StreamLog::add_latency(double value) {
     total_events_++;
 }
 
+void StreamLog::add_batch(const double* values, size_t size) {
+    size_t valid_count = 0;
+    for (size_t i = 0; i < size; ++i) {
+        if (std::isfinite(values[i])) valid_count++;
+    }
+
+    if (std::numeric_limits<uint64_t>::max() - total_events_ < valid_count) {
+        throw std::overflow_error("StreamLog: total_events overflow");
+    }
+
+    latency_.add_batch(values, size);
+    total_events_ += valid_count;
+}
+
+void StreamLog::add_batch(const std::vector<double>& values) {
+    add_batch(values.data(), values.size());
+}
+
 double StreamLog::percentile(double q) const {
     return latency_.quantile(q);
 }
