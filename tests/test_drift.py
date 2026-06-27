@@ -236,3 +236,34 @@ def test_drift_summary_stale_window_rotation(monkeypatch):
     summary2 = ds.summary()
     assert summary2['metrics'][0]['current_p99'] == 0.0
     assert summary2['metrics'][0]['previous_p99'] == 0.0
+
+def test_anomaly_cusum():
+    import sketchlog.drift as drift_mod
+
+    ds = drift_mod.DriftSketch(window="9999s")
+    for _ in range(20):
+        ds._update_cusum("latency", 100.0)
+
+    assert "latency" not in ds._latest_anomalies
+
+    ds._update_cusum("latency", 500.0)
+    anomalies = ds.anomalies()
+    assert len(anomalies) == 1
+    assert anomalies[0]["dimension"] == "latency"
+    assert anomalies[0]["direction"] == "up"
+
+    ds._update_cusum("latency", 100.0)
+    assert len(ds.anomalies()) == 0
+
+def test_anomaly_cusum_drop():
+    import sketchlog.drift as drift_mod
+    ds = drift_mod.DriftSketch(window="9999s")
+
+    for _ in range(20):
+        ds._update_cusum("latency", 100.0)
+
+    ds._update_cusum("latency", 0.0)
+    anomalies = ds.anomalies()
+    assert len(anomalies) == 1
+    assert anomalies[0]["dimension"] == "latency"
+    assert anomalies[0]["direction"] == "down"
