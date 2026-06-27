@@ -31,7 +31,7 @@ class EBPFCollector:
         self.log = log
         self.poll_interval_sec = poll_interval_sec
         self.bpf: Any = None
-        self._thread = None
+        self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._mapping: List[int] = []
 
