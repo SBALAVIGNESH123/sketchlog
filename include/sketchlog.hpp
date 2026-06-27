@@ -60,6 +60,9 @@ public:
     /** Add a latency measurement. */
     void add_latency(double value);
 
+    /** Add a batch of latency measurements. */
+    void add_batch(const std::vector<double>& values);
+
     /** Get any percentile (0.0 to 1.0). */
     double percentile(double q) const;
 

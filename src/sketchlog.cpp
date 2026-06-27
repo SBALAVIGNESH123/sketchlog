@@ -28,6 +28,12 @@ void StreamLog::add_latency(double value) {
     total_events_++;
 }
 
+void StreamLog::add_batch(const std::vector<double>& values) {
+    for (double v : values) {
+        add_latency(v);
+    }
+}
+
 double StreamLog::percentile(double q) const {
     return latency_.quantile(q);
 }

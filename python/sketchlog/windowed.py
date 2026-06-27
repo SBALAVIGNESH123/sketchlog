@@ -67,19 +67,38 @@ class WindowedStreamLog:
         self._buckets = [StreamLog(**self._sk_kwargs) for _ in range(n_buckets)]
         self._bucket_start_times = [_time.monotonic_ns()] * n_buckets
         self._current_bucket = 0
+        self._merged = StreamLog(**self._sk_kwargs)
+        self._merged_expires_at = float('inf')
         self._start_time = _time.monotonic_ns()
         self._lock = threading.RLock()  # thread-safe and reentrant
+
+    def _rebuild_merged(self) -> None:
+        self._merged.reset()
+        now = _time.monotonic_ns()
+        expires_at = float('inf')
+        for i in range(self._n_buckets):
+            age = now - self._bucket_start_times[i]
+            if age <= self._window_ns and (self._buckets[i].total_events > 0 or self._buckets[i].unique_count() > 0):
+                self._merged.merge(self._buckets[i])
+                expiry = self._bucket_start_times[i] + self._window_ns
+                if expiry < expires_at:
+                    expires_at = expiry
+        self._merged_expires_at = expires_at
 
     def _rotate(self) -> None:
         """Advance the ring buffer by one bucket."""
         now = _time.monotonic_ns()
         elapsed = now - self._bucket_start_times[self._current_bucket]
 
+        rotated = False
+        if now > self._merged_expires_at:
+            rotated = True
         # Optimization: if we've been idle for the entire window length
         if elapsed >= self._n_buckets * self._bucket_duration_ns:
             for i in range(self._n_buckets):
                 self._buckets[i].reset()
                 self._bucket_start_times[i] = now
+            self._rebuild_merged()
             return
 
         while elapsed >= self._bucket_duration_ns:
@@ -89,6 +108,10 @@ class WindowedStreamLog:
             self._buckets[self._current_bucket].reset()
             self._bucket_start_times[self._current_bucket] = prev_start + self._bucket_duration_ns
             elapsed -= self._bucket_duration_ns
+            rotated = True
+
+        if rotated:
+            self._rebuild_merged()
 
     def _active_buckets(self) -> List[StreamLog]:
         """Return all valid buckets in chronological order."""
@@ -107,18 +130,21 @@ class WindowedStreamLog:
         with self._lock:
             self._rotate()
             self._buckets[self._current_bucket].add_latency(value)
+            self._merged.add_latency(value)
 
     def add_event(self, name: EventKey, count: int = 1) -> None:
         """Record an event in the current time bucket."""
         with self._lock:
             self._rotate()
             self._buckets[self._current_bucket].add_event(name, count)
+            self._merged.add_event(name, count)
 
     def add_unique(self, item: Union[str, bytes, int]) -> None:
         """Track a unique item in the current time bucket."""
         with self._lock:
             self._rotate()
             self._buckets[self._current_bucket].add_unique(item)
+            self._merged.add_unique(item)
 
     # ─── Read (merged across active buckets) ─────────────────────────
 
@@ -126,14 +152,7 @@ class WindowedStreamLog:
         """Get percentile across the entire active window."""
         with self._lock:
             self._rotate()
-            active = self._active_buckets()
-            if not active:
-                return 0.0
-            # Merge all active buckets into a temporary sketch
-            merged = StreamLog(**self._sk_kwargs)
-            for bucket in active:
-                merged.merge(bucket)
-            return merged.percentile(q)
+            return self._merged.percentile(q)
 
     def p50(self) -> float:
         return self.percentile(0.50)
@@ -151,37 +170,25 @@ class WindowedStreamLog:
         """Estimated unique items in the active window."""
         with self._lock:
             self._rotate()
-            active = self._active_buckets()
-            if not active:
-                return 0
-            merged = StreamLog(**self._sk_kwargs)
-            for bucket in active:
-                merged.merge(bucket)
-            return merged.unique_count()
+            return self._merged.unique_count()
 
     def event_count(self, name: Union[str, int, bytes]) -> int:
         """Approximate event frequency across the window."""
         with self._lock:
             self._rotate()
-            active = self._active_buckets()
-            if not active:
-                return 0
-            merged = StreamLog(**self._sk_kwargs)
-            for bucket in active:
-                merged.merge(bucket)
-            return merged.event_count(name)
+            return self._merged.event_count(name)
 
     @property
     def total_events(self) -> int:
         """Total events across all active buckets."""
         with self._lock:
             self._rotate()
-            return sum(b.total_events for b in self._active_buckets())
+            return self._merged.total_events
 
     def memory_bytes(self) -> int:
-        """Total memory across all buckets (not just active ones)."""
+        """Total memory across all buckets (not just active ones) and cache."""
         with self._lock:
-            return sum(b.memory_bytes() for b in self._buckets)
+            return sum(b.memory_bytes() for b in self._buckets) + self._merged.memory_bytes()
 
     def memory_kb(self) -> float:
         return self.memory_bytes() / 1024.0
@@ -194,19 +201,11 @@ class WindowedStreamLog:
         """Get a complete snapshot of all metrics."""
         with self._lock:
             self._rotate()
-            active = self._active_buckets()
-            if not active:
-                return Stats(0, self.memory_bytes(), self.memory_kb(),
-                           0.0, 0.0, 0.0, 0)
-            merged = StreamLog(**self._sk_kwargs)
-            for bucket in active:
-                merged.merge(bucket)
-            s = merged.stats()
-            # Override memory with actual windowed memory
+            s = self._merged.stats()
             return Stats(
-                events=sum(b.total_events for b in active),
-                memory_bytes=sum(b.memory_bytes() for b in self._buckets),
-                memory_kb=round(sum(b.memory_bytes() for b in self._buckets) / 1024, 2),
+                events=s.events,
+                memory_bytes=self.memory_bytes(),
+                memory_kb=self.memory_kb(),
                 latency_p50=s.latency_p50,
                 latency_p99=s.latency_p99,
                 latency_p999=s.latency_p999,
@@ -218,13 +217,15 @@ class WindowedStreamLog:
         with self._lock:
             for b in self._buckets:
                 b.reset()
+            self._merged.reset()
+            self._merged_expires_at = float('inf')
             now = _time.monotonic_ns()
             self._bucket_start_times = [now] * self._n_buckets
             self._current_bucket = 0
 
     def __repr__(self) -> str:
         with self._lock:
-            total = sum(b.total_events for b in self._active_buckets())
+            self._rotate()
             return (f"WindowedStreamLog(window={self._window_seconds}s, "
-                    f"events={total:,}, "
+                    f"events={self._merged.total_events:,}, "
                     f"memory={self.memory_kb():.1f} KB)")

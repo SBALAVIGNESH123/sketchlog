@@ -23,6 +23,9 @@ public:
     /// Add an observation with a repetition count.
     void add(double value, size_t count);
 
+    /// Add a batch of observations efficiently.
+    void add_batch(const std::vector<double>& values);
+
     /// Return the approximate value at the given quantile.
     /// @param q  quantile in [0.0, 1.0], e.g. 0.99 for p99.
     /// @return   approximate quantile value, or 0 if the sketch is empty.

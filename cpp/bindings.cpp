@@ -28,7 +28,6 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         .def("add", py::overload_cast<double>(&sketchlog::DDSketch::add),
              py::arg("value"), "Add a single observation.")
         .def("add_batch", [](sketchlog::DDSketch& self, py::object values) {
-            sketchlog::DDSketch temp = self;
             bool fast_path_used = false;
 
             try {
@@ -36,7 +35,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
                     auto arr = values.cast<py::array_t<double>>();
                     auto buf = arr.unchecked<1>();
                     for (py::ssize_t i = 0; i < buf.shape(0); i++) {
-                        temp.add(buf(i));
+                        self.add(buf(i));
                     }
                     fast_path_used = true;
                 }
@@ -46,10 +45,9 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
 
             if (!fast_path_used) {
                 for (auto item : py::iter(values)) {
-                    temp.add(item.cast<double>());
+                    self.add(item.cast<double>());
                 }
             }
-            self = std::move(temp);
         }, py::arg("values"), "Bulk-add values from an iterable (fast path for numpy arrays).")
         .def("quantile", &sketchlog::DDSketch::quantile, py::arg("q"))
         .def("min", &sketchlog::DDSketch::min)
@@ -132,7 +130,6 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
              py::arg("value"), "Add a latency measurement.")
         .def("add_batch", [](sketchlog::StreamLog& self,
                               py::object values) {
-            sketchlog::StreamLog temp = self;
             bool fast_path_used = false;
 
             try {
@@ -140,7 +137,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
                     auto arr = values.cast<py::array_t<double>>();
                     auto buf = arr.unchecked<1>();
                     for (py::ssize_t i = 0; i < buf.shape(0); i++) {
-                        temp.add_latency(buf(i));
+                        self.add_latency(buf(i));
                     }
                     fast_path_used = true;
                 }
@@ -150,10 +147,9 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
 
             if (!fast_path_used) {
                 for (auto item : py::iter(values)) {
-                    temp.add_latency(item.cast<double>());
+                    self.add_latency(item.cast<double>());
                 }
             }
-            self = std::move(temp);
         }, py::arg("values"),
            "Bulk-add latency values from an iterable (fast path for numpy arrays).")
         .def("percentile", &sketchlog::StreamLog::percentile, py::arg("q"))

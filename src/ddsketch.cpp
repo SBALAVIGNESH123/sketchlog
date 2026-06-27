@@ -180,6 +180,12 @@ void DDSketch::add(double value) {
     add(value, 1);
 }
 
+void DDSketch::add_batch(const std::vector<double>& values) {
+    for (double v : values) {
+        add(v);
+    }
+}
+
 void DDSketch::add(double value, size_t count) {
     if (std::isnan(value) || std::isinf(value)) return; // silently reject
     if (count == 0) return;
