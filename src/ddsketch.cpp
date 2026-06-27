@@ -313,6 +313,9 @@ double DDSketch::quantile(double q) const {
 }
 
 uint64_t DDSketch::count_greater_than(double threshold) const {
+    if (!std::isfinite(threshold)) {
+        throw std::invalid_argument("Threshold must be a finite number");
+    }
     if (count_ == 0) return 0;
     if (threshold >= max_value_) return 0;
     if (threshold < min_value_) return count_;

@@ -38,19 +38,23 @@ class SmartSLOEngine:
         if not (0 < budget_percent < 1):
             raise ValueError("budget_percent must be in (0, 1)")
 
+        # Calculate latency counts
+        historical_latency_count = historical_stream.to_dict()['latency']['count']
+        current_latency_count = current_stream.to_dict()['latency']['count']
+
+        # If historical stream has no latencies, we can't derive an SLO
+        if historical_latency_count == 0:
+            raise ValueError("Baseline stream has no latency events to derive target.")
+
         # Auto-derive the SLO target from historical baseline
         target_latency = historical_stream.percentile(target_percentile)
-
-        # If historical stream is completely empty, we can't derive an SLO
-        if historical_stream.total_events == 0:
-            target_latency = float('inf')
 
         # Count current errors (requests slower than the auto-derived target)
         current_errors = current_stream.count_greater_than(target_latency)
 
         # Calculate current error rate
-        if current_stream.total_events > 0:
-            current_error_rate = current_errors / current_stream.total_events
+        if current_latency_count > 0:
+            current_error_rate = current_errors / current_latency_count
         else:
             current_error_rate = 0.0
 
@@ -61,7 +65,7 @@ class SmartSLOEngine:
             "target_percentile": target_percentile,
             "target_latency": target_latency,
             "budget_percent": budget_percent,
-            "current_events": current_stream.total_events,
+            "current_events": current_latency_count,
             "current_errors": current_errors,
             "current_error_rate": current_error_rate,
             "burn_rate": burn_rate,
