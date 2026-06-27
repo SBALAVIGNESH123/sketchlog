@@ -180,10 +180,33 @@ void DDSketch::add(double value) {
     add(value, 1);
 }
 
-void DDSketch::add_batch(const std::vector<double>& values) {
-    for (double v : values) {
-        add(v);
+void DDSketch::add_batch(const double* values, size_t size) {
+    size_t valid_count = 0;
+    for (size_t i = 0; i < size; ++i) {
+        double value = values[i];
+        if (std::isnan(value) || std::isinf(value)) continue;
+        if (value != 0.0) {
+            double abs_v = std::abs(value);
+            int idx = key(abs_v);
+            double rep = bucket_value(idx);
+            if (std::abs(rep - abs_v) / abs_v > alpha_) {
+                throw std::invalid_argument("DDSketch: value magnitude too small to satisfy relative accuracy");
+            }
+        }
+        valid_count++;
     }
+    
+    if (std::numeric_limits<size_t>::max() - count_ < valid_count) {
+        throw std::overflow_error("DDSketch: total count overflow");
+    }
+
+    for (size_t i = 0; i < size; ++i) {
+        add(values[i]);
+    }
+}
+
+void DDSketch::add_batch(const std::vector<double>& values) {
+    add_batch(values.data(), values.size());
 }
 
 void DDSketch::add(double value, size_t count) {

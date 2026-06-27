@@ -34,9 +34,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
                 if (py::isinstance<py::array_t<double>>(values)) {
                     auto arr = values.cast<py::array_t<double>>();
                     auto buf = arr.unchecked<1>();
-                    for (py::ssize_t i = 0; i < buf.shape(0); i++) {
-                        self.add(buf(i));
-                    }
+                    self.add_batch(buf.data(0), buf.shape(0));
                     fast_path_used = true;
                 }
             } catch (const py::error_already_set&) {
@@ -44,9 +42,11 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             }
 
             if (!fast_path_used) {
+                std::vector<double> vec;
                 for (auto item : py::iter(values)) {
-                    self.add(item.cast<double>());
+                    vec.push_back(item.cast<double>());
                 }
+                self.add_batch(vec.data(), vec.size());
             }
         }, py::arg("values"), "Bulk-add values from an iterable (fast path for numpy arrays).")
         .def("quantile", &sketchlog::DDSketch::quantile, py::arg("q"))
@@ -136,9 +136,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
                 if (py::isinstance<py::array_t<double>>(values)) {
                     auto arr = values.cast<py::array_t<double>>();
                     auto buf = arr.unchecked<1>();
-                    for (py::ssize_t i = 0; i < buf.shape(0); i++) {
-                        self.add_latency(buf(i));
-                    }
+                    self.add_batch(buf.data(0), buf.shape(0));
                     fast_path_used = true;
                 }
             } catch (const py::error_already_set&) {
@@ -146,9 +144,11 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             }
 
             if (!fast_path_used) {
+                std::vector<double> vec;
                 for (auto item : py::iter(values)) {
-                    self.add_latency(item.cast<double>());
+                    vec.push_back(item.cast<double>());
                 }
+                self.add_batch(vec.data(), vec.size());
             }
         }, py::arg("values"),
            "Bulk-add latency values from an iterable (fast path for numpy arrays).")

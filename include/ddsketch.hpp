@@ -25,6 +25,7 @@ public:
 
     /// Add a batch of observations efficiently.
     void add_batch(const std::vector<double>& values);
+    void add_batch(const double* values, size_t size);
 
     /// Return the approximate value at the given quantile.
     /// @param q  quantile in [0.0, 1.0], e.g. 0.99 for p99.
