@@ -92,7 +92,7 @@ class ThreadSafeStreamLog:
             with self._lock:
                 self._log.merge(other)
 
-    def memory_breakdown(self) -> Dict[str, int]:
+    def memory_breakdown(self) -> Dict[str, Any]:
         with self._lock:
             return self._log.memory_breakdown()
 
@@ -117,8 +117,8 @@ class ThreadSafeStreamLog:
         return instance
 
     def save(self, path: str) -> None:
-        with self._lock:
-            self._log.save(path)
+        snapshot = self.get_snapshot()
+        snapshot.save(path)
 
     @classmethod
     def load(cls, path: str) -> "ThreadSafeStreamLog":
