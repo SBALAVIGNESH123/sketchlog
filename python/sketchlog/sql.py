@@ -140,7 +140,10 @@ class SQLStreamEngine:
                         if col == "*":
                             row_out[alias] = log.total_events
                         else:
-                            row_out[alias] = log.total_events
+                            if col in row_out:
+                                row_out[alias] = log.event_count(str(row_out[col]))
+                            else:
+                                row_out[alias] = log.total_events
                 elif sel["type"] == "col":
                     if alias not in row_out:
                         row_out[alias] = None
