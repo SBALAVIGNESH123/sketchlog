@@ -314,7 +314,6 @@ class StreamRegistry:
                 STREAM_EVICTIONS_TOTAL.inc()
                 logger.info("stream_evicted", namespace=namespace, stream_id=evicted_id)
                 if self.storage:
-                    import asyncio
                     task = asyncio.create_task(self.storage.save(namespace, evicted_id, evicted_stream))
                     background_tasks.add(task)
                     task.add_done_callback(background_tasks.discard)

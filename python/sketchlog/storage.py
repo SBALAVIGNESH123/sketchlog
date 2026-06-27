@@ -5,6 +5,9 @@ import asyncio
 from collections import defaultdict
 from abc import ABC, abstractmethod
 from typing import Optional, List, Any, Dict, Tuple, DefaultDict, Union
+import structlog
+
+logger = structlog.get_logger("sketchlog.storage")
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -12,7 +15,6 @@ from sqlalchemy import String, LargeBinary, Float, select, delete
 
 from sketchlog.facade import StreamLog
 from sketchlog.concurrent import ThreadSafeStreamLog
-from typing import Union
 
 class Base(DeclarativeBase):
     pass
@@ -115,8 +117,6 @@ class SQLAlchemyStorage(StorageBackend):
 
                 return ts_log
             except Exception as e:
-                import structlog
-                logger = structlog.get_logger("sketchlog.storage")
                 logger.error("storage_load_failed", namespace=namespace, stream_id=stream_id, error=str(e))
                 return None
 
@@ -130,9 +130,10 @@ class SQLAlchemyStorage(StorageBackend):
                         SketchState.stream_id == stream_id
                     )
                 )
-                if lock_key in self._locks:
-                    del self._locks[lock_key]
-                return result.rowcount > 0
+                success = result.rowcount > 0
+        if success and lock_key in self._locks:
+            del self._locks[lock_key]
+        return success
 
     async def close(self) -> None:
         await self.engine.dispose()
