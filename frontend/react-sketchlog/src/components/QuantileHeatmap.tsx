@@ -41,6 +41,13 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
     for (const idx of posIndices) {
       bins.set(idx, lat.positive[idx]);
     }
+    const negIndices = Object.keys(lat.negative).map(Number);
+    for (const idx of negIndices) {
+      bins.set(-idx, (bins.get(-idx) || 0) + lat.negative[idx]);
+    }
+    if (lat.zero_count > 0) {
+      bins.set(0, (bins.get(0) || 0) + lat.zero_count);
+    }
 
     setHistory(prev => {
       const next = [...prev, { time: now, total: lat.count, bins }];

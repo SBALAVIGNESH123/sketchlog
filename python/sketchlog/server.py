@@ -490,7 +490,14 @@ async def get_metrics(stream_id: str) -> MetricsResponse:
     )
 
 @app.websocket("/v1/streams/{stream_id:path}/ws")
-async def stream_ws(websocket: WebSocket, stream_id: str):
+async def stream_ws(websocket: WebSocket, stream_id: str) -> None:
+    import hmac
+    if AUTH_TOKEN:
+        token = websocket.headers.get("X-SketchLog-Auth-Token")
+        if not token or not hmac.compare_digest(token.encode('utf-8'), AUTH_TOKEN.encode('utf-8')):
+            await websocket.close(code=1008)
+            return
+
     await websocket.accept()
     try:
         while True:
@@ -499,12 +506,12 @@ async def stream_ws(websocket: WebSocket, stream_id: str):
                 stream_to_report = local_stream.get_snapshot() if local_stream else None
             else:
                 stream_to_report = cluster_manager.get_merged_stream(stream_id, local_stream) if (local_stream or cluster_manager.has_peer_data(stream_id)) else None
-            
+
             if stream_to_report:
                 await websocket.send_json(stream_to_report.to_dict())
             else:
                 await websocket.send_json({"error": "Stream not found"})
-                
+
             await asyncio.sleep(1.0)
     except WebSocketDisconnect:
         pass

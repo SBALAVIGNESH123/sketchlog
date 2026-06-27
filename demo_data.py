@@ -15,18 +15,18 @@ def run_synthetic_load():
             else:
                 # Slow path (DB miss) ~80-120ms
                 latencies.append(random.gauss(100, 20))
-                
+
         payload = {
             "latencies": [max(0.1, l) for l in latencies],
             "uniques": [f"user_{random.randint(1, 1000)}" for _ in range(10)],
             "events": {"http_request": 50, "cache_miss": 10}
         }
-        
+
         try:
             requests.post("http://localhost:8000/v1/streams/demo-stream/events", json=payload)
         except Exception as e:
             pass # ignore if server is not up
-            
+
         time.sleep(0.5)
 
 if __name__ == "__main__":

@@ -20,6 +20,11 @@ export const SketchLogProvider: React.FC<SketchLogProviderProps> = ({ url, child
   const [state, setState] = useState<SketchLogState | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
+  useEffect(() => {
+    setState(null);
+    setError(null);
+  }, [url]);
+
   const { lastJsonMessage, readyState } = useWebSocket<SketchLogState>(url, {
     shouldReconnect: () => true,
     reconnectAttempts: 10,
@@ -31,6 +36,7 @@ export const SketchLogProvider: React.FC<SketchLogProviderProps> = ({ url, child
     if (lastJsonMessage) {
       if ('error' in lastJsonMessage) {
         setError(new Error((lastJsonMessage as any).error));
+        setState(null);
       } else {
         setState(lastJsonMessage);
         setError(null);

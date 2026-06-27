@@ -72,7 +72,7 @@ export const CDFCurve: React.FC<CDFCurveProps> = ({
     const innerHeight = height - margin.top - margin.bottom;
 
     const x = d3.scaleLog()
-      .domain([Math.max(0.1, points[0].x > 0 ? points[0].x : 0.1), d3.max(points, d => d.x) || 100])
+      .domain([Math.max(0.1, points[0].x > 0 ? points[0].x : 0.1), Math.max(0.1, d3.max(points, d => d.x) || 100)])
       .range([0, innerWidth])
       .clamp(true);
 

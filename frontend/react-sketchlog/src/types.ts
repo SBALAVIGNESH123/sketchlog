@@ -2,8 +2,8 @@ export interface SketchLogLatencyState {
   alpha: number;
   zero_count: number;
   count: number;
-  min: number;
-  max: number;
+  min: number | null;
+  max: number | null;
   positive: Record<string, number>;
   negative: Record<string, number>;
 }
@@ -17,7 +17,7 @@ export interface SketchLogEventsState {
 
 export interface SketchLogUniquesState {
   precision: number;
-  registers: Record<string, number>;
+  registers: number[];
 }
 
 export interface SketchLogState {

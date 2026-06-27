@@ -252,7 +252,7 @@ def test_websocket_streaming():
     stream_id = "test-ws"
     payload = {"latencies": [10.0, 20.0, 30.0], "uniques": ["u1"], "events": {"e1": 5}}
     client.post(f"/v1/streams/{stream_id}/events", json=payload)
-    
+
     with client.websocket_connect(f"/v1/streams/{stream_id}/ws") as websocket:
         data = websocket.receive_json()
         assert data["version"] == 1
