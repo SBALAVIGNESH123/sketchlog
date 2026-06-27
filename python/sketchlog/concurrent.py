@@ -2,6 +2,7 @@ import threading
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 from sketchlog.facade import StreamLog
 from sketchlog.core.stats import Stats, EventKey
+import time
 
 class ThreadSafeStreamLog:
     """Thread-safe StreamLog. Safe to use from multiple threads."""
@@ -10,25 +11,21 @@ class ThreadSafeStreamLog:
         self._log = StreamLog(*args, **kwargs)
         self._lock = threading.Lock()
         self._save_lock = threading.Lock()
-        import time
         self.last_updated = time.time()
 
     def add_latency(self, value: float) -> None:
         with self._lock:
             self._log.add_latency(value)
-            import time
             self.last_updated = time.time()
 
     def add_batch(self, values: Iterable[float]) -> None:
         with self._lock:
             self._log.add_batch(values)
-            import time
             self.last_updated = time.time()
 
     def add_event(self, name: EventKey, count: int = 1) -> None:
         with self._lock:
             self._log.add_event(name, count)
-            import time
             self.last_updated = time.time()
 
     def get_snapshot(self) -> StreamLog:
@@ -41,7 +38,6 @@ class ThreadSafeStreamLog:
     def add_unique(self, item: Union[str, bytes, int]) -> None:
         with self._lock:
             self._log.add_unique(item)
-            import time
             self.last_updated = time.time()
 
     def p50(self) -> float:
@@ -92,7 +88,6 @@ class ThreadSafeStreamLog:
     def reset(self) -> None:
         with self._lock:
             self._log.reset()
-            import time
             self.last_updated = time.time()
 
     def merge(self, other: Union["ThreadSafeStreamLog", StreamLog]) -> None:
@@ -101,12 +96,10 @@ class ThreadSafeStreamLog:
             other_snap = other.get_snapshot()
             with self._lock:
                 self._log.merge(other_snap)
-                import time
                 self.last_updated = time.time()
         else:
             with self._lock:
                 self._log.merge(other)
-                import time
                 self.last_updated = time.time()
 
     def memory_breakdown(self) -> Dict[str, Any]:

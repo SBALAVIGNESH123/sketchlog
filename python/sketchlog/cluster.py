@@ -305,8 +305,9 @@ class ClusterManager:
         for stream_id, _ in self.registry.snapshot_items():
             remote_stream = remote_versions.get(stream_id, {})
             remote_node_ts = remote_stream.get(self.node_id, 0)
-            # If they don't have our local stream or it's old (they shouldn't have our local stream newer than us)
-            if remote_node_ts == 0: # Simply: we have it, they don't
+            local_node_ts = getattr(self.registry.get(stream_id), "last_updated", local_ts)
+            # If they don't have our local stream or it's old
+            if local_node_ts > remote_node_ts:
                 stream = self.registry.get(stream_id)
                 if stream:
                     try:
@@ -410,5 +411,5 @@ class ClusterManager:
                 body = response.read()
                 result: Dict[str, Any] = json.loads(body)
                 return result
-        except Exception as e:
-            raise e
+        except Exception:
+            raise
