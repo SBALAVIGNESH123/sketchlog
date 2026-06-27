@@ -108,10 +108,13 @@ inline CountMinSketch::State CountMinSketch::get_state() const {
 
 inline void CountMinSketch::set_state(const State& s) {
     if (s.width != width_ || s.depth != depth_) {
-        throw std::invalid_argument("Cannot restore state with mismatched CMS dimensions");
+        throw std::invalid_argument("Cannot restore state into CountMinSketch with different dimensions");
     }
     if (s.table.size() != table_.size()) {
-        throw std::invalid_argument("Cannot restore state with mismatched table size");
+        throw std::invalid_argument("Cannot restore state: table size mismatch");
+    }
+    if (s.total_count < 0) {
+        throw std::invalid_argument("Cannot restore state with negative total_count");
     }
     for (int64_t count : s.table) {
         if (count < 0) {

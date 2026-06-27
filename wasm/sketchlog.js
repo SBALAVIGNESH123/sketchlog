@@ -6,10 +6,15 @@
 const SketchLogModule = require('./dist/sketchlog.js');
 
 let wasmModule = null;
+let initPromise = null;
 
+// Ensure WASM module is loaded only once
 async function getModule() {
+    if (!initPromise) {
+        initPromise = SketchLogModule();
+    }
     if (!wasmModule) {
-        wasmModule = await SketchLogModule();
+        wasmModule = await initPromise;
     }
     return wasmModule;
 }
@@ -63,6 +68,9 @@ class StreamLog {
         if (typeof item === 'string') {
             this._internal.add_unique_string(item);
         } else if (typeof item === 'number') {
+            if (!Number.isSafeInteger(item) || item < 0) {
+                throw new TypeError("Numeric items must be safe non-negative integers for addUnique");
+            }
             this._internal.add_unique_int(item);
         } else {
             throw new Error("Item must be string or number");
@@ -105,7 +113,10 @@ class StreamLog {
     }
 
     destroy() {
-        this._internal.delete();
+        if (this._internal) {
+            this._internal.delete();
+            this._internal = null;
+        }
     }
 }
 

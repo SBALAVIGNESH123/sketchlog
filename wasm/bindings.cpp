@@ -10,8 +10,8 @@ namespace {
 
 // Helper to convert JS array to std::vector<double>
 std::vector<double> extract_double_array(val v) {
-    if (!v.isArray()) {
-        return {};
+    if (!v.hasOwnProperty("length")) {
+        throw std::invalid_argument("Input must be an array or typed array");
     }
     int l = v["length"].as<int>();
     std::vector<double> res;

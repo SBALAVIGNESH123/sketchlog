@@ -18,4 +18,9 @@ docker run --rm -v "${CurrentDir}:/src" emscripten/emsdk emcc `
     -s ALLOW_MEMORY_GROWTH=1 `
     -o wasm/dist/sketchlog.js
 
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Docker compilation failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
+
 Write-Host "Successfully built wasm/dist/sketchlog.js and wasm/dist/sketchlog.wasm" -ForegroundColor Green

@@ -249,6 +249,9 @@ inline void DDSketch::set_state(const State& s) {
     }
     auto validate_store = [](const std::vector<int64_t>& bins, int offset, int min_idx, int max_idx, bool empty) {
         if (!empty) {
+            for (auto c : bins) {
+                if (c < 0) throw std::invalid_argument("Cannot restore state with negative bin counts");
+            }
             if (min_idx > max_idx) {
                 throw std::invalid_argument("Cannot restore state with min_index > max_index");
             }
