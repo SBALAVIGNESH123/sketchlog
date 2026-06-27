@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import useWebSocket from 'react-use-websocket';
-import { SketchLogState, SketchLogContextType } from '../types';
+import type { SketchLogState, SketchLogContextType } from '../types';
 
 const SketchLogContext = createContext<SketchLogContextType>({
   state: null,
@@ -23,7 +24,7 @@ export const SketchLogProvider: React.FC<SketchLogProviderProps> = ({ url, child
     shouldReconnect: () => true,
     reconnectAttempts: 10,
     reconnectInterval: 3000,
-    onError: (e) => setError(new Error('WebSocket connection error')),
+    onError: () => setError(new Error('WebSocket connection error')),
   });
 
   useEffect(() => {

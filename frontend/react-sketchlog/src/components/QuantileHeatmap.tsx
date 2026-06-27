@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useSketchLog } from './SketchLogProvider';
 
@@ -112,7 +112,7 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
     const cellWidth = innerWidth / Math.max(1, (historySize - 1));
     const cellHeight = Math.abs(y(minIdx) - y(minIdx + 1));
 
-    diffs.forEach((d, i) => {
+    diffs.forEach((d) => {
       for (const [idx, count] of d.bins.entries()) {
         g.append("rect")
           .attr("x", x(d.time) - cellWidth)

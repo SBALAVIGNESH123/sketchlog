@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 import { useSketchLog } from './SketchLogProvider';
-import { SketchLogLatencyState } from '../types';
+
 
 function getBucketValue(alpha: number, index: number): number {
   const gamma = (1 + alpha) / (1 - alpha);
