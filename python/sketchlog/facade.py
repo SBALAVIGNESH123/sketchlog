@@ -76,6 +76,10 @@ class _PythonStreamLog:
         """99.9th percentile latency."""
         return self.percentile(0.999)
 
+    def count_greater_than(self, threshold: float) -> int:
+        """Count latency events strictly greater than threshold."""
+        return self._latency.count_greater_than(threshold)
+
     # ─── Events ──────────────────────────────────────────────────────
 
     def add_event(self, name: EventKey, count: int = 1) -> None:
@@ -522,6 +526,9 @@ class StreamLog:
     def p95(self) -> float: return self._backend.p95()  # type: ignore[no-any-return]
     def p99(self) -> float: return self._backend.p99()  # type: ignore[no-any-return]
     def p999(self) -> float: return self._backend.p999()  # type: ignore[no-any-return]
+
+    def count_greater_than(self, threshold: float) -> int:
+        return self._backend.count_greater_than(threshold)  # type: ignore[no-any-return]
 
     def add_event(self, name: EventKey, count: int = 1) -> None:
         self._backend.add_event(name, count)

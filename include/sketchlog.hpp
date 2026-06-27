@@ -79,6 +79,9 @@ public:
     /** Convenience: p999. */
     double p999() const { return percentile(0.999); }
 
+    /** Count latencies > threshold. */
+    uint64_t count_greater_than(double threshold) const;
+
     /** Latency min/max. */
     double latency_min() const;
     double latency_max() const;

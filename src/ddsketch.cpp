@@ -312,6 +312,48 @@ double DDSketch::quantile(double q) const {
     return max_value_;
 }
 
+uint64_t DDSketch::count_greater_than(double threshold) const {
+    if (count_ == 0) return 0;
+    if (threshold >= max_value_) return 0;
+    if (threshold < min_value_) return count_;
+
+    uint64_t count_gt = 0;
+
+    if (threshold < 0.0) {
+        int idx = key(-threshold);
+        if (!negative_.empty) {
+            for (int i = negative_.min_index; i <= negative_.max_index; ++i) {
+                if (i < idx) {
+                    count_gt += negative_.bins[static_cast<size_t>(i - negative_.offset)];
+                }
+            }
+        }
+        count_gt += zero_count_;
+        if (!positive_.empty) {
+            count_gt += positive_.total();
+        }
+        return count_gt;
+    }
+
+    if (threshold == 0.0) {
+        if (!positive_.empty) {
+            count_gt += positive_.total();
+        }
+        return count_gt;
+    }
+
+    int idx = key(threshold);
+    if (!positive_.empty) {
+        for (int i = positive_.min_index; i <= positive_.max_index; ++i) {
+            if (i > idx) {
+                count_gt += positive_.bins[static_cast<size_t>(i - positive_.offset)];
+            }
+        }
+    }
+
+    return count_gt;
+}
+
 // ════════════════════════════════════════════════════════════════════════
 //  Accessors
 // ════════════════════════════════════════════════════════════════════════

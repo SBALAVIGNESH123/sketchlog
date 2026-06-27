@@ -154,6 +154,39 @@ class DDSketch:
 
         return self._max
 
+    def count_greater_than(self, threshold: float) -> int:
+        """Count number of values strictly greater than threshold."""
+        if self._count == 0:
+            return 0
+        if threshold >= self._max:
+            return 0
+        if threshold < self._min:
+            return self._count
+
+        count_gt = 0
+
+        if threshold < 0:
+            idx = self._key(-threshold)
+            for k, v in self._negative.items():
+                if k < idx:
+                    count_gt += v
+            count_gt += self._zero_count
+            for v in self._positive.values():
+                count_gt += v
+            return count_gt
+
+        if threshold == 0:
+            for v in self._positive.values():
+                count_gt += v
+            return count_gt
+
+        idx = self._key(threshold)
+        for k, v in self._positive.items():
+            if k > idx:
+                count_gt += v
+
+        return count_gt
+
     @property
     def count(self) -> int:
         return self._count

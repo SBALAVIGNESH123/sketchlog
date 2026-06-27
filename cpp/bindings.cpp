@@ -157,6 +157,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         .def("p95", &sketchlog::StreamLog::p95)
         .def("p99", &sketchlog::StreamLog::p99)
         .def("p999", &sketchlog::StreamLog::p999)
+        .def("count_greater_than", &sketchlog::StreamLog::count_greater_than, py::arg("threshold"))
 
         // ─── Events ──────────────────────────────────────────────────
         .def("add_event", &sketchlog::StreamLog::add_event,

@@ -17,6 +17,7 @@ from sketchlog.concurrent import ThreadSafeStreamLog
 from sketchlog.drift import DriftSketch
 from sketchlog.alerts import AlertEngine
 from sketchlog.cluster import ClusterManager
+from sketchlog.slo import SmartSLOEngine
 from prometheus_client import CollectorRegistry
 
 if not structlog.is_configured():
@@ -272,6 +273,23 @@ class EventCountResponse(BaseModel):
     event_name: str
     count: int
 
+class SLOEvaluationRequest(BaseModel):
+    baseline_stream_id: str
+    target_percentile: float = 0.995
+    budget_percent: float = 0.005
+
+class SLOResponse(BaseModel):
+    stream_id: str
+    baseline_stream_id: str
+    target_percentile: float
+    target_latency: float
+    budget_percent: float
+    current_events: int
+    current_errors: int
+    current_error_rate: float
+    burn_rate: float
+    is_alerting: bool
+
 # Endpoints
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def health_check() -> Dict[str, str]:
@@ -445,6 +463,45 @@ async def get_event_count(stream_id: str, name: str) -> EventCountResponse:
         stream_id=stream_id,
         event_name=name,
         count=stream.event_count(name)
+    )
+
+@app.post("/v1/streams/{stream_id:path}/slo/evaluate", response_model=SLOResponse)
+async def evaluate_slo(stream_id: str, req: SLOEvaluationRequest) -> SLOResponse:
+    current_stream = registry.get(stream_id)
+    if not current_stream:
+        has_curr = cluster_manager.has_peer_data(stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        if not has_curr:
+            raise HTTPException(status_code=404, detail=f"Current stream '{stream_id}' not found.")
+
+    baseline_stream = registry.get(req.baseline_stream_id)
+    if not baseline_stream:
+        has_base = cluster_manager.has_peer_data(req.baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        if not has_base:
+            raise HTTPException(status_code=404, detail=f"Baseline stream '{req.baseline_stream_id}' not found.")
+
+    if PEERS or ADVERTISED_ADDRESS:
+        curr = cluster_manager.get_merged_stream(stream_id, current_stream)
+        base = cluster_manager.get_merged_stream(req.baseline_stream_id, baseline_stream)
+    else:
+        assert current_stream is not None
+        assert baseline_stream is not None
+        curr = current_stream.get_snapshot()
+        base = baseline_stream.get_snapshot()
+
+    try:
+        metrics = SmartSLOEngine.evaluate(
+            current_stream=curr,
+            historical_stream=base,
+            target_percentile=req.target_percentile,
+            budget_percent=req.budget_percent
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return SLOResponse(
+        stream_id=stream_id,
+        baseline_stream_id=req.baseline_stream_id,
+        **metrics
     )
 
 @app.delete("/v1/streams/{stream_id:path}", status_code=status.HTTP_204_NO_CONTENT)
