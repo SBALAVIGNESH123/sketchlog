@@ -55,6 +55,16 @@ nav:
   - Troubleshooting: troubleshooting.md
   - API Reference: api.md
   - Standalone Server: server.md
+  - 10x Features:
+      - Anomaly Auto-Pilot: features/anomaly_auto_pilot.md
+      - Streaming SQL: features/streaming_sql.md
+      - Universal Collector: features/universal_collector.md
+      - Sketch Mesh: features/sketch_mesh.md
+      - Smart SLO Engine: features/smart_slo_engine.md
+      - Sketch Diffing: features/sketch_diffing.md
+      - WASM Runtime: features/wasm_runtime.md
+      - Live Dashboard SDK: features/live_dashboard_sdk.md
+      - Multi-Tenancy: features/multi_tenancy.md
   - Security Threat Model: threat_model.md
   - Formal Guarantees: guarantees.md
   - Compatibility Guarantees: compatibility.md
