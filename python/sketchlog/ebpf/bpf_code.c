@@ -48,6 +48,10 @@ static inline void record_latency(u64 latency_ns) {
         }
     }
     
+    if (low >= total) {
+        low = total - 1;
+    }
+
     // Increment the appropriate bucket in the PERCPU array
     u64 *count = bucket_counts.lookup(&low);
     if (count) {

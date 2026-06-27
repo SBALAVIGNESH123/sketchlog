@@ -12,6 +12,7 @@ from sketchlog.facade import StreamLog
 try:
     from bcc import BPF  # type: ignore
     HAS_BCC = True
+    BPF = BPF
 except ImportError:
     HAS_BCC = False
 
@@ -40,6 +41,9 @@ class EBPFCollector:
 
     def _init_ebpf(self, min_ns: int, max_ns: int) -> None:
         """Compile and attach the eBPF program, and load the bucket boundaries."""
+        if min_ns <= 0 or max_ns <= 0 or max_ns <= min_ns:
+            raise ValueError(f'Invalid min_ns ({min_ns}) and max_ns ({max_ns})')
+
         # 1. Calculate boundaries based on StreamLog's alpha
         alpha = self.log.relative_accuracy
         gamma = (1.0 + alpha) / (1.0 - alpha)
@@ -106,7 +110,7 @@ class EBPFCollector:
         num_buckets = len(self._mapping)
 
         while not self._stop_event.is_set():
-            time.sleep(self.poll_interval_sec)
+            self._stop_event.wait(self.poll_interval_sec)
 
             # Read and flush kernel buckets
             for i in range(num_buckets):

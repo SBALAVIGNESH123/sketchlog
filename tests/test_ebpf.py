@@ -89,8 +89,10 @@ def test_ebpf_collector_syncing(mock_bcc):
     collector.start()
 
     import time
-    # wait for at least one poll
-    time.sleep(0.05)
+    for _ in range(20):
+        if log.total_events >= 5:
+            break
+        time.sleep(0.05)
 
     # Stop thread
     collector.stop()
