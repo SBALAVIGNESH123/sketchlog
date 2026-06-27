@@ -195,7 +195,8 @@ void DDSketch::add_batch(const double* values, size_t size) {
         }
         valid_count++;
     }
-    
+
+
     if (std::numeric_limits<size_t>::max() - count_ < valid_count) {
         throw std::overflow_error("DDSketch: total count overflow");
     }
