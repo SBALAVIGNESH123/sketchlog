@@ -8,7 +8,7 @@ if (!(Test-Path "wasm/dist")) {
 
 $CurrentDir = (Get-Item .).FullName
 
-docker run --rm -v "${CurrentDir}:/src" emscripten/emsdk emcc `
+docker run --rm -v "${CurrentDir}:/src" -w /src emscripten/emsdk emcc `
     -O3 `
     --bind `
     -Iinclude `

@@ -3,15 +3,25 @@
  * Provides an ergonomic, asynchronous API for the WASM SketchLog core.
  */
 
-const SketchLogModule = require('./dist/sketchlog.js');
+let SketchLogModuleFactory;
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && module.exports) {
+    SketchLogModuleFactory = require('./dist/sketchlog.js');
+} else if (typeof globalThis !== 'undefined' && globalThis.SketchLogModule) {
+    SketchLogModuleFactory = globalThis.SketchLogModule;
+} else if (typeof window !== 'undefined' && window.SketchLogModule) {
+    SketchLogModuleFactory = window.SketchLogModule;
+}
 
 let wasmModule = null;
 let initPromise = null;
 
 // Ensure WASM module is loaded only once
-async function getModule() {
+async function getModule(options = {}) {
+    if (!SketchLogModuleFactory) {
+        throw new Error("SketchLogModule factory not found. Make sure dist/sketchlog.js is loaded.");
+    }
     if (!initPromise) {
-        initPromise = SketchLogModule();
+        initPromise = SketchLogModuleFactory(options);
     }
     if (!wasmModule) {
         wasmModule = await initPromise;
@@ -27,8 +37,8 @@ class StreamLog {
         this._internal = new wasmModule.StreamLog(relativeAccuracy, hllPrecision, cmsWidth, cmsDepth);
     }
 
-    static async init() {
-        await getModule();
+    static async init(options = {}) {
+        await getModule(options);
     }
 
     addLatency(value) {
@@ -120,6 +130,10 @@ class StreamLog {
     }
 }
 
-module.exports = {
-    StreamLog
-};
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { StreamLog };
+} else if (typeof globalThis !== 'undefined') {
+    globalThis.StreamLog = StreamLog;
+} else if (typeof window !== 'undefined') {
+    window.StreamLog = StreamLog;
+}

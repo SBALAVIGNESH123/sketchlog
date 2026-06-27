@@ -14,6 +14,9 @@ std::vector<double> extract_double_array(val v) {
         throw std::invalid_argument("Input must be an array or typed array");
     }
     int l = v["length"].as<int>();
+    if (l < 0) {
+        throw std::invalid_argument("Negative length property");
+    }
     std::vector<double> res;
     res.reserve(l);
     for (int i = 0; i < l; ++i) {
@@ -34,8 +37,8 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
 
     val latency = val::object();
     latency.set("alpha", lat.alpha);
-    latency.set("zero_count", (double)lat.zero_count);
-    latency.set("count", (double)lat.count);
+    latency.set("zero_count", std::to_string(lat.zero_count));
+    latency.set("count", std::to_string(lat.count));
 
     if (lat.count > 0) {
         latency.set("min", lat.min_value);
@@ -72,7 +75,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     val events = val::object();
     events.set("width", (double)ev.width);
     events.set("depth", (double)ev.depth);
-    events.set("total", (double)ev.total_count);
+    events.set("total", std::to_string(ev.total_count));
     val table = val::array();
     for (size_t d = 0; d < ev.depth; ++d) {
         val row = val::array();
@@ -85,7 +88,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
 
     val d = val::object();
     d.set("version", 1);
-    d.set("total", (double)self.total_events());
+    d.set("total", std::to_string(self.total_events()));
     d.set("deterministic", false);
     d.set("latency", latency);
     d.set("uniques", uniques);
@@ -97,13 +100,13 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
 val streamlog_stats(const sketchlog::StreamLog& self) {
     auto s = self.stats();
     val obj = val::object();
-    obj.set("events", (double)s.events);
-    obj.set("memory_bytes", (double)s.memory_bytes);
+    obj.set("events", std::to_string(s.events));
+    obj.set("memory_bytes", std::to_string(s.memory_bytes));
     obj.set("memory_kb", s.memory_kb);
     obj.set("latency_p50", s.latency_p50);
     obj.set("latency_p99", s.latency_p99);
     obj.set("latency_p999", s.latency_p999);
-    obj.set("unique_count", (double)s.unique_count);
+    obj.set("unique_count", std::to_string(s.unique_count));
     return obj;
 }
 

@@ -13,7 +13,6 @@ endif()
 # Unified sketchlog library (header-only)
 add_library(sketchlog INTERFACE)
 target_include_directories(sketchlog INTERFACE include)
-target_compile_options(sketchlog INTERFACE ${CXX_WARNINGS})
 
 # Scale benchmark
 add_executable(benchmark_scale benchmarks/benchmark_scale.cpp)

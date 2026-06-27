@@ -7,3 +7,5 @@ include CMakeLists.txt
 recursive-include cpp *.cpp
 recursive-include include *.hpp
 recursive-include wasm *.cpp
+recursive-include wasm *.js
+include build_wasm.*

@@ -5,7 +5,7 @@ echo "Compiling SketchLog to WASM..."
 
 mkdir -p wasm/dist
 
-docker run --rm -v "$(pwd):/src" -u $(id -u):$(id -g) emscripten/emsdk emcc \
+docker run --rm -v "$(pwd):/src" -w /src -u $(id -u):$(id -g) emscripten/emsdk emcc \
     -O3 \
     --bind \
     -Iinclude \
