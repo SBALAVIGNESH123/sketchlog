@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import hmac
 from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable, AsyncGenerator, Tuple
 from collections import OrderedDict
 from fastapi import FastAPI, HTTPException, status, Request, Response, WebSocket, WebSocketDisconnect
@@ -491,7 +492,6 @@ async def get_metrics(stream_id: str) -> MetricsResponse:
 
 @app.websocket("/v1/streams/{stream_id:path}/ws")
 async def stream_ws(websocket: WebSocket, stream_id: str) -> None:
-    import hmac
     if AUTH_TOKEN:
         token = websocket.headers.get("X-SketchLog-Auth-Token")
         if not token or not hmac.compare_digest(token.encode('utf-8'), AUTH_TOKEN.encode('utf-8')):

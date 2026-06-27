@@ -20,23 +20,12 @@ export const CardinalitySparkline: React.FC<CardinalitySparklineProps> = ({
   const { state } = useSketchLog();
   const svgRef = useRef<SVGSVGElement>(null);
   
-  // To get the unique count from the HLL state, we need to estimate it if we can.
-  // Wait, the API doesn't send the unique_count directly in state.uniques, it sends registers!
-  // But wait, the `get_metrics` endpoint sends `unique_count`. Since we are using the WS, we get the `to_dict()` output.
-  // Actually, we can approximate the unique count, or we can just send it from the server!
-  // The server sends `version`, `total`, `latency`, `events`, `uniques`.
-  // Let's parse `uniques.registers`. Wait, HLL math is complex. 
-  // Let's modify the server to include `unique_count` in the `to_dict()` output! Or we can just calculate it.
-  // For now, let's assume `state.unique_count` exists and we will add it to `to_dict` if missing, 
-  // or we can just use `state.total` if we want a total events sparkline. Let's do both.
-  
   const [history, setHistory] = useState<{ time: number; value: number }[]>([]);
 
   useEffect(() => {
     if (!state) return;
 
-    // Use a custom unique_count if provided, otherwise fallback to total events.
-    const val = (state as any).unique_count ?? state.total;
+    const val = state.total;
     const now = Date.now();
 
     setHistory(prev => {
