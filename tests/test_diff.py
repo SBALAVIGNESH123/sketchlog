@@ -6,7 +6,7 @@ from sketchlog.server import app, registry
 
 @pytest.fixture(autouse=True)
 def cleanup():
-    registry._streams.clear()
+    registry._namespaces.clear()
     yield
 
 def test_sketch_diff_math():
@@ -38,15 +38,12 @@ def test_sketch_diff_math():
     assert "0.0 |" in plot_str
 
 def test_sketch_diff_endpoint():
-    s1 = StreamLog()
-    s1.add_batch([10, 20, 30])
-    registry._streams["base"] = s1
-
-    s2 = StreamLog()
-    s2.add_batch([10, 20, 100])
-    registry._streams["curr"] = s2
-
     client = TestClient(app)
+    client.post("/v1/streams/base/events", json={"latencies": [10, 20, 30]})
+
+    client.post("/v1/streams/curr/events", json={"latencies": [10, 20, 100]})
+
+
 
     response = client.get("/v1/streams/curr/diff?baseline_stream_id=base")
     assert response.status_code == 200

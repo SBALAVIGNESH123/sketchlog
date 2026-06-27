@@ -9,9 +9,8 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def cleanup():
-    registry._streams.clear()
+    registry._namespaces.clear()
     yield
-    registry._streams.clear()
 
 def test_smart_slo_engine():
     # Baseline stream

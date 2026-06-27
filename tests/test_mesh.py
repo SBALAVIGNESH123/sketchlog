@@ -29,7 +29,7 @@ def test_anti_entropy_digest():
     cm1 = ClusterManager(node_id="node1", peers=[], registry=registry1, advertised_address="http://node1")
 
     # node1 has a local stream
-    stream = registry1.get_or_create("streamA")
+    stream = registry1.get_or_create("default", "streamA")
     stream.add_batch([10.0])
 
     # Simulate node2 sending a digest where it doesn't know about streamA
@@ -42,21 +42,21 @@ def test_anti_entropy_digest():
 
     # node1 should send the update for streamA
     assert "updates" in resp
-    assert "streamA" in resp["updates"]
-    assert "node1" in resp["updates"]["streamA"]
+    assert '["default", "streamA"]' in resp["updates"]
+    assert "node1" in resp["updates"]['["default", "streamA"]']
 
     # Simulate node2 has a newer streamB that node1 wants
     payload2 = {
         "node_id": "node2",
         "versions": {
-            "streamB": {"node2": time.time()}
+            '["default", "streamB"]': {"node2": time.time()}
         }
     }
 
     resp2 = cm1.handle_gossip_digest(payload2)
     assert "requests" in resp2
-    assert "streamB" in resp2["requests"]
-    assert "node2" in resp2["requests"]["streamB"]
+    assert '["default", "streamB"]' in resp2["requests"]
+    assert "node2" in resp2["requests"]['["default", "streamB"]']
 
 def test_anti_entropy_sync():
     registry1 = StreamRegistry(10)
@@ -69,7 +69,7 @@ def test_anti_entropy_sync():
     payload = {
         "node_id": "node2",
         "streams": {
-            "streamB": {
+            '["default", "streamB"]': {
                 "node2": remote_log.to_dict()
             }
         }
@@ -78,8 +78,8 @@ def test_anti_entropy_sync():
     cm1.handle_gossip_sync(payload)
 
     # node1 should now have this in peer_snapshots
-    assert cm1.has_peer_data("streamB")
+    assert cm1.has_peer_data("default", "streamB")
 
-    merged = cm1.get_merged_stream("streamB", None)
+    merged = cm1.get_merged_stream("default", "streamB", None)
     assert merged.total_events == 1
     assert merged.percentile(0.5) > 0

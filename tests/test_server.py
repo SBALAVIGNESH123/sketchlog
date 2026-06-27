@@ -8,7 +8,7 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def reset_registry():
     """Clear the stream registry before each test."""
-    registry._streams.clear()
+    registry._namespaces.clear()
 
 def test_health_check():
     response = client.get("/health")
@@ -74,13 +74,13 @@ def test_delete_stream():
 
 def test_lru_eviction():
     # Fill registry beyond capacity
-    max_streams = registry.max_size
+    max_streams = registry.max_streams_per_ns
 
     for i in range(max_streams + 5):
         stream_id = f"stream-{i}"
         client.post(f"/v1/streams/{stream_id}/events", json={"latencies": [1.0]})
 
-    assert len(registry._streams) == max_streams
+    assert len(registry._namespaces["default"]) == max_streams
 
     # The first 5 should be evicted
     response = client.get("/v1/streams/stream-0/metrics")
@@ -175,28 +175,28 @@ def test_native_backend_range_limit():
 
 def test_rejected_request_does_not_mutate_lru():
     from sketchlog.server import registry
-    original_max = registry.max_size
-    registry.max_size = 2
+    original_max = registry.max_streams_per_ns
+    registry.max_streams_per_ns = 2
     try:
         # Create A and B
         client.post("/v1/streams/stream-a/events", json={"latencies": [1]})
         client.post("/v1/streams/stream-b/events", json={"latencies": [1]})
 
         # Order should be A, B (B is most recent)
-        assert list(registry._streams.keys()) == ["stream-a", "stream-b"]
+        assert list(registry._namespaces["default"].keys()) == ["stream-a", "stream-b"]
 
         # Send overflow to A (should be rejected)
         payload = {"events": {"overflow": 9223372036854775807}}
         assert client.post("/v1/streams/stream-a/events", json=payload).status_code == 422
 
         # Order should STILL be A, B
-        assert list(registry._streams.keys()) == ["stream-a", "stream-b"]
+        assert list(registry._namespaces["default"].keys()) == ["stream-a", "stream-b"]
 
         # Create C, should evict A (least recent)
         client.post("/v1/streams/stream-c/events", json={"latencies": [1]})
-        assert list(registry._streams.keys()) == ["stream-b", "stream-c"]
+        assert list(registry._namespaces["default"].keys()) == ["stream-b", "stream-c"]
     finally:
-        registry.max_size = original_max
+        registry.max_streams_per_ns = original_max
 
 def test_oversized_chunked_request():
     stream_id = "test-oversized-chunked"

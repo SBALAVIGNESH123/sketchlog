@@ -4,7 +4,7 @@ import asyncio
 import httpx
 import pytest
 
-from sketchlog.server import MAX_REQUEST_BYTES, MAX_BATCH_SIZE, MAX_STREAMS
+from sketchlog.server import MAX_REQUEST_BYTES, MAX_BATCH_SIZE, MAX_STREAMS_PER_NAMESPACE
 
 
 pytestmark = [pytest.mark.stress, pytest.mark.overload]
@@ -55,7 +55,7 @@ async def test_overload_stream_limit_eviction(live_server):
     async with httpx.AsyncClient() as client:
         # Create MAX_STREAMS + 5 streams in batches of 50 to guarantee LRU order
         # while keeping the test fast.
-        limit = MAX_STREAMS + 5
+        limit = MAX_STREAMS_PER_NAMESPACE + 5
         for i in range(0, limit, 50):
             tasks = []
             for j in range(i, min(i + 50, limit)):
