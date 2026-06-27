@@ -147,7 +147,7 @@ async def require_auth(request: Request, call_next: Callable[[Request], Awaitabl
             return Response(status_code=401, content=b'{"detail":"Unauthorized"}', headers={"Content-Type": "application/json"})
     return await call_next(request)
 
-@app.get("/v1/streams/{stream_id}/diff")
+@app.get("/v1/streams/{stream_id:path}/diff")
 def diff_streams(stream_id: str, baseline_stream_id: str) -> Dict[str, Any]:
     """
     Sketch Diffing — Visual & Programmatic Distribution Comparison.

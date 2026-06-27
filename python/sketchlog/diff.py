@@ -14,7 +14,13 @@ def get_cdf(stream: StreamLog) -> List[Tuple[float, float]]:
     gamma = (1.0 + alpha) / (1.0 - alpha)
 
     def bucket_value(idx: int) -> float:
-        return float((2.0 / (1.0 + gamma)) * (gamma ** idx))
+        try:
+            import math
+            import sys
+            return float((2.0 / (1.0 + gamma)) * math.pow(gamma, idx))
+        except OverflowError:
+            import sys
+            return sys.float_info.max if idx > 0 else 0.0
 
     points = []
 
