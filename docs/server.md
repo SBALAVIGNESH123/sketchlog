@@ -32,6 +32,34 @@ You can customize its behavior using environment variables:
 | `SKETCHLOG_MAX_BATCH_SIZE` | `10000` | Maximum number of data points (latencies + uniques + events) per ingestion request. |
 | `SKETCHLOG_MAX_REQUEST_BYTES`| `1048576`| Maximum size of the request body in bytes (default 1MB). Upstream proxies may also enforce bounds. |
 
+## Deployment (Docker & Kubernetes)
+
+SketchLog comes with a production-ready `Dockerfile` and a Kubernetes Helm chart.
+
+### Docker
+
+You can build and run the standalone server using Docker:
+
+```bash
+# Build the image
+docker build -t sketchlog:latest .
+
+# Run the container
+docker run -p 8000:8000 -e SKETCHLOG_DB_URI="sqlite+aiosqlite:///sketchlog.db" sketchlog:latest
+```
+
+### Kubernetes (Helm)
+
+We provide a fully featured Helm chart in the `charts/sketchlog` directory. It supports setting up the Deployment, Service, and the Sketch Mesh distributed clustering out of the box.
+
+```bash
+# Install the Helm chart
+helm install sketchlog-cluster ./charts/sketchlog --namespace observability --create-namespace
+
+# Scale up to enable Sketch Mesh P2P federation
+helm upgrade sketchlog-cluster ./charts/sketchlog --namespace observability --set replicaCount=3
+```
+
 ## HTTP API Reference
 
 The server uses a **Bounded Stream Registry**, meaning you can push metrics to arbitrarily named streams (e.g. `prod-api-latency`, `staging-db-latency`). The server will automatically create new streams as it receives them.
