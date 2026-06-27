@@ -179,7 +179,8 @@ class DriftSketch:
 
             if windows_elapsed >= 2:
                 self._update_cusum(name, self._current[name].p99())
-                for _ in range(windows_elapsed - 1):
+                backfill_steps = min(windows_elapsed - 1, 100)
+                for _ in range(backfill_steps):
                     self._update_cusum(name, 0.0)
                 self._previous[name] = StreamLog(**self._sk_kwargs)  # empty
             else:
@@ -238,7 +239,7 @@ class DriftSketch:
         with self._lock:
             for name in self._current:
                 self._maybe_rotate(name)
-            return list(self._latest_anomalies.values())
+            return [dict(v) for v in self._latest_anomalies.values()]
 
     # ─── Drift Detection ─────────────────────────────────────────────
 
