@@ -40,6 +40,7 @@ from sketchlog.core.stats import Stats
 from sketchlog.core.ddsketch import DDSketch
 from sketchlog.core.hll import HyperLogLog
 from sketchlog.core.cms import CountMinSketch
+from sketchlog.ebpf import EBPFCollector
 
 import time as _time
 
@@ -52,7 +53,8 @@ __all__ = [
     "Stats",
     "DDSketch",
     "HyperLogLog",
-    "CountMinSketch"
+    "CountMinSketch",
+    "EBPFCollector"
 ]
 
 # ── C++ backend auto-detection ───────────────────────────────────────────
