@@ -11,10 +11,6 @@ ext_modules = [
         "_sketchlog_cpp",
         sources=[
             "cpp/bindings.cpp",
-            "src/ddsketch.cpp",
-            "src/hyperloglog.cpp",
-            "src/countmin.cpp",
-            "src/sketchlog.cpp",
         ],
         include_dirs=[
             "include",
