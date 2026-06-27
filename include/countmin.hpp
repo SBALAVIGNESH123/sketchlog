@@ -97,7 +97,7 @@ inline void CountMinSketch::reset() noexcept {
     total_count_ = 0;
 }
 
-CountMinSketch::State CountMinSketch::get_state() const {
+inline CountMinSketch::State CountMinSketch::get_state() const {
     State s;
     s.width = width_;
     s.depth = depth_;

@@ -10,24 +10,10 @@ else()
     set(CXX_WARNINGS -Wall -Wextra)
 endif()
 
-# Core sketch libraries
-add_library(ddsketch src/ddsketch.cpp)
-target_include_directories(ddsketch PUBLIC include)
-target_compile_options(ddsketch PRIVATE ${CXX_WARNINGS})
-
-add_library(hyperloglog src/hyperloglog.cpp)
-target_include_directories(hyperloglog PUBLIC include)
-target_compile_options(hyperloglog PRIVATE ${CXX_WARNINGS})
-
-add_library(countmin src/countmin.cpp)
-target_include_directories(countmin PUBLIC include)
-target_compile_options(countmin PRIVATE ${CXX_WARNINGS})
-
-# Unified sketchlog library
-add_library(sketchlog src/sketchlog.cpp)
-target_include_directories(sketchlog PUBLIC include)
-target_link_libraries(sketchlog PUBLIC ddsketch hyperloglog countmin)
-target_compile_options(sketchlog PRIVATE ${CXX_WARNINGS})
+# Unified sketchlog library (header-only)
+add_library(sketchlog INTERFACE)
+target_include_directories(sketchlog INTERFACE include)
+target_compile_options(sketchlog INTERFACE ${CXX_WARNINGS})
 
 # Scale benchmark
 add_executable(benchmark_scale benchmarks/benchmark_scale.cpp)

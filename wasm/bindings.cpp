@@ -36,7 +36,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     latency.set("alpha", lat.alpha);
     latency.set("zero_count", (double)lat.zero_count);
     latency.set("count", (double)lat.count);
-    
+
     if (lat.count > 0) {
         latency.set("min", lat.min_value);
         latency.set("max", lat.max_value);
@@ -90,7 +90,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     d.set("latency", latency);
     d.set("uniques", uniques);
     d.set("events", events);
-    
+
     return d;
 }
 
@@ -121,14 +121,14 @@ EMSCRIPTEN_BINDINGS(sketchlog_wasm) {
         .def("p999", &sketchlog::StreamLog::p999)
         .def("count_greater_than", &sketchlog::StreamLog::count_greater_than)
         .def("latency_count", &sketchlog::StreamLog::latency_count)
-        
+
         .def("add_event", &sketchlog::StreamLog::add_event)
         .def("event_count", &sketchlog::StreamLog::event_count)
-        
+
         .def("add_unique_string", select_overload<void(const std::string&)>(&sketchlog::StreamLog::add_unique))
         .def("add_unique_int", select_overload<void(uint64_t)>(&sketchlog::StreamLog::add_unique))
         .def("unique_count", &sketchlog::StreamLog::unique_count)
-        
+
         .def("total_events", &sketchlog::StreamLog::total_events)
         .def("memory_bytes", &sketchlog::StreamLog::memory_bytes)
         .def("memory_kb", &sketchlog::StreamLog::memory_kb)

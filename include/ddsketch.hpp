@@ -223,7 +223,7 @@ inline void DDSketch::reset() {
     max_value_  = 0.0;
 }
 
-DDSketch::State DDSketch::get_state() const {
+inline DDSketch::State DDSketch::get_state() const {
     State s;
     s.alpha = alpha_;
     s.zero_count = zero_count_;

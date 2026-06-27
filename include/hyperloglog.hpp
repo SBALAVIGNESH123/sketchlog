@@ -160,7 +160,7 @@ inline double HyperLogLog::alpha(uint32_t m) noexcept {
     }
 }
 
-HyperLogLog::State HyperLogLog::get_state() const {
+inline HyperLogLog::State HyperLogLog::get_state() const {
     State s;
     s.precision = p_;
     s.registers = registers_;
