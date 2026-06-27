@@ -24,14 +24,20 @@ def cluster():
     env1 = os.environ.copy()
     env1["SKETCHLOG_NODE_ID"] = "node1"
     env1["SKETCHLOG_PEERS"] = f"http://127.0.0.1:{port2},http://127.0.0.1:{port3}"
+    env1["SKETCHLOG_ADVERTISED_ADDRESS"] = f"http://127.0.0.1:{port1}"
+    env1["SKETCHLOG_SYNC_INTERVAL"] = "1.0"
 
     env2 = os.environ.copy()
     env2["SKETCHLOG_NODE_ID"] = "node2"
     env2["SKETCHLOG_PEERS"] = f"http://127.0.0.1:{port1},http://127.0.0.1:{port3}"
+    env2["SKETCHLOG_ADVERTISED_ADDRESS"] = f"http://127.0.0.1:{port2}"
+    env2["SKETCHLOG_SYNC_INTERVAL"] = "1.0"
 
     env3 = os.environ.copy()
     env3["SKETCHLOG_NODE_ID"] = "node3"
     env3["SKETCHLOG_PEERS"] = f"http://127.0.0.1:{port1},http://127.0.0.1:{port2}"
+    env3["SKETCHLOG_ADVERTISED_ADDRESS"] = f"http://127.0.0.1:{port3}"
+    env3["SKETCHLOG_SYNC_INTERVAL"] = "1.0"
 
     p1 = subprocess.Popen([sys.executable, "-m", "uvicorn", "sketchlog.server:app", "--port", str(port1)], env=env1)
     p2 = subprocess.Popen([sys.executable, "-m", "uvicorn", "sketchlog.server:app", "--port", str(port2)], env=env2)

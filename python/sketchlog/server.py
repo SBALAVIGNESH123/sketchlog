@@ -54,8 +54,8 @@ alert_engine.on_webhook_failed = lambda: WEBHOOK_FAILURES.inc()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    if PEERS:
-        logger.warning("Clustering is enabled (PEERS is set). deterministic=True is forced for all streams, "
+    if PEERS or ADVERTISED_ADDRESS:
+        logger.warning("Mesh Clustering is enabled. deterministic=True is forced for all streams, "
                        "bypassing the C++ high-performance path. This incurs a significant (~46x) performance penalty.")
     alert_engine.start()
     cluster_manager.start()
@@ -87,10 +87,11 @@ NODE_ID = os.environ.get("SKETCHLOG_NODE_ID", f"node-{os.getpid()}")
 PEERS = [p.strip() for p in os.environ.get("SKETCHLOG_PEERS", "").split(",") if p.strip()]
 CLUSTER_SECRET = os.environ.get("SKETCHLOG_CLUSTER_SECRET")
 AUTH_TOKEN = os.environ.get("SKETCHLOG_AUTH_TOKEN")
+ADVERTISED_ADDRESS = os.environ.get("SKETCHLOG_ADVERTISED_ADDRESS")
 
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
-        if request.method in ["POST", "PUT", "PATCH"] and request.url.path != "/_internal/sync":
+        if request.method in ["POST", "PUT", "PATCH"] and request.url.path not in ["/mesh/ping", "/mesh/gossip/digest", "/mesh/gossip/sync"]:
             content_length = request.headers.get("content-length")
             if content_length:
                 try:
@@ -209,7 +210,7 @@ class StreamRegistry:
                 STREAM_EVICTIONS_TOTAL.inc()
                 logger.info("stream_evicted", stream_id=evicted_id)
 
-            stream = ThreadSafeStreamLog(deterministic=bool(PEERS))
+            stream = ThreadSafeStreamLog(deterministic=bool(PEERS or ADVERTISED_ADDRESS))
             self._streams[stream_id] = stream
             ACTIVE_STREAMS.set(len(self._streams))
             return stream
@@ -234,7 +235,7 @@ class StreamRegistry:
             return False
 
 registry = StreamRegistry(max_size=MAX_STREAMS)
-cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry, cluster_secret=CLUSTER_SECRET)
+cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry, cluster_secret=CLUSTER_SECRET, advertised_address=ADVERTISED_ADDRESS)
 
 # Models
 # C++ extensions accept uint64_t but typically bounded positive integers max at 2^63-1 for safe signed limits in generic protocols.
@@ -311,16 +312,39 @@ async def flake_endpoint() -> Dict[str, str]:
     _flake_counter = 0
     return {"status": "success"}
 
-@app.post("/_internal/sync", include_in_schema=False)
-async def internal_sync(request: Request) -> Dict[str, str]:
-    if not PEERS:
-        raise HTTPException(status_code=400, detail="Clustering is not enabled on this node")
-
+def check_mesh_auth(request: Request) -> None:
+    if not PEERS and not ADVERTISED_ADDRESS:
+        raise HTTPException(status_code=400, detail="Mesh clustering is not enabled on this node")
     if CLUSTER_SECRET:
         token = request.headers.get("X-SketchLog-Cluster-Token")
         if not token or token != CLUSTER_SECRET:
             raise HTTPException(status_code=401, detail="Unauthorized cluster node")
 
+@app.post("/mesh/ping", include_in_schema=False)
+async def mesh_ping(request: Request) -> Dict[str, Any]:
+    check_mesh_auth(request)
+    body_bytes = await request.body()
+    try:
+        data = json.loads(body_bytes)
+        return cluster_manager.handle_ping(data)
+    except Exception as e:
+        logger.error("mesh_ping_failed", error=str(e))
+        raise HTTPException(status_code=400, detail="Invalid ping payload")
+
+@app.post("/mesh/gossip/digest", include_in_schema=False)
+async def mesh_gossip_digest(request: Request) -> Dict[str, Any]:
+    check_mesh_auth(request)
+    body_bytes = await request.body()
+    try:
+        data = json.loads(body_bytes)
+        return cluster_manager.handle_gossip_digest(data)
+    except Exception as e:
+        logger.error("mesh_gossip_digest_failed", error=str(e))
+        raise HTTPException(status_code=400, detail="Invalid digest payload")
+
+@app.post("/mesh/gossip/sync", include_in_schema=False)
+async def mesh_gossip_sync(request: Request) -> Dict[str, str]:
+    check_mesh_auth(request)
     # Enforce a 60MB limit on the internal sync endpoint to prevent malicious large payloads
     content_length = request.headers.get("content-length")
     if content_length:
@@ -338,14 +362,11 @@ async def internal_sync(request: Request) -> Dict[str, str]:
                 raise HTTPException(status_code=413, detail="Request body too large for cluster sync (>60MB)")
 
         data = json.loads(body_bytes)
-        node_id = data["node_id"]
-        timestamp = data.get("timestamp")
-        streams = data["streams"]
-        cluster_manager.receive_snapshot(node_id, streams, timestamp=timestamp)
+        cluster_manager.handle_gossip_sync(data)
         return {"status": "ok"}
     except (KeyError, ValueError) as e:
-        logger.error("internal_sync_failed", error=str(e))
-        raise HTTPException(status_code=400, detail="Invalid snapshot payload")
+        logger.error("mesh_gossip_sync_failed", error=str(e))
+        raise HTTPException(status_code=400, detail="Invalid sync payload")
 
 @app.post("/v1/streams/{stream_id:path}/events", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
@@ -386,7 +407,7 @@ async def ingest_events(stream_id: str, batch: EventBatch) -> Dict[str, str]:
 async def get_metrics(stream_id: str) -> MetricsResponse:
     local_stream = registry.get(stream_id)
 
-    if not PEERS:
+    if not PEERS and not ADVERTISED_ADDRESS:
         if not local_stream:
             raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found.")
         stream_to_report = local_stream.get_snapshot()
