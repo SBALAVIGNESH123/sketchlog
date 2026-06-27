@@ -1,4 +1,5 @@
 import re
+import threading
 from typing import Any, Dict, List, Tuple, Optional
 
 from sketchlog.facade import StreamLog
@@ -52,6 +53,8 @@ class SQLParser:
             func_match = re.match(r"^(\w+)\((.*?)\)$", expr)
             if func_match:
                 func = func_match.group(1).lower()
+                if func not in {"p99", "p95", "p50", "unique_count", "event_count"}:
+                    raise ValueError(f"Unsupported aggregate function: {func}")
                 col = func_match.group(2).strip()
                 selects.append({"type": "agg", "func": func, "col": col, "alias": alias})
             else:
@@ -69,14 +72,16 @@ class SQLStreamEngine:
         self.sk_kwargs = sk_kwargs or {}
         self.groups: Dict[Tuple[Any, ...], StreamLog] = {}
         self.global_log = StreamLog(**self.sk_kwargs)
+        self._lock = threading.RLock()
 
     def add_row(self, row: Dict[str, Any]) -> None:
         """Ingest a dictionary row, hashing it to the correct sketch group."""
         if self.plan["group_by"]:
             key = tuple(row.get(col) for col in self.plan["group_by"])
-            if key not in self.groups:
-                self.groups[key] = StreamLog(**self.sk_kwargs)
-            log = self.groups[key]
+            with self._lock:
+                if key not in self.groups:
+                    self.groups[key] = StreamLog(**self.sk_kwargs)
+                log = self.groups[key]
         else:
             log = self.global_log
 
@@ -105,10 +110,12 @@ class SQLStreamEngine:
         """Evaluate the sketches and return the SQL result set."""
         results = []
         items: List[Tuple[Tuple[Any, ...], StreamLog]] = []
-        if self.plan["group_by"]:
-            items = list(self.groups.items())
-        else:
-            items = [((), self.global_log)]
+
+        with self._lock:
+            if self.plan["group_by"]:
+                items = list(self.groups.items())
+            else:
+                items = [((), self.global_log)]
 
         for key, log in items:
             row_out = {}
@@ -154,13 +161,16 @@ class SQLStreamEngine:
         expr = re.sub(r'(?<![<>=!])=(?![=])', '==', expr)
 
         for k, v in row.items():
-            # Replace alias occurrences with their string value representation
-            expr = re.sub(rf'\b{re.escape(k)}\b', str(v), expr)
+            if not k.isidentifier():
+                if isinstance(v, str):
+                    expr = expr.replace(k, f"'{v}'")
+                else:
+                    expr = expr.replace(k, str(v))
 
         try:
             # We enforce a strict character set to prevent execution of arbitrary code
-            if not re.match(r'^[0-9\.\s\+\-\*\/\>\<\=\!\(\)]+$', expr):
+            if not re.match(r'^[a-zA-Z0-9\.\s\+\-\*\/\>\<\=\!\(\)\'\"\_]+$', expr):
                 return False
-            return bool(eval(expr, {"__builtins__": {}}, {}))
+            return bool(eval(expr, {"__builtins__": {}}, row))
         except Exception:
             return False
