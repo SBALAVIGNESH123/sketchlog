@@ -18,6 +18,7 @@ from sketchlog.drift import DriftSketch
 from sketchlog.alerts import AlertEngine
 from sketchlog.cluster import ClusterManager
 from sketchlog.slo import SmartSLOEngine
+from sketchlog.diff import SketchDiff
 from prometheus_client import CollectorRegistry
 
 if not structlog.is_configured():
@@ -145,6 +146,40 @@ async def require_auth(request: Request, call_next: Callable[[Request], Awaitabl
         if not token or not hmac.compare_digest(token.encode('utf-8'), AUTH_TOKEN.encode('utf-8')):
             return Response(status_code=401, content=b'{"detail":"Unauthorized"}', headers={"Content-Type": "application/json"})
     return await call_next(request)
+
+@app.get("/v1/streams/{stream_id}/diff")
+def diff_streams(stream_id: str, baseline_stream_id: str) -> Dict[str, Any]:
+    """
+    Sketch Diffing — Visual & Programmatic Distribution Comparison.
+    Compare any two time windows, deployments, or regions side-by-side.
+    """
+    current_stream = registry.get(stream_id)
+    if not current_stream:
+        has_curr = cluster_manager.has_peer_data(stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        if not has_curr:
+            raise HTTPException(status_code=404, detail=f"Current stream '{stream_id}' not found.")
+
+    baseline_stream = registry.get(baseline_stream_id)
+    if not baseline_stream:
+        has_base = cluster_manager.has_peer_data(baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        if not has_base:
+            raise HTTPException(status_code=404, detail=f"Baseline stream '{baseline_stream_id}' not found.")
+
+    if PEERS or ADVERTISED_ADDRESS:
+        curr = cluster_manager.get_merged_stream(stream_id, current_stream)
+        base = cluster_manager.get_merged_stream(baseline_stream_id, baseline_stream)
+    else:
+        assert current_stream is not None
+        assert baseline_stream is not None
+        from typing import cast
+        curr = cast(StreamLog, current_stream.get_snapshot() if hasattr(current_stream, 'get_snapshot') else current_stream)
+        base = cast(StreamLog, baseline_stream.get_snapshot() if hasattr(baseline_stream, 'get_snapshot') else baseline_stream)
+
+    if curr.latency_count == 0 or base.latency_count == 0:
+        raise HTTPException(status_code=400, detail="One or both streams have no latency data to compare.")
+
+    diff = SketchDiff(curr, base)
+    return diff.to_dict()
 
 @app.middleware("http")
 async def observe_requests(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
