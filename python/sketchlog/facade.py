@@ -76,6 +76,10 @@ class _PythonStreamLog:
         """99.9th percentile latency."""
         return self.percentile(0.999)
 
+    def count_greater_than(self, threshold: float) -> int:
+        """Count latency events strictly greater than threshold."""
+        return self._latency.count_greater_than(threshold)
+
     # ─── Events ──────────────────────────────────────────────────────
 
     def add_event(self, name: EventKey, count: int = 1) -> None:
@@ -112,6 +116,11 @@ class _PythonStreamLog:
     def total_events(self) -> int:
         """Total events processed."""
         return self._total
+
+    @property
+    def latency_count(self) -> int:
+        """Total latency events processed."""
+        return self._latency._count
 
     def memory_bytes(self) -> int:
         """Total memory used by all sketches."""
@@ -523,6 +532,9 @@ class StreamLog:
     def p99(self) -> float: return self._backend.p99()  # type: ignore[no-any-return]
     def p999(self) -> float: return self._backend.p999()  # type: ignore[no-any-return]
 
+    def count_greater_than(self, threshold: float) -> int:
+        return self._backend.count_greater_than(threshold)  # type: ignore[no-any-return]
+
     def add_event(self, name: EventKey, count: int = 1) -> None:
         self._backend.add_event(name, count)
 
@@ -549,6 +561,12 @@ class StreamLog:
         if callable(getattr(self._backend, "total_events", None)):
             return self._backend.total_events()  # type: ignore[no-any-return]
         return getattr(self._backend, "total_events", 0)
+
+    @property
+    def latency_count(self) -> int:
+        if callable(getattr(self._backend, "latency_count", None)):
+            return self._backend.latency_count()  # type: ignore[no-any-return]
+        return getattr(self._backend, "latency_count", 0)
 
     def memory_bytes(self) -> int:
         return self._backend.memory_bytes()  # type: ignore[no-any-return]

@@ -32,6 +32,9 @@ public:
     /// @return   approximate quantile value, or 0 if the sketch is empty.
     [[nodiscard]] double quantile(double q) const;
 
+    /// Count number of values strictly greater than threshold.
+    [[nodiscard]] uint64_t count_greater_than(double threshold) const;
+
     /// Minimum value added to the sketch.
     [[nodiscard]] double min() const;
 

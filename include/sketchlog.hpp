@@ -79,6 +79,9 @@ public:
     /** Convenience: p999. */
     double p999() const { return percentile(0.999); }
 
+    /** Count latencies > threshold. */
+    uint64_t count_greater_than(double threshold) const;
+
     /** Latency min/max. */
     double latency_min() const;
     double latency_max() const;
@@ -106,6 +109,9 @@ public:
 
     /** Total events processed. */
     uint64_t total_events() const { return total_events_; }
+
+    /** Total latency events processed. */
+    uint64_t latency_count() const { return latency_.count(); }
 
     /** Total memory used by all sketches (bytes). */
     size_t memory_bytes() const;

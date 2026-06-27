@@ -50,6 +50,10 @@ double StreamLog::percentile(double q) const {
     return latency_.quantile(q);
 }
 
+uint64_t StreamLog::count_greater_than(double threshold) const {
+    return latency_.count_greater_than(threshold);
+}
+
 double StreamLog::latency_min() const {
     return latency_.min();
 }
