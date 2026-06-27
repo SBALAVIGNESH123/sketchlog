@@ -218,3 +218,32 @@ def test_oversized_chunked_request():
 def test_malformed_content_length():
     response = client.post("/v1/streams/test/events", json={}, headers={"Content-Length": "abc"})
     assert response.status_code == 400
+
+def test_authentication_middleware():
+    from sketchlog import server
+    original_token = server.AUTH_TOKEN
+    server.AUTH_TOKEN = "secret123"
+    try:
+        # Unauthenticated request to /v1/ should fail
+        response = client.get("/v1/streams/test-auth/metrics")
+        assert response.status_code == 401
+
+        # Authenticated request to /v1/ should pass auth (will return 404 since stream doesn't exist)
+        response = client.get(
+            "/v1/streams/test-auth/metrics",
+            headers={"X-SketchLog-Auth-Token": "secret123"}
+        )
+        assert response.status_code == 404
+
+        # Request to /health should pass without auth
+        response = client.get("/health")
+        assert response.status_code == 200
+
+        # Wrong token should fail
+        response = client.get(
+            "/v1/streams/test-auth/metrics",
+            headers={"X-SketchLog-Auth-Token": "wrong"}
+        )
+        assert response.status_code == 401
+    finally:
+        server.AUTH_TOKEN = original_token

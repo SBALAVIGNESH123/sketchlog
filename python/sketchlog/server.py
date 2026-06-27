@@ -86,6 +86,7 @@ if MAX_REQUEST_BYTES < 1:
 NODE_ID = os.environ.get("SKETCHLOG_NODE_ID", f"node-{os.getpid()}")
 PEERS = [p.strip() for p in os.environ.get("SKETCHLOG_PEERS", "").split(",") if p.strip()]
 CLUSTER_SECRET = os.environ.get("SKETCHLOG_CLUSTER_SECRET")
+AUTH_TOKEN = os.environ.get("SKETCHLOG_AUTH_TOKEN")
 
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
@@ -133,6 +134,14 @@ class LimitUploadSize(BaseHTTPMiddleware):
         return cast(Response, await call_next(request))
 
 app.add_middleware(LimitUploadSize)
+
+@app.middleware("http")
+async def require_auth(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    if AUTH_TOKEN and request.url.path.startswith("/v1/"):
+        token = request.headers.get("X-SketchLog-Auth-Token")
+        if not token or token != AUTH_TOKEN:
+            return Response(status_code=401, content=b'{"detail":"Unauthorized"}', headers={"Content-Type": "application/json"})
+    return await call_next(request)
 
 @app.middleware("http")
 async def observe_requests(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
@@ -420,9 +429,15 @@ async def reset_stream(stream_id: str) -> None:
 
 def main() -> None:
     import uvicorn
-    host = os.environ.get("SKETCHLOG_HOST", "0.0.0.0")
+    host = os.environ.get("SKETCHLOG_HOST", "127.0.0.1")
     port = int(os.environ.get("SKETCHLOG_PORT", "8000"))
-    uvicorn.run("sketchlog.server:app", host=host, port=port, reload=False)
+    tls_cert = os.environ.get("SKETCHLOG_TLS_CERT")
+    tls_key = os.environ.get("SKETCHLOG_TLS_KEY")
+    kwargs = {}
+    if tls_cert and tls_key:
+        kwargs["ssl_certfile"] = tls_cert
+        kwargs["ssl_keyfile"] = tls_key
+    uvicorn.run("sketchlog.server:app", host=host, port=port, reload=False, **kwargs)
 
 if __name__ == "__main__":
     main()
