@@ -105,6 +105,15 @@ class DriftSketch:
         self._previous: Dict[str, StreamLog] = {}      # name -> StreamLog (frozen previous window)
         self._window_start: Dict[str, int] = {}    # name -> monotonic time (ns)
         self._event_counts: DefaultDict[str, int] = defaultdict(int)
+
+        # CUSUM State
+        self._cusum_mean: Dict[str, float] = {}
+        self._cusum_var: Dict[str, float] = {}
+        self._cusum_high: Dict[str, float] = {}
+        self._cusum_low: Dict[str, float] = {}
+        self._cusum_count: Dict[str, int] = {}
+        self._latest_anomalies: Dict[str, Dict[str, Any]] = {}
+
         self._lock = threading.RLock()
 
     def _get_or_create(self, name: str) -> None:
@@ -112,6 +121,53 @@ class DriftSketch:
             self._current[name] = StreamLog(**self._sk_kwargs)
             self._previous[name] = StreamLog(**self._sk_kwargs)
             self._window_start[name] = _time.monotonic_ns()
+
+    def _update_cusum(self, name: str, value: float) -> None:
+        alpha = 0.1
+        count = self._cusum_count.get(name, 0)
+
+        if count == 0:
+            self._cusum_mean[name] = value
+            self._cusum_var[name] = 0.0
+            self._cusum_high[name] = 0.0
+            self._cusum_low[name] = 0.0
+        else:
+            mean = self._cusum_mean[name]
+            var = self._cusum_var[name]
+
+            min_stddev = max(1e-6, abs(0.01 * mean))
+            stddev = max(math.sqrt(var), min_stddev)
+
+            allowance = 1.0 * stddev
+            self._cusum_high[name] = max(0.0, self._cusum_high.get(name, 0.0) + value - mean - allowance)
+            self._cusum_low[name] = max(0.0, self._cusum_low.get(name, 0.0) - value + mean - allowance)
+
+            if self._cusum_high[name] > 3.0 * stddev or self._cusum_low[name] > 3.0 * stddev:
+                direction = "up" if self._cusum_high[name] > 3.0 * stddev else "down"
+                magnitude = self._cusum_high[name] if direction == "up" else self._cusum_low[name]
+
+                self._latest_anomalies[name] = {
+                    "dimension": name,
+                    "direction": direction,
+                    "magnitude": round(magnitude, 4),
+                    "expected_mean": round(mean, 4),
+                    "current_value": round(value, 4),
+                    "stddev": round(stddev, 4)
+                }
+                self._cusum_high[name] = 0.0
+                self._cusum_low[name] = 0.0
+
+                clip_val = mean + 3.0 * stddev if direction == "up" else mean - 3.0 * stddev
+                value_for_ewma = clip_val
+            else:
+                self._latest_anomalies.pop(name, None)
+                value_for_ewma = value
+
+            diff = value_for_ewma - mean
+            self._cusum_mean[name] = (1 - alpha) * mean + alpha * value_for_ewma
+            self._cusum_var[name] = (1 - alpha) * var + alpha * (diff * diff)
+
+        self._cusum_count[name] = count + 1
 
     def _maybe_rotate(self, name: str) -> None:
         """Rotate window if expired. Previous becomes frozen snapshot."""
@@ -122,8 +178,13 @@ class DriftSketch:
             windows_elapsed = elapsed_ns // self._window_ns
 
             if windows_elapsed >= 2:
+                self._update_cusum(name, self._current[name].p99())
+                backfill_steps = min(windows_elapsed - 1, 100)
+                for _ in range(backfill_steps):
+                    self._update_cusum(name, 0.0)
                 self._previous[name] = StreamLog(**self._sk_kwargs)  # empty
             else:
+                self._update_cusum(name, self._current[name].p99())
                 self._previous[name] = self._current[name]  # freeze
 
             self._current[name] = StreamLog(**self._sk_kwargs)  # fresh
@@ -138,6 +199,7 @@ class DriftSketch:
         """
         with self._lock:
             for name in list(self._current.keys()):
+                self._update_cusum(name, self._current[name].p99())
                 self._previous[name] = self._current[name]
                 self._current[name] = StreamLog(**self._sk_kwargs)
                 self._window_start[name] = _time.monotonic_ns()
@@ -170,6 +232,47 @@ class DriftSketch:
             count_before = sketch.total_events
             sketch.add_batch(values)
             self._event_counts[dimension] += (sketch.total_events - count_before)
+
+    # ─── Anomaly Detection ───────────────────────────────────────────
+
+    def anomalies(self) -> List[Dict[str, Any]]:
+        """Return dimensions currently flagged by the CUSUM anomaly detector."""
+        with self._lock:
+            for name in self._current:
+                self._maybe_rotate(name)
+
+            current_anomalies = {name: dict(v) for name, v in self._latest_anomalies.items()}
+
+            # Speculative check on the active window (real-time alerts)
+            for name, sketch in self._current.items():
+                if sketch.total_events == 0 or name in current_anomalies:
+                    continue
+                mean = self._cusum_mean.get(name)
+                if mean is None:
+                    continue
+                var = self._cusum_var.get(name, 0.0)
+                min_stddev = max(1e-6, abs(0.01 * mean))
+                stddev = max(math.sqrt(var), min_stddev)
+
+                val = sketch.p99()
+                allowance = 1.0 * stddev
+
+                spec_high = max(0.0, self._cusum_high.get(name, 0.0) + val - mean - allowance)
+                spec_low = max(0.0, self._cusum_low.get(name, 0.0) - val + mean - allowance)
+
+                if spec_high > 3.0 * stddev or spec_low > 3.0 * stddev:
+                    direction = "up" if spec_high > 3.0 * stddev else "down"
+                    magnitude = spec_high if direction == "up" else spec_low
+                    current_anomalies[name] = {
+                        "dimension": name,
+                        "direction": direction,
+                        "magnitude": round(magnitude, 4),
+                        "expected_mean": round(mean, 4),
+                        "current_value": round(val, 4),
+                        "stddev": round(stddev, 4)
+                    }
+
+            return list(current_anomalies.values())
 
     # ─── Drift Detection ─────────────────────────────────────────────
 
