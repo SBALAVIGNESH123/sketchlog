@@ -608,7 +608,7 @@ async def reset_stream(stream_id: str, namespace: str = "default") -> None:
 
 @app.get("/v1/namespaces/aggregate", response_model=MetricsResponse)
 async def aggregate_streams(namespaces: str, stream_id: str) -> MetricsResponse:
-    ns_list = [ns.strip() for ns in namespaces.split(",") if ns.strip()]
+    ns_list = list(dict.fromkeys(ns.strip() for ns in namespaces.split(",") if ns.strip()))
     if not ns_list:
         raise HTTPException(status_code=400, detail="No namespaces provided.")
 

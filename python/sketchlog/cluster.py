@@ -238,7 +238,7 @@ class ClusterManager:
 
         # 1. Local streams
         for ns, sid, stream in self.registry.snapshot_items():
-            full_id = f"{ns}::{sid}"
+            full_id = json.dumps([ns, sid])
             version_vector[full_id] = {self.node_id: getattr(stream, "last_updated", time.time())}
 
         # 2. Peer streams
@@ -274,14 +274,14 @@ class ClusterManager:
                         sync_payload["streams"][stream_id] = {}
                         for nid in nids:
                             if nid == self.node_id:
-                                parts = stream_id.split("::", 1)
-                                if len(parts) == 2:
-                                    stream = self.registry.get(parts[0], parts[1])
-                                    if stream:
-                                        try:
+                                try:
+                                    parts = json.loads(stream_id)
+                                    if isinstance(parts, list) and len(parts) == 2:
+                                        stream = self.registry.get(parts[0], parts[1])
+                                        if stream:
                                             sync_payload["streams"][stream_id][nid] = stream.get_snapshot().to_dict()
-                                        except Exception:
-                                            pass
+                                except Exception:
+                                    pass
                             else:
                                 with self._lock:
                                     if stream_id in self.peer_snapshots and nid in self.peer_snapshots[stream_id]:
@@ -306,7 +306,7 @@ class ClusterManager:
         # 1. Compare what they have vs what we have
         # A. Local streams
         for ns, sid, stream in self.registry.snapshot_items():
-            stream_id = f"{ns}::{sid}"
+            stream_id = json.dumps([ns, sid])
             remote_stream = remote_versions.get(stream_id, {})
             remote_node_ts = remote_stream.get(self.node_id, 0)
             local_node_ts = getattr(stream, "last_updated", local_ts)
@@ -382,13 +382,13 @@ class ClusterManager:
                         logger.warning(f"Failed to deserialize snapshot from {sender_node_id} for stream {stream_id}, origin {nid}: {e}")
 
     def has_peer_data(self, namespace: str, stream_id: str) -> bool:
-        full_id = f"{namespace}::{stream_id}"
+        full_id = json.dumps([namespace, stream_id])
         with self._lock:
-            return full_id in self.peer_snapshots
+            return bool(self.peer_snapshots.get(full_id))
 
     def get_merged_stream(self, namespace: str, stream_id: str, local_stream: Optional[Any]) -> StreamLog:
         merged = local_stream.get_snapshot() if local_stream else StreamLog(deterministic=True)
-        full_id = f"{namespace}::{stream_id}"
+        full_id = json.dumps([namespace, stream_id])
         with self._lock:
             if full_id in self.peer_snapshots:
                 for node_id, (peer_log, _) in self.peer_snapshots[full_id].items():
