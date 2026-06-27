@@ -247,3 +247,21 @@ def test_authentication_middleware():
         assert response.status_code == 401
     finally:
         server.AUTH_TOKEN = original_token
+
+def test_websocket_streaming():
+    stream_id = "test-ws"
+    payload = {"latencies": [10.0, 20.0, 30.0], "uniques": ["u1"], "events": {"e1": 5}}
+    client.post(f"/v1/streams/{stream_id}/events", json=payload)
+    
+    with client.websocket_connect(f"/v1/streams/{stream_id}/ws") as websocket:
+        data = websocket.receive_json()
+        assert data["version"] == 1
+        assert int(data["total"]) == 8
+        assert "latency" in data
+        assert "events" in data
+        assert "uniques" in data
+
+def test_websocket_nonexistent_stream():
+    with client.websocket_connect("/v1/streams/test-ws-nonexistent/ws") as websocket:
+        data = websocket.receive_json()
+        assert "error" in data

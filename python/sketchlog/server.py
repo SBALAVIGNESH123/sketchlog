@@ -3,8 +3,9 @@ import json
 import logging
 from typing import Dict, List, Optional, Any, Annotated, Callable, Awaitable, AsyncGenerator, Tuple
 from collections import OrderedDict
-from fastapi import FastAPI, HTTPException, status, Request, Response
+from fastapi import FastAPI, HTTPException, status, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, model_validator
+import asyncio
 from starlette.middleware.base import BaseHTTPMiddleware
 import time
 import psutil
@@ -487,6 +488,26 @@ async def get_metrics(stream_id: str) -> MetricsResponse:
         total_events=stream_to_report.total_events,
         memory_footprint_bytes=stream_to_report.memory_bytes()
     )
+
+@app.websocket("/v1/streams/{stream_id:path}/ws")
+async def stream_ws(websocket: WebSocket, stream_id: str):
+    await websocket.accept()
+    try:
+        while True:
+            local_stream = registry.get(stream_id)
+            if not PEERS and not ADVERTISED_ADDRESS:
+                stream_to_report = local_stream.get_snapshot() if local_stream else None
+            else:
+                stream_to_report = cluster_manager.get_merged_stream(stream_id, local_stream) if (local_stream or cluster_manager.has_peer_data(stream_id)) else None
+            
+            if stream_to_report:
+                await websocket.send_json(stream_to_report.to_dict())
+            else:
+                await websocket.send_json({"error": "Stream not found"})
+                
+            await asyncio.sleep(1.0)
+    except WebSocketDisconnect:
+        pass
 
 @app.get("/v1/streams/{stream_id:path}/events", response_model=EventCountResponse)
 async def get_event_count(stream_id: str, name: str) -> EventCountResponse:
