@@ -9,6 +9,7 @@ class ThreadSafeStreamLog:
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self._log = StreamLog(*args, **kwargs)
         self._lock = threading.Lock()
+        self._save_lock = threading.Lock()
 
     def add_latency(self, value: float) -> None:
         with self._lock:
@@ -118,7 +119,8 @@ class ThreadSafeStreamLog:
 
     def save(self, path: str) -> None:
         snapshot = self.get_snapshot()
-        snapshot.save(path)
+        with self._save_lock:
+            snapshot.save(path)
 
     @classmethod
     def load(cls, path: str) -> "ThreadSafeStreamLog":
