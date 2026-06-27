@@ -10,7 +10,7 @@ The collector loads our highly optimized eBPF program (`ebpf/bpf_code.c`) into t
 1. `kprobes` for socket send/recv (to measure network latencies).
 2. `uprobes` for standard library HTTP/gRPC calls (Go, Node.js, Python).
 
-As packets flow, the eBPF program populates an in-kernel `DDSketch` implementation. Periodically, the SketchLog agent reads these kernel maps in O(1) time and pushes the compressed sketch to the central mesh.
+As packets flow, the eBPF program captures and summarizes raw events into in-kernel BPF maps. Periodically, the SketchLog agent reads these kernel maps and constructs the `DDSketch` in userspace. The total data transferred from kernel to userspace remains extremely small, and accessing the map entries is an O(1) operation.
 
 ## Getting Started
 

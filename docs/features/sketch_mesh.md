@@ -1,6 +1,6 @@
 # Sketch Mesh (P2P Federation)
 
-The **Sketch Mesh** is a distributed, peer-to-peer federation layer that allows multiple SketchLog servers to seamlessly combine their sketches in real-time. Because Sketches are mathematically mergeable (a union of two HyperLogLogs is exactly equivalent to a single HyperLogLog of all items), SketchLog naturally scales horizontally.
+The **Sketch Mesh** is a distributed, peer-to-peer federation layer that allows multiple SketchLog servers to seamlessly combine their sketches in real-time. Because Sketches are mathematically mergeable (a union of two HyperLogLogs is exactly equivalent to a single HyperLogLog of all items, while DDSketch merges are bounded-approximate), SketchLog naturally scales horizontally.
 
 ## How It Works
 
@@ -14,19 +14,19 @@ This guarantees eventual consistency across all nodes without blocking ingestion
 
 ## Configuration
 
-To enable clustered mode, you just need to start the servers with the `PEERS` and `ADVERTISED_ADDRESS` environment variables.
+To enable clustered mode, you just need to start the servers with the `SKETCHLOG_PEERS` and `SKETCHLOG_ADVERTISED_ADDRESS` environment variables.
 
 ### Node 1 (192.168.1.100)
 ```bash
-export ADVERTISED_ADDRESS="http://192.168.1.100:8000"
-export PEERS="http://192.168.1.101:8000"
+export SKETCHLOG_ADVERTISED_ADDRESS="http://192.168.1.100:8000"
+export SKETCHLOG_PEERS="http://192.168.1.101:8000"
 uvicorn sketchlog.server:app --host 0.0.0.0 --port 8000
 ```
 
 ### Node 2 (192.168.1.101)
 ```bash
-export ADVERTISED_ADDRESS="http://192.168.1.101:8000"
-export PEERS="http://192.168.1.100:8000"
+export SKETCHLOG_ADVERTISED_ADDRESS="http://192.168.1.101:8000"
+export SKETCHLOG_PEERS="http://192.168.1.100:8000"
 uvicorn sketchlog.server:app --host 0.0.0.0 --port 8000
 ```
 

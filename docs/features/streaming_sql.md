@@ -7,7 +7,7 @@ SketchLog supports a real-time **Streaming SQL** interface, allowing you to quer
 You can execute queries against the `sketchlog` namespaces:
 
 ```sql
--- Get the 99th percentile latency for a specific service
+-- Get the 99th percentile latency for a specific service (quotes are optional but recommended)
 SELECT p99(latency) FROM "default/my-service";
 
 -- Get the exact number of unique users seen today
@@ -32,13 +32,13 @@ The `/v1/query` endpoint accepts raw SQL POST requests:
 ```bash
 curl -X POST "http://localhost:8000/v1/query" \
   -H "Content-Type: application/json" \
-  -d '{"query": "SELECT p99(latency) FROM default/payment-gateway"}'
+  -d '{"query": "SELECT p99(latency) FROM \"default/payment-gateway\""}'
 ```
 
 Response:
 ```json
 {
-  "query": "SELECT p99(latency) FROM default/payment-gateway",
+  "query": "SELECT p99(latency) FROM \"default/payment-gateway\"",
   "results": [
     {
       "stream": "default/payment-gateway",

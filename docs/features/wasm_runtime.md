@@ -1,6 +1,6 @@
 # WASM Runtime
 
-Because the core of SketchLog is written in highly portable C++ (via pybind11), it has been compiled to WebAssembly (WASM). The **WASM Runtime** allows you to execute the exact same O(1) compression engine directly at the edge or in the user's browser.
+Because the core of SketchLog is written in highly portable C++, it has been compiled to WebAssembly (WASM) via Emscripten. The **WASM Runtime** allows you to execute the exact same O(1) compression engine directly at the edge or in the user's browser.
 
 ## Browser Deployment
 

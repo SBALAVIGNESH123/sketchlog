@@ -11,18 +11,24 @@ You can evaluate SLOs in real-time using the `/slo/evaluate` endpoint.
 ### Example: Latency SLO
 
 ```json
-POST /v1/streams/api-gateway/slo/evaluate
+POST /v1/namespaces/default/streams/api-gateway/slo/evaluate
 {
-  "target_latency_ms": 250,
-  "target_percentile": 0.99
+  "baseline_stream_id": "api-gateway-baseline",
+  "target_percentile": 0.99,
+  "budget_percent": 5.0
 }
 ```
 
 Response:
 ```json
 {
+  "stream_id": "api-gateway",
+  "baseline_stream_id": "api-gateway-baseline",
+  "target_percentile": 0.99,
+  "target_latency": 250.0,
+  "budget_percent": 5.0,
   "slo_met": true,
-  "current_percentile_val": 184.2,
+  "current_latency": 184.2,
   "margin_ms": 65.8,
   "status": "HEALTHY"
 }
