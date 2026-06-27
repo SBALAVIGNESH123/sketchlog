@@ -8,31 +8,31 @@ class SQLParser:
 
     def __init__(self, query: str):
         self.query = query.strip()
-        
+
     def parse(self) -> Dict[str, Any]:
         pattern = re.compile(
             r"^SELECT\s+(.*?)\s+FROM\s+(.*?)"
             r"(?:\s+GROUP\s+BY\s+(.*?))?"
-            r"(?:\s+HAVING\s+(.*?))?$", 
+            r"(?:\s+HAVING\s+(.*?))?$",
             re.IGNORECASE | re.DOTALL
         )
         match = pattern.match(self.query)
         if not match:
             raise ValueError(f"Invalid SQL query format or unsupported syntax: {self.query}")
-            
+
         select_clause, from_clause, group_by_clause, having_clause = match.groups()
-        
+
         selects = self._parse_select(select_clause)
         group_by = [g.strip() for g in group_by_clause.split(',')] if group_by_clause else []
         having = having_clause.strip() if having_clause else None
-        
+
         return {
             "selects": selects,
             "from": from_clause.strip(),
             "group_by": group_by,
             "having": having
         }
-        
+
     def _parse_select(self, clause: str) -> List[Dict[str, Any]]:
         # Split by comma, but not commas inside parentheses
         parts = re.split(r",\s*(?![^()]*\))", clause)
@@ -47,7 +47,7 @@ class SQLParser:
             else:
                 expr = part
                 alias = part
-            
+
             # check for func(col)
             func_match = re.match(r"^(\w+)\((.*?)\)$", expr)
             if func_match:
@@ -56,20 +56,20 @@ class SQLParser:
                 selects.append({"type": "agg", "func": func, "col": col, "alias": alias})
             else:
                 selects.append({"type": "col", "col": expr, "alias": alias})
-                
+
         return selects
 
 
 class SQLStreamEngine:
     """SQL execution engine that builds sketches dynamically based on the parsed query."""
-    
+
     def __init__(self, query: str, sk_kwargs: Optional[Dict[str, Any]] = None):
         self.parser = SQLParser(query)
         self.plan = self.parser.parse()
         self.sk_kwargs = sk_kwargs or {}
         self.groups: Dict[Tuple[Any, ...], StreamLog] = {}
         self.global_log = StreamLog(**self.sk_kwargs)
-        
+
     def add_row(self, row: Dict[str, Any]) -> None:
         """Ingest a dictionary row, hashing it to the correct sketch group."""
         if self.plan["group_by"]:
@@ -79,7 +79,7 @@ class SQLStreamEngine:
             log = self.groups[key]
         else:
             log = self.global_log
-            
+
         # extract values based on selects
         for sel in self.plan["selects"]:
             if sel["type"] == "agg":
@@ -104,17 +104,18 @@ class SQLStreamEngine:
     def execute_query(self) -> List[Dict[str, Any]]:
         """Evaluate the sketches and return the SQL result set."""
         results = []
+        items: List[Tuple[Tuple[Any, ...], StreamLog]] = []
         if self.plan["group_by"]:
-            items = self.groups.items()
+            items = list(self.groups.items())
         else:
             items = [((), self.global_log)]
-            
+
         for key, log in items:
             row_out = {}
             if self.plan["group_by"]:
                 for i, col in enumerate(self.plan["group_by"]):
                     row_out[col] = key[i]
-                    
+
             for sel in self.plan["selects"]:
                 alias = sel["alias"]
                 if sel["type"] == "agg":
@@ -136,30 +137,30 @@ class SQLStreamEngine:
                 elif sel["type"] == "col":
                     if alias not in row_out:
                         row_out[alias] = None
-                        
+
             # eval having
             if self.plan["having"]:
                 if not self._eval_having(self.plan["having"], row_out):
                     continue
-                    
+
             results.append(row_out)
-            
+
         return results
-        
+
     def _eval_having(self, condition: str, row: Dict[str, Any]) -> bool:
         """Safely evaluate the having condition using a restricted eval environment."""
         expr = condition
         # basic translate SQL '=' to Python '=='
         expr = re.sub(r'(?<![<>=!])=(?![=])', '==', expr)
-        
+
         for k, v in row.items():
             # Replace alias occurrences with their string value representation
             expr = re.sub(rf'\b{re.escape(k)}\b', str(v), expr)
-            
+
         try:
             # We enforce a strict character set to prevent execution of arbitrary code
             if not re.match(r'^[0-9\.\s\+\-\*\/\>\<\=\!\(\)]+$', expr):
                 return False
-            return eval(expr, {"__builtins__": {}}, {})
+            return bool(eval(expr, {"__builtins__": {}}, {}))
         except Exception:
             return False
