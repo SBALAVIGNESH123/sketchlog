@@ -7,7 +7,9 @@
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
+#ifdef _MSC_VER
 #include <intrin.h>
+#endif
 
 namespace sketchlog {
 
