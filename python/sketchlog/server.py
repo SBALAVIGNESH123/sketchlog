@@ -433,7 +433,7 @@ def main() -> None:
     port = int(os.environ.get("SKETCHLOG_PORT", "8000"))
     tls_cert = os.environ.get("SKETCHLOG_TLS_CERT")
     tls_key = os.environ.get("SKETCHLOG_TLS_KEY")
-    kwargs = {}
+    kwargs: Dict[str, Any] = {}
     if tls_cert and tls_key:
         kwargs["ssl_certfile"] = tls_cert
         kwargs["ssl_keyfile"] = tls_key
