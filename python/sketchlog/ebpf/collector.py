@@ -41,7 +41,7 @@ class EBPFCollector:
     def _init_ebpf(self, min_ns: int, max_ns: int) -> None:
         """Compile and attach the eBPF program, and load the bucket boundaries."""
         # 1. Calculate boundaries based on StreamLog's alpha
-        alpha = self.log._relative_accuracy
+        alpha = self.log.relative_accuracy
         gamma = (1.0 + alpha) / (1.0 - alpha)
         multiplier = 1.0 / math.log(gamma)
         self._multiplier = multiplier
@@ -94,7 +94,9 @@ class EBPFCollector:
         """Stop the background syncing thread."""
         self._stop_event.set()
         if self._thread:
-            self._thread.join()
+            self._thread.join(timeout=5.0)
+            if self._thread.is_alive():
+                print("Warning: EBPFCollector polling thread did not exit cleanly", flush=True)
         if self.bpf:
             self.bpf.cleanup()
 
@@ -117,11 +119,16 @@ class EBPFCollector:
 
                 if total_count > 0:
                     actual_bucket_idx = self._mapping[i]
-                    gamma = (1.0 + self.log._relative_accuracy) / (1.0 - self.log._relative_accuracy)
+                    gamma = (1.0 + self.log.relative_accuracy) / (1.0 - self.log.relative_accuracy)
                     bound_val = float((2.0 / (1.0 + gamma)) * (gamma ** actual_bucket_idx))
 
                     # Add to StreamLog using add_batch for backend-agnostic support
-                    self.log.add_batch([bound_val] * total_count)
+                    batch_size = min(total_count, 1000)
+                    batch = [bound_val] * batch_size
+                    for _ in range(total_count // batch_size):
+                        self.log.add_batch(batch)
+                    if total_count % batch_size:
+                        self.log.add_batch([bound_val] * (total_count % batch_size))
 
                     # Zero the kernel per-cpu counters
-                    bucket_counts[ctypes.c_int(i)] = bucket_counts.leaf()
+                    bucket_counts[ctypes.c_int(i)] = bucket_counts.Leaf()

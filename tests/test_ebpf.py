@@ -81,8 +81,6 @@ def test_ebpf_collector_syncing(mock_bcc):
     def mock_getitem(idx):
         if hasattr(idx, 'value') and idx.value == 0:
             return [MagicMock(value=2), MagicMock(value=3)] # simulate 2 cpus with 2 and 3 counts
-        if type(idx) is int and idx == 0:
-            return [MagicMock(value=2), MagicMock(value=3)]
         return [MagicMock(value=0), MagicMock(value=0)]
 
     mock_counts.__getitem__.side_effect = mock_getitem

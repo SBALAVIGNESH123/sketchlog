@@ -541,6 +541,10 @@ class StreamLog:
         return self._backend.unique_count()  # type: ignore[no-any-return]
 
     @property
+    def relative_accuracy(self) -> float:
+        return self._relative_accuracy
+
+    @property
     def total_events(self) -> int:
         if callable(getattr(self._backend, "total_events", None)):
             return self._backend.total_events()  # type: ignore[no-any-return]
