@@ -81,3 +81,9 @@ int trace_tcp_cleanup_rbuf(struct pt_regs *ctx, struct sock *sk, int copied) {
     sock_starts.delete(&sk);
     return 0;
 }
+
+// Hook tcp_close to clean up any stale timestamps
+int trace_tcp_close(struct pt_regs *ctx, struct sock *sk) {
+    sock_starts.delete(&sk);
+    return 0;
+}

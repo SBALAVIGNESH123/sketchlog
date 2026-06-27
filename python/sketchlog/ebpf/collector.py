@@ -62,6 +62,7 @@ class EBPFCollector:
         # 3. Attach kprobes
         self.bpf.attach_kprobe(event="tcp_sendmsg", fn_name="trace_tcp_sendmsg")
         self.bpf.attach_kprobe(event="tcp_cleanup_rbuf", fn_name="trace_tcp_cleanup_rbuf")
+        self.bpf.attach_kprobe(event="tcp_close", fn_name="trace_tcp_close")
 
         # 4. Load boundaries into BPF_ARRAY
         bucket_boundaries = self.bpf.get_table("bucket_boundaries")
@@ -94,6 +95,8 @@ class EBPFCollector:
         self._stop_event.set()
         if self._thread:
             self._thread.join()
+        if self.bpf:
+            self.bpf.cleanup()
 
     def _poll_loop(self) -> None:
         """Periodically read per-cpu counters, merge into userspace StreamLog, and reset kernel array."""
@@ -105,8 +108,13 @@ class EBPFCollector:
 
             # Read and flush kernel buckets
             for i in range(num_buckets):
-                cpu_values = bucket_counts.GetValue(i)
-                total_count = sum(cpu_values)
+                key = ctypes.c_int(i)
+                try:
+                    cpu_values = bucket_counts[key]
+                    total_count = sum(v.value if hasattr(v, 'value') else v for v in cpu_values)
+                except KeyError:
+                    continue
+
                 if total_count > 0:
                     actual_bucket_idx = self._mapping[i]
                     gamma = (1.0 + self.log._relative_accuracy) / (1.0 - self.log._relative_accuracy)

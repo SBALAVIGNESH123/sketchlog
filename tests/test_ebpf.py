@@ -78,12 +78,14 @@ def test_ebpf_collector_syncing(mock_bcc):
     # Let's say bucket index 0 (the first one in the mapping) has 5 events
     mock_counts = mock_bcc["bucket_counts"]
 
-    def mock_get_value(idx):
-        if idx == 0:
-            return [2, 3] # simulate 2 cpus with 2 and 3 counts
-        return [0, 0]
+    def mock_getitem(idx):
+        if hasattr(idx, 'value') and idx.value == 0:
+            return [MagicMock(value=2), MagicMock(value=3)] # simulate 2 cpus with 2 and 3 counts
+        if type(idx) is int and idx == 0:
+            return [MagicMock(value=2), MagicMock(value=3)]
+        return [MagicMock(value=0), MagicMock(value=0)]
 
-    mock_counts.GetValue.side_effect = mock_get_value
+    mock_counts.__getitem__.side_effect = mock_getitem
 
     # Start thread
     collector.start()
