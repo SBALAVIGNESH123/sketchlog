@@ -41,7 +41,8 @@ test = [
     "pytest",
     "pytest-asyncio",
     "httpx",
-    "hypothesis"
+    "hypothesis",
+    "greenlet"
 ]
 dev = [
     "pytest",

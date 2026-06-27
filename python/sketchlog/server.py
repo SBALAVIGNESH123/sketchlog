@@ -73,6 +73,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await storage_backend.initialize()
 
         async def flush_db_loop() -> None:
+            if not storage_backend:
+                return
             try:
                 while True:
                     await asyncio.sleep(60)
@@ -299,7 +301,7 @@ class StreamRegistry:
 
         stream = None
         if self.storage:
-            stream = await self.storage.load(namespace, stream_id)
+            stream = await self.storage.load(namespace, stream_id, deterministic=bool(PEERS or ADVERTISED_ADDRESS))
 
         with self._lock:
             ns_streams = self._namespaces[namespace]
@@ -331,7 +333,7 @@ class StreamRegistry:
                 return ns_streams[stream_id]
 
         if self.storage:
-            stream = await self.storage.load(namespace, stream_id)
+            stream = await self.storage.load(namespace, stream_id, deterministic=bool(PEERS or ADVERTISED_ADDRESS))
             if stream:
                 with self._lock:
                     ns_streams = self._namespaces[namespace]
@@ -394,6 +396,8 @@ if DB_URI:
         logger.info("storage_backend_configured", uri=redacted)
     except Exception as e:
         logger.error("storage_backend_failed", error=str(e))
+        import sys
+        sys.exit(1)
 
 registry = StreamRegistry(max_streams_per_namespace=MAX_STREAMS_PER_NAMESPACE, storage=storage_backend)
 cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry, cluster_secret=CLUSTER_SECRET, advertised_address=ADVERTISED_ADDRESS, sync_interval=SYNC_INTERVAL)
@@ -562,11 +566,18 @@ async def ingest_events(stream_id: str, batch: EventBatch, namespace: str = "def
     if batch.events:
         new_events += sum(batch.events.values())
 
-    stream = await registry.get_or_create(namespace, stream_id)
+    current_total = 0
+    existing_stream = registry.peek(namespace, stream_id)
+    if not existing_stream and registry.storage:
+        existing_stream = await registry.storage.load(namespace, stream_id, deterministic=bool(PEERS or ADVERTISED_ADDRESS))
+    if existing_stream:
+        current_total = existing_stream.total_events
 
     # INT64_MAX
-    if stream.total_events + new_events > 9223372036854775807:
+    if current_total + new_events > 9223372036854775807:
         raise HTTPException(status_code=422, detail="Total stream event capacity exceeded")
+
+    stream = await registry.get_or_create(namespace, stream_id)
 
     if batch.latencies:
         stream.add_batch(batch.latencies)

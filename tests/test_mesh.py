@@ -24,12 +24,13 @@ def test_cluster_membership_ping():
     # Response should contain node1
     assert "node1" in resp["members"]
 
-def test_anti_entropy_digest():
+@pytest.mark.asyncio
+async def test_anti_entropy_digest():
     registry1 = StreamRegistry(10)
     cm1 = ClusterManager(node_id="node1", peers=[], registry=registry1, advertised_address="http://node1")
 
     # node1 has a local stream
-    stream = registry1.get_or_create("default", "streamA")
+    stream = await registry1.get_or_create("default", "streamA")
     stream.add_batch([10.0])
 
     # Simulate node2 sending a digest where it doesn't know about streamA

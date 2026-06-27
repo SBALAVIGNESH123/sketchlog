@@ -277,7 +277,7 @@ class ClusterManager:
                                 try:
                                     parts = json.loads(stream_id)
                                     if isinstance(parts, list) and len(parts) == 2:
-                                        stream = self.registry.get(parts[0], parts[1])
+                                        stream = self.registry.peek(parts[0], parts[1])
                                         if stream:
                                             sync_payload["streams"][stream_id][nid] = stream.get_snapshot().to_dict()
                                 except Exception:
