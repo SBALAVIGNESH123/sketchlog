@@ -35,6 +35,7 @@ from sketchlog.facade import StreamLog
 from sketchlog.concurrent import ThreadSafeStreamLog
 from sketchlog.windowed import WindowedStreamLog
 from sketchlog.drift import DriftSketch
+from sketchlog.sql import SQLStreamEngine
 from sketchlog.core.stats import Stats
 from sketchlog.core.ddsketch import DDSketch
 from sketchlog.core.hll import HyperLogLog
@@ -47,6 +48,7 @@ __all__ = [
     "ThreadSafeStreamLog",
     "WindowedStreamLog",
     "DriftSketch",
+    "SQLStreamEngine",
     "Stats",
     "DDSketch",
     "HyperLogLog",
