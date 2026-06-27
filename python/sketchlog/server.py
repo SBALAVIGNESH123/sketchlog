@@ -91,7 +91,7 @@ ADVERTISED_ADDRESS = os.environ.get("SKETCHLOG_ADVERTISED_ADDRESS")
 
 class LimitUploadSize(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Response:
-        if request.method in ["POST", "PUT", "PATCH"] and request.url.path not in ["/mesh/ping", "/mesh/gossip/digest", "/mesh/gossip/sync"]:
+        if request.method in ["POST", "PUT", "PATCH"] and request.url.path != "/mesh/gossip/sync":
             content_length = request.headers.get("content-length")
             if content_length:
                 try:
@@ -234,8 +234,9 @@ class StreamRegistry:
                 return True
             return False
 
+SYNC_INTERVAL = float(os.environ.get("SKETCHLOG_SYNC_INTERVAL", "5.0"))
 registry = StreamRegistry(max_size=MAX_STREAMS)
-cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry, cluster_secret=CLUSTER_SECRET, advertised_address=ADVERTISED_ADDRESS)
+cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry, cluster_secret=CLUSTER_SECRET, advertised_address=ADVERTISED_ADDRESS, sync_interval=SYNC_INTERVAL)
 
 # Models
 # C++ extensions accept uint64_t but typically bounded positive integers max at 2^63-1 for safe signed limits in generic protocols.
@@ -315,10 +316,13 @@ async def flake_endpoint() -> Dict[str, str]:
 def check_mesh_auth(request: Request) -> None:
     if not PEERS and not ADVERTISED_ADDRESS:
         raise HTTPException(status_code=400, detail="Mesh clustering is not enabled on this node")
-    if CLUSTER_SECRET:
-        token = request.headers.get("X-SketchLog-Cluster-Token")
-        if not token or token != CLUSTER_SECRET:
-            raise HTTPException(status_code=401, detail="Unauthorized cluster node")
+    if not CLUSTER_SECRET:
+        logger.error("Mesh is enabled but SKETCHLOG_CLUSTER_SECRET is missing. Rejecting request to prevent unauthenticated cluster manipulation.")
+        raise HTTPException(status_code=401, detail="Cluster secret missing from server configuration")
+
+    token = request.headers.get("X-SketchLog-Cluster-Token")
+    if not token or token != CLUSTER_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized cluster node")
 
 @app.post("/mesh/ping", include_in_schema=False)
 async def mesh_ping(request: Request) -> Dict[str, Any]:

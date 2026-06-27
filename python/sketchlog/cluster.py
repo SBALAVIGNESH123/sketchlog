@@ -27,6 +27,7 @@ class ClusterManager:
         self.cluster_secret = cluster_secret
         self.advertised_address = advertised_address
         self.incarnation = 0
+        self._has_seeds = bool([p for p in peers if p])
 
         # Membership: node_id -> {"address": str, "status": str, "incarnation": int, "last_updated": float}
         self.members: Dict[str, Dict[str, Any]] = {}
@@ -64,7 +65,7 @@ class ClusterManager:
         self._gossip_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        if not self.members and not self.advertised_address:
+        if not self._has_seeds and not self.advertised_address:
             logger.info("No peers and no advertised address. ClusterManager will not start.")
             return
 
@@ -150,6 +151,14 @@ class ClusterManager:
                         self.members[self.node_id]["last_updated"] = time.time()
                     continue
 
+                # Basic SSRF prevention: Enforce address scheme if provided
+                remote_addr = info.get("address", "")
+                if remote_addr:
+                    parsed_addr = urllib.parse.urlparse(remote_addr)
+                    if parsed_addr.scheme not in ("http", "https") or not parsed_addr.netloc:
+                        logger.warning(f"Rejecting invalid address {remote_addr} from {nid}")
+                        continue
+
                 if nid not in self.members:
                     self.members[nid] = info
                     self.members[nid]["last_updated"] = time.time()
@@ -228,9 +237,8 @@ class ClusterManager:
         version_vector: Dict[str, Dict[str, float]] = {}
 
         # 1. Local streams
-        local_ts = time.time()
-        for stream_id, _ in self.registry.snapshot_items():
-            version_vector[stream_id] = {self.node_id: local_ts}
+        for stream_id, stream in self.registry.snapshot_items():
+            version_vector[stream_id] = {self.node_id: getattr(stream, "last_updated", time.time())}
 
         # 2. Peer streams
         with self._lock:
