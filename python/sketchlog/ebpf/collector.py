@@ -12,9 +12,9 @@ from sketchlog.facade import StreamLog
 try:
     from bcc import BPF  # type: ignore
     HAS_BCC = True
-    BPF = BPF
 except ImportError:
     HAS_BCC = False
+    BPF: Any = None
 
 class EBPFCollector:
     """

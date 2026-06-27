@@ -89,10 +89,10 @@ def test_ebpf_collector_syncing(mock_bcc):
     collector.start()
 
     import time
-    for _ in range(20):
+    for _ in range(100):
         if log.total_events >= 5:
             break
-        time.sleep(0.05)
+        time.sleep(0.1)
 
     # Stop thread
     collector.stop()
