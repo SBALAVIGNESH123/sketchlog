@@ -56,6 +56,10 @@ WEBHOOK_FAILURES = Counter("sketchlog_webhook_deliveries_failed_total", "Total f
 alert_engine.on_alert_fired = lambda: ALERTS_FIRED.inc()
 alert_engine.on_webhook_failed = lambda: WEBHOOK_FAILURES.inc()
 
+from typing import Set, Any
+import asyncio
+background_tasks: Set[asyncio.Task[Any]] = set()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if PEERS or ADVERTISED_ADDRESS:
@@ -63,35 +67,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                        "bypassing the C++ high-performance path. This incurs a significant (~46x) performance penalty.")
     alert_engine.start()
     cluster_manager.start()
-    
+
     flush_task = None
     if storage_backend:
         await storage_backend.initialize()
-        
-        async def flush_db_loop():
+
+        async def flush_db_loop() -> None:
             try:
                 while True:
                     await asyncio.sleep(60)
                     for ns, sid, stream in registry.snapshot_items():
-                        await storage_backend.save(ns, sid, stream)
+                        try:
+                            await storage_backend.save(ns, sid, stream)
+                        except Exception as e:
+                            logger.error("flush_db_stream_error", namespace=ns, stream_id=sid, error=str(e))
             except asyncio.CancelledError:
                 pass
             except Exception as e:
                 logger.error("flush_db_loop_error", error=str(e))
-                
+
         flush_task = asyncio.create_task(flush_db_loop())
 
     yield
-    
+
     if flush_task:
         flush_task.cancel()
         try:
             await flush_task
         except asyncio.CancelledError:
             pass
-            
+
     if storage_backend:
         logger.info("shutting_down_storage", msg="Flushing all streams to DB...")
+        if background_tasks:
+            await asyncio.gather(*background_tasks, return_exceptions=True)
         for ns, sid, stream in registry.snapshot_items():
             try:
                 await storage_backend.save(ns, sid, stream)
@@ -304,7 +313,9 @@ class StreamRegistry:
                 logger.info("stream_evicted", namespace=namespace, stream_id=evicted_id)
                 if self.storage:
                     import asyncio
-                    asyncio.create_task(self.storage.save(namespace, evicted_id, evicted_stream))
+                    task = asyncio.create_task(self.storage.save(namespace, evicted_id, evicted_stream))
+                    background_tasks.add(task)
+                    task.add_done_callback(background_tasks.discard)
 
             if stream is None:
                 stream = ThreadSafeStreamLog(deterministic=bool(PEERS or ADVERTISED_ADDRESS))
@@ -330,12 +341,15 @@ class StreamRegistry:
                             STREAM_EVICTIONS_TOTAL.inc()
                             logger.info("stream_evicted", namespace=namespace, stream_id=evicted_id)
                             import asyncio
-                            asyncio.create_task(self.storage.save(namespace, evicted_id, evicted_stream))
+                            task = asyncio.create_task(self.storage.save(namespace, evicted_id, evicted_stream))
+                            background_tasks.add(task)
+                            task.add_done_callback(background_tasks.discard)
                         ns_streams[stream_id] = stream
                         ACTIVE_STREAMS.set(sum(len(ns) for ns in self._namespaces.values()))
                     else:
                         stream = ns_streams[stream_id]
-                return stream
+                from typing import cast
+                return cast(ThreadSafeStreamLog, stream)
         return None
 
     def peek(self, namespace: str, stream_id: str) -> Optional[ThreadSafeStreamLog]:
@@ -355,10 +369,10 @@ class StreamRegistry:
                     del self._namespaces[namespace]
                 ACTIVE_STREAMS.set(sum(len(ns) for ns in self._namespaces.values()))
                 found = True
-        
+
         if self.storage:
-            await self.storage.delete(namespace, stream_id)
-            return True
+            db_deleted = await self.storage.delete(namespace, stream_id)
+            return found or db_deleted
         return found
 
     def get_namespace(self, namespace: str) -> List[ThreadSafeStreamLog]:
@@ -374,8 +388,10 @@ storage_backend = None
 if DB_URI:
     try:
         from sketchlog.storage import SQLAlchemyStorage
+        from sqlalchemy.engine.url import make_url
         storage_backend = SQLAlchemyStorage(DB_URI)
-        logger.info("storage_backend_configured", uri=DB_URI)
+        redacted = make_url(DB_URI).render_as_string(hide_password=True)
+        logger.info("storage_backend_configured", uri=redacted)
     except Exception as e:
         logger.error("storage_backend_failed", error=str(e))
 
@@ -546,16 +562,11 @@ async def ingest_events(stream_id: str, batch: EventBatch, namespace: str = "def
     if batch.events:
         new_events += sum(batch.events.values())
 
-    current_total = 0
-    existing_stream = registry.peek(namespace, stream_id)
-    if existing_stream:
-        current_total = existing_stream.total_events
+    stream = await registry.get_or_create(namespace, stream_id)
 
     # INT64_MAX
-    if current_total + new_events > 9223372036854775807:
+    if stream.total_events + new_events > 9223372036854775807:
         raise HTTPException(status_code=422, detail="Total stream event capacity exceeded")
-
-    stream = await registry.get_or_create(namespace, stream_id)
 
     if batch.latencies:
         stream.add_batch(batch.latencies)
