@@ -174,6 +174,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
 
         // ─── System ──────────────────────────────────────────────────
         .def("total_events", &sketchlog::StreamLog::total_events)
+        .def("latency_count", &sketchlog::StreamLog::latency_count)
         .def("memory_bytes", &sketchlog::StreamLog::memory_bytes)
         .def("memory_kb", &sketchlog::StreamLog::memory_kb)
         .def("reset", &sketchlog::StreamLog::reset)

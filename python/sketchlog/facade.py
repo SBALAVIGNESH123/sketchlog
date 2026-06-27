@@ -117,6 +117,11 @@ class _PythonStreamLog:
         """Total events processed."""
         return self._total
 
+    @property
+    def latency_count(self) -> int:
+        """Total latency events processed."""
+        return self._latency._count
+
     def memory_bytes(self) -> int:
         """Total memory used by all sketches."""
         return (self._latency.memory_bytes() +
@@ -556,6 +561,12 @@ class StreamLog:
         if callable(getattr(self._backend, "total_events", None)):
             return self._backend.total_events()  # type: ignore[no-any-return]
         return getattr(self._backend, "total_events", 0)
+
+    @property
+    def latency_count(self) -> int:
+        if callable(getattr(self._backend, "latency_count", None)):
+            return self._backend.latency_count()  # type: ignore[no-any-return]
+        return getattr(self._backend, "latency_count", 0)
 
     def memory_bytes(self) -> int:
         return self._backend.memory_bytes()  # type: ignore[no-any-return]

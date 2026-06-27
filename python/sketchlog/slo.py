@@ -39,8 +39,8 @@ class SmartSLOEngine:
             raise ValueError("budget_percent must be in (0, 1)")
 
         # Calculate latency counts
-        historical_latency_count = historical_stream.to_dict()['latency']['count']
-        current_latency_count = current_stream.to_dict()['latency']['count']
+        historical_latency_count = historical_stream.latency_count
+        current_latency_count = current_stream.latency_count
 
         # If historical stream has no latencies, we can't derive an SLO
         if historical_latency_count == 0:

@@ -110,6 +110,9 @@ public:
     /** Total events processed. */
     uint64_t total_events() const { return total_events_; }
 
+    /** Total latency events processed. */
+    uint64_t latency_count() const { return latency_.count(); }
+
     /** Total memory used by all sketches (bytes). */
     size_t memory_bytes() const;
 
