@@ -66,7 +66,9 @@ server = [
     "structlog>=23.1.0",
     "prometheus-client>=0.17.0",
     "asgi-correlation-id>=4.2.0",
-    "psutil"
+    "psutil",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite"
 ]
 
 [tool.setuptools.packages.find]

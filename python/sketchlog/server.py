@@ -63,7 +63,42 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                        "bypassing the C++ high-performance path. This incurs a significant (~46x) performance penalty.")
     alert_engine.start()
     cluster_manager.start()
+    
+    flush_task = None
+    if storage_backend:
+        await storage_backend.initialize()
+        
+        async def flush_db_loop():
+            try:
+                while True:
+                    await asyncio.sleep(60)
+                    for ns, sid, stream in registry.snapshot_items():
+                        await storage_backend.save(ns, sid, stream)
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error("flush_db_loop_error", error=str(e))
+                
+        flush_task = asyncio.create_task(flush_db_loop())
+
     yield
+    
+    if flush_task:
+        flush_task.cancel()
+        try:
+            await flush_task
+        except asyncio.CancelledError:
+            pass
+            
+    if storage_backend:
+        logger.info("shutting_down_storage", msg="Flushing all streams to DB...")
+        for ns, sid, stream in registry.snapshot_items():
+            try:
+                await storage_backend.save(ns, sid, stream)
+            except Exception as e:
+                logger.error("flush_on_shutdown_error", namespace=ns, stream_id=sid, error=str(e))
+        await storage_backend.close()
+
     cluster_manager.stop()
     alert_engine.stop()
 
@@ -152,18 +187,18 @@ async def require_auth(request: Request, call_next: Callable[[Request], Awaitabl
 
 @app.get("/v1/streams/{stream_id:path}/diff")
 @app.get("/v1/namespaces/{namespace}/streams/{stream_id:path}/diff")
-def diff_streams(stream_id: str, baseline_stream_id: str, namespace: str = "default") -> Dict[str, Any]:
+async def diff_streams(stream_id: str, baseline_stream_id: str, namespace: str = "default") -> Dict[str, Any]:
     """
     Sketch Diffing — Visual & Programmatic Distribution Comparison.
     Compare any two time windows, deployments, or regions side-by-side.
     """
-    current_stream = registry.get(namespace, stream_id)
+    current_stream = await registry.get(namespace, stream_id)
     if not current_stream:
         has_curr = cluster_manager.has_peer_data(namespace, stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
         if not has_curr:
             raise HTTPException(status_code=404, detail=f"Current stream '{stream_id}' not found in namespace '{namespace}'.")
 
-    baseline_stream = registry.get(namespace, baseline_stream_id)
+    baseline_stream = await registry.get(namespace, baseline_stream_id)
     if not baseline_stream:
         has_base = cluster_manager.has_peer_data(namespace, baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
         if not has_base:
@@ -228,8 +263,9 @@ app.add_middleware(CorrelationIdMiddleware)
 
 # State
 class StreamRegistry:
-    def __init__(self, max_streams_per_namespace: int):
+    def __init__(self, max_streams_per_namespace: int, storage: Optional[Any] = None):
         self.max_streams_per_ns = max_streams_per_namespace
+        self.storage = storage
         from typing import DefaultDict
         from collections import defaultdict
         self._namespaces: DefaultDict[str, OrderedDict[str, ThreadSafeStreamLog]] = defaultdict(OrderedDict)
@@ -245,7 +281,17 @@ class StreamRegistry:
                     items.append((ns, sid, stream))
             return items
 
-    def get_or_create(self, namespace: str, stream_id: str) -> ThreadSafeStreamLog:
+    async def get_or_create(self, namespace: str, stream_id: str) -> ThreadSafeStreamLog:
+        with self._lock:
+            ns_streams = self._namespaces[namespace]
+            if stream_id in ns_streams:
+                ns_streams.move_to_end(stream_id)
+                return ns_streams[stream_id]
+
+        stream = None
+        if self.storage:
+            stream = await self.storage.load(namespace, stream_id)
+
         with self._lock:
             ns_streams = self._namespaces[namespace]
             if stream_id in ns_streams:
@@ -253,24 +299,44 @@ class StreamRegistry:
                 return ns_streams[stream_id]
 
             if len(ns_streams) >= self.max_streams_per_ns:
-                # Evict oldest in this namespace
-                evicted_id, _ = ns_streams.popitem(last=False)
+                evicted_id, evicted_stream = ns_streams.popitem(last=False)
                 STREAM_EVICTIONS_TOTAL.inc()
                 logger.info("stream_evicted", namespace=namespace, stream_id=evicted_id)
+                if self.storage:
+                    import asyncio
+                    asyncio.create_task(self.storage.save(namespace, evicted_id, evicted_stream))
 
-            stream = ThreadSafeStreamLog(deterministic=bool(PEERS or ADVERTISED_ADDRESS))
+            if stream is None:
+                stream = ThreadSafeStreamLog(deterministic=bool(PEERS or ADVERTISED_ADDRESS))
             ns_streams[stream_id] = stream
-            # Update global active streams count
             ACTIVE_STREAMS.set(sum(len(ns) for ns in self._namespaces.values()))
             return stream
 
-    def get(self, namespace: str, stream_id: str) -> Optional[ThreadSafeStreamLog]:
+    async def get(self, namespace: str, stream_id: str) -> Optional[ThreadSafeStreamLog]:
         with self._lock:
             ns_streams = self._namespaces.get(namespace)
             if ns_streams and stream_id in ns_streams:
                 ns_streams.move_to_end(stream_id)
                 return ns_streams[stream_id]
-            return None
+
+        if self.storage:
+            stream = await self.storage.load(namespace, stream_id)
+            if stream:
+                with self._lock:
+                    ns_streams = self._namespaces[namespace]
+                    if stream_id not in ns_streams:
+                        if len(ns_streams) >= self.max_streams_per_ns:
+                            evicted_id, evicted_stream = ns_streams.popitem(last=False)
+                            STREAM_EVICTIONS_TOTAL.inc()
+                            logger.info("stream_evicted", namespace=namespace, stream_id=evicted_id)
+                            import asyncio
+                            asyncio.create_task(self.storage.save(namespace, evicted_id, evicted_stream))
+                        ns_streams[stream_id] = stream
+                        ACTIVE_STREAMS.set(sum(len(ns) for ns in self._namespaces.values()))
+                    else:
+                        stream = ns_streams[stream_id]
+                return stream
+        return None
 
     def peek(self, namespace: str, stream_id: str) -> Optional[ThreadSafeStreamLog]:
         with self._lock:
@@ -279,7 +345,8 @@ class StreamRegistry:
                 return ns_streams.get(stream_id)
             return None
 
-    def delete(self, namespace: str, stream_id: str) -> bool:
+    async def delete(self, namespace: str, stream_id: str) -> bool:
+        found = False
         with self._lock:
             ns_streams = self._namespaces.get(namespace)
             if ns_streams and stream_id in ns_streams:
@@ -287,8 +354,12 @@ class StreamRegistry:
                 if not ns_streams:
                     del self._namespaces[namespace]
                 ACTIVE_STREAMS.set(sum(len(ns) for ns in self._namespaces.values()))
-                return True
-            return False
+                found = True
+        
+        if self.storage:
+            await self.storage.delete(namespace, stream_id)
+            return True
+        return found
 
     def get_namespace(self, namespace: str) -> List[ThreadSafeStreamLog]:
         with self._lock:
@@ -298,7 +369,17 @@ class StreamRegistry:
             return []
 
 SYNC_INTERVAL = float(os.environ.get("SKETCHLOG_SYNC_INTERVAL", "5.0"))
-registry = StreamRegistry(max_streams_per_namespace=MAX_STREAMS_PER_NAMESPACE)
+DB_URI = os.environ.get("SKETCHLOG_DB_URI")
+storage_backend = None
+if DB_URI:
+    try:
+        from sketchlog.storage import SQLAlchemyStorage
+        storage_backend = SQLAlchemyStorage(DB_URI)
+        logger.info("storage_backend_configured", uri=DB_URI)
+    except Exception as e:
+        logger.error("storage_backend_failed", error=str(e))
+
+registry = StreamRegistry(max_streams_per_namespace=MAX_STREAMS_PER_NAMESPACE, storage=storage_backend)
 cluster_manager = ClusterManager(node_id=NODE_ID, peers=PEERS, registry=registry, cluster_secret=CLUSTER_SECRET, advertised_address=ADVERTISED_ADDRESS, sync_interval=SYNC_INTERVAL)
 
 # Models
@@ -474,7 +555,7 @@ async def ingest_events(stream_id: str, batch: EventBatch, namespace: str = "def
     if current_total + new_events > 9223372036854775807:
         raise HTTPException(status_code=422, detail="Total stream event capacity exceeded")
 
-    stream = registry.get_or_create(namespace, stream_id)
+    stream = await registry.get_or_create(namespace, stream_id)
 
     if batch.latencies:
         stream.add_batch(batch.latencies)
@@ -493,7 +574,7 @@ async def ingest_events(stream_id: str, batch: EventBatch, namespace: str = "def
 @app.get("/v1/namespaces/{namespace}/streams/{stream_id:path}/metrics", response_model=MetricsResponse)
 @app.get("/v1/streams/{stream_id:path}/metrics", response_model=MetricsResponse)
 async def get_metrics(stream_id: str, namespace: str = "default") -> MetricsResponse:
-    local_stream = registry.get(namespace, stream_id)
+    local_stream = await registry.get(namespace, stream_id)
 
     if not PEERS and not ADVERTISED_ADDRESS:
         if not local_stream:
@@ -531,7 +612,7 @@ async def stream_ws(websocket: WebSocket, stream_id: str, namespace: str = "defa
     await websocket.accept()
     try:
         while True:
-            local_stream = registry.get(namespace, stream_id)
+            local_stream = await registry.get(namespace, stream_id)
             if not PEERS and not ADVERTISED_ADDRESS:
                 stream_to_report = local_stream.get_snapshot() if local_stream else None
             else:
@@ -549,7 +630,7 @@ async def stream_ws(websocket: WebSocket, stream_id: str, namespace: str = "defa
 @app.get("/v1/namespaces/{namespace}/streams/{stream_id:path}/events", response_model=EventCountResponse)
 @app.get("/v1/streams/{stream_id:path}/events", response_model=EventCountResponse)
 async def get_event_count(stream_id: str, name: str, namespace: str = "default") -> EventCountResponse:
-    stream = registry.get(namespace, stream_id)
+    stream = await registry.get(namespace, stream_id)
     if not stream:
         raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found in namespace '{namespace}'.")
 
@@ -562,13 +643,13 @@ async def get_event_count(stream_id: str, name: str, namespace: str = "default")
 @app.post("/v1/namespaces/{namespace}/streams/{stream_id:path}/slo/evaluate", response_model=SLOResponse)
 @app.post("/v1/streams/{stream_id:path}/slo/evaluate", response_model=SLOResponse)
 async def evaluate_slo(stream_id: str, req: SLOEvaluationRequest, namespace: str = "default") -> SLOResponse:
-    current_stream = registry.get(namespace, stream_id)
+    current_stream = await registry.get(namespace, stream_id)
     if not current_stream:
         has_curr = cluster_manager.has_peer_data(namespace, stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
         if not has_curr:
             raise HTTPException(status_code=404, detail=f"Current stream '{stream_id}' not found in namespace '{namespace}'.")
 
-    baseline_stream = registry.get(namespace, req.baseline_stream_id)
+    baseline_stream = await registry.get(namespace, req.baseline_stream_id)
     if not baseline_stream:
         has_base = cluster_manager.has_peer_data(namespace, req.baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
         if not has_base:
@@ -602,7 +683,7 @@ async def evaluate_slo(stream_id: str, req: SLOEvaluationRequest, namespace: str
 @app.delete("/v1/namespaces/{namespace}/streams/{stream_id:path}", status_code=status.HTTP_204_NO_CONTENT)
 @app.delete("/v1/streams/{stream_id:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def reset_stream(stream_id: str, namespace: str = "default") -> None:
-    success = registry.delete(namespace, stream_id)
+    success = await registry.delete(namespace, stream_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Stream '{stream_id}' not found in namespace '{namespace}'.")
 
@@ -616,7 +697,7 @@ async def aggregate_streams(namespaces: str, stream_id: str) -> MetricsResponse:
     found_any = False
 
     for ns in ns_list:
-        local_stream = registry.get(ns, stream_id)
+        local_stream = await registry.get(ns, stream_id)
         if local_stream:
             merged.merge(local_stream.get_snapshot())
             found_any = True
