@@ -614,13 +614,13 @@ async def aggregate_streams(namespaces: str, stream_id: str) -> MetricsResponse:
 
     merged = StreamLog(deterministic=bool(PEERS or ADVERTISED_ADDRESS))
     found_any = False
-    
+
     for ns in ns_list:
         local_stream = registry.get(ns, stream_id)
         if local_stream:
             merged.merge(local_stream.get_snapshot())
             found_any = True
-        
+
         if PEERS or ADVERTISED_ADDRESS:
             has_remote = cluster_manager.has_peer_data(ns, stream_id)
             if has_remote:
