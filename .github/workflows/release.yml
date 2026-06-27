@@ -64,6 +64,7 @@ jobs:
         env:
           CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
           CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_TEST_EXTRAS: "test,server,opentelemetry"
           CIBW_TEST_REQUIRES: "pytest numpy"
           CIBW_TEST_COMMAND: >-
             python -c "import sketchlog; assert sketchlog.HAS_CPP, 'Missing C++ backend in wheel'" &&

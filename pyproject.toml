@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sketchlog"
-version = "1.1.0"
+version = "1.1.1"
 description = "Streaming metrics compression engine. 100M events in 93 KB with bounded error. DDSketch + HyperLogLog + Count-Min Sketch."
 authors = [
     {name = "Bala Vignesh S"}
