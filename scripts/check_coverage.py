@@ -21,9 +21,10 @@ def main() -> int:
     }
     failures = []
     for filename, floor in FLOORS.items():
+        package_suffix = filename.removeprefix("python/")
         matches = [
             values for name, values in normalized.items()
-            if name == filename or name.endswith("/" + filename)
+            if name == filename or name.endswith("/" + package_suffix)
         ]
         if len(matches) != 1:
             failures.append(
