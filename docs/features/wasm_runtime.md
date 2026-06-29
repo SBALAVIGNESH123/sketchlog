@@ -31,7 +31,8 @@ if (!response.ok) throw new Error(`merge failed: ${response.status}`);
 log.reset();
 ```
 
-Serialized 64-bit counters are decimal strings so JavaScript cannot round them.
+Runtime 64-bit counter getters return `bigint`; serialized counters are decimal
+strings so JSON transport cannot round them.
 The authenticated merge endpoint validates the complete state, dimensions,
 counter sums, and compatibility before merging. Its normal request-size limit
 still applies.
