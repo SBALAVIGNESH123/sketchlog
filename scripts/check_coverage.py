@@ -21,7 +21,15 @@ def main() -> int:
     }
     failures = []
     for filename, floor in FLOORS.items():
-        measured = normalized[filename]["summary"]["percent_covered"]
+        matches = [
+            values for name, values in normalized.items()
+            if name == filename or name.endswith("/" + filename)
+        ]
+        if len(matches) != 1:
+            failures.append(
+                f"{filename}: expected one report entry, found {len(matches)}")
+            continue
+        measured = matches[0]["summary"]["percent_covered"]
         if measured < floor:
             failures.append(f"{filename}: {measured:.2f}% < {floor:.2f}%")
     if failures:

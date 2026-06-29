@@ -67,11 +67,13 @@ We guarantee compatibility and provide pre-compiled wheels for the following tar
 
 | Component | Support Level |
 | :--- | :--- |
-| **Python** | 3.9, 3.10, 3.11, 3.12, 3.13, 3.14 |
+| **Python** | 3.10, 3.11, 3.12, 3.13, 3.14 |
 | **OS/architecture** | Linux x86_64/aarch64, macOS x86_64/arm64, Windows AMD64 |
 | **C++ ABI** | C++17 compliant compiler (GCC 9+, Clang 10+, MSVC 19.2X+) |
 
-Dropping support for a Python minor version (e.g., removing Python 3.9 support) will only occur in a **MAJOR** release or if the Python version reaches its official End of Life (EOL).
+Dropping support for a Python minor version will only occur in a **MAJOR**
+release or after that Python version reaches its official end of life. Python
+3.9 support ended in SketchLog 1.2.0 after upstream security support ended.
 
 32-bit Windows (`win32`) is not supported or published. Release CI constrains
 Windows wheels to AMD64 and smoke-tests that every selected wheel imports the

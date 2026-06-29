@@ -1,0 +1,10 @@
+{
+  "include": ["python/sketchlog"],
+  "extraPaths": ["python"],
+  "executionEnvironments": [
+    {
+      "root": "python",
+      "extraPaths": ["python"]
+    }
+  ]
+}

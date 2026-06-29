@@ -2,6 +2,9 @@
 
 ## 1.2.0
 
+Python 3.10–3.14 are supported. Python 3.9 reached upstream end of life and is
+no longer an install target.
+
 ### Security
 
 - Canonically validate all serialized state before native allocation.

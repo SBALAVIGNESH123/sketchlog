@@ -93,3 +93,18 @@ def test_having_rejects_executable_ast_nodes():
     )
     engine.add_row({})
     assert engine.execute_query() == []
+
+
+def test_parser_handles_whitespace_and_quoted_keywords_linearly():
+    query = (
+        " SELECT  p99(latency)  AS tail\n"
+        " FROM \"default/from stream\"  GROUP   BY endpoint "
+        " HAVING tail > 10 "
+    )
+    plan = SQLParser(query).parse()
+    assert plan["from"] == '"default/from stream"'
+    assert plan["group_by"] == ["endpoint"]
+    assert plan["having"] == "tail > 10"
+
+    with pytest.raises(ValueError, match="4096"):
+        SQLParser("SELECT " + ("x" * 4096) + " FROM stream")
