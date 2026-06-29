@@ -1,6 +1,7 @@
 import pytest
 import pytest_asyncio
 import asyncio
+import zlib
 from sketchlog.storage import SQLAlchemyStorage
 from sketchlog.facade import StreamLog
 from sketchlog.concurrent import ThreadSafeStreamLog
@@ -56,3 +57,61 @@ async def test_storage_delete(storage: SQLAlchemyStorage) -> None:
 
     loaded_after = await storage.load("test_ns", "del_stream")
     assert loaded_after is None
+
+
+@pytest.mark.asyncio
+async def test_mesh_tombstones_survive_storage_restart(storage: SQLAlchemyStorage) -> None:
+    await storage.save_tombstone("node-a", '["default", "gone"]', 42.5)
+    await storage.save_tombstone("node-a", '["default", "gone"]', 41.0)
+    await storage.save_tombstone("node-a", '["default", "gone"]', 43.0)
+    assert await storage.load_tombstones("node-a") == {
+        '["default", "gone"]': 43.0
+    }
+
+
+@pytest.mark.asyncio
+async def test_stream_delete_and_mesh_tombstone_commit_together(
+        storage: SQLAlchemyStorage) -> None:
+    log = StreamLog()
+    log.add_latency(12.0)
+    await storage.save("default", "atomic-delete", log)
+
+    deleted = await storage.delete_with_tombstone(
+        "default",
+        "atomic-delete",
+        "node-a",
+        '["default", "atomic-delete"]',
+        99.0,
+    )
+
+    assert deleted is True
+    assert await storage.load("default", "atomic-delete") is None
+    tombstones = await storage.load_tombstones("node-a")
+    assert tombstones['["default", "atomic-delete"]'] == 99.0
+
+    deleted_again = await storage.delete_with_tombstone(
+        "default",
+        "atomic-delete",
+        "node-a",
+        '["default", "atomic-delete"]',
+        100.0,
+    )
+    assert deleted_again is False
+    tombstones = await storage.load_tombstones("node-a")
+    assert tombstones['["default", "atomic-delete"]'] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_storage_healthcheck(storage: SQLAlchemyStorage) -> None:
+    assert await storage.healthcheck() is True
+
+
+def test_storage_rejects_decompression_bombs(monkeypatch) -> None:
+    import sketchlog.storage as storage_module
+
+    backend = SQLAlchemyStorage("sqlite+aiosqlite:///:memory:")
+    monkeypatch.setattr(storage_module, "MAX_SERIALIZED_STATE_BYTES", 64)
+    payload = zlib.compress(b'{"value":"' + b"x" * 128 + b'"}')
+
+    with pytest.raises(ValueError, match="Decompressed state exceeds"):
+        backend._decompress_and_deserialize(payload)

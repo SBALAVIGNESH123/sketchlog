@@ -1,4 +1,3 @@
-import React from 'react';
 import './index.css';
 import { HeroSection } from './components/HeroSection';
 import { CodePreview } from './components/CodePreview';
@@ -9,7 +8,6 @@ function App() {
     <>
       <div className="bg-glow"></div>
 
-      {/* Navbar Placeholder */}
       <header className="navbar glass-panel">
         <div className="container nav-content">
           <div className="logo">

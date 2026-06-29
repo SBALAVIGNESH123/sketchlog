@@ -20,6 +20,14 @@ Our public Python API is defined explicitly in `python/sketchlog/__init__.py` us
 *   `StreamLog`
 *   `ThreadSafeStreamLog`
 *   `WindowedStreamLog`
+*   `DriftSketch`
+*   `SQLStreamEngine`
+*   `SketchDiff`
+*   `Stats`
+*   `DDSketch`
+*   `HyperLogLog`
+*   `CountMinSketch`
+*   `EBPFCollector`
 
 These symbols are covered by Semantic Versioning. Any breaking change to their signatures or documented behaviors requires a **MAJOR** version bump.
 
@@ -35,7 +43,10 @@ If a public feature must be removed or fundamentally changed:
 
 ## Serialization Contract
 
-A core feature of SketchLog is saving and loading compressed metric state. We guarantee that **newer versions of SketchLog will always be able to read state serialized by older versions** (forward schema compatibility), subject to the following rules:
+A core feature of SketchLog is saving and loading compressed metric state. Our
+compatibility policy is that newer versions continue to read state serialized
+by supported older versions (backward schema compatibility), subject to the
+following rules:
 
 1.  **Version Identifier:** All serialized JSON/dict payloads contain a `"version"` field (currently `1`).
 2.  **Backward Compatibility:** If the schema evolves (e.g., to `"version": 2`), the library will seamlessly parse `"version": 1` payloads and upgrade them in memory.
@@ -56,8 +67,12 @@ We guarantee compatibility and provide pre-compiled wheels for the following tar
 
 | Component | Support Level |
 | :--- | :--- |
-| **Python** | 3.9, 3.10, 3.11, 3.12 |
-| **OS** | Linux (ubuntu-latest), macOS (Intel/ARM), Windows |
+| **Python** | 3.9, 3.10, 3.11, 3.12, 3.13, 3.14 |
+| **OS/architecture** | Linux x86_64/aarch64, macOS x86_64/arm64, Windows AMD64 |
 | **C++ ABI** | C++17 compliant compiler (GCC 9+, Clang 10+, MSVC 19.2X+) |
 
 Dropping support for a Python minor version (e.g., removing Python 3.9 support) will only occur in a **MAJOR** release or if the Python version reaches its official End of Life (EOL).
+
+32-bit Windows (`win32`) is not supported or published. Release CI constrains
+Windows wheels to AMD64 and smoke-tests that every selected wheel imports the
+native extension.

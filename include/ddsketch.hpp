@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <stdexcept>
 #include <utility>
 
@@ -66,11 +67,13 @@ public:
         size_t count;
         double min_value;
         double max_value;
+        std::vector<int> pos_indices;
         std::vector<int64_t> pos_bins;
         int pos_offset;
         int pos_min_index;
         int pos_max_index;
         bool pos_empty;
+        std::vector<int> neg_indices;
         std::vector<int64_t> neg_bins;
         int neg_offset;
         int neg_min_index;
@@ -107,15 +110,20 @@ private:
     //   bucket[i] corresponds to logical index (offset_ + i).
 
     struct DenseStore {
-        std::vector<int64_t> bins;
-        int offset = 0;     // logical index of bins[0]
+        // Keep the DDS component within a predictable memory envelope. Values
+        // that would require a wider logarithmic range are rejected instead of
+        // allowing an attacker-controlled multi-gigabyte vector allocation.
+        static constexpr size_t MAX_BINS = 1024;
+
+        std::map<int, int64_t> bins;
         int min_index = 0;
         int max_index = 0;
         bool empty = true;
 
+        bool can_fit(int index) const;
         bool can_add(int index, int64_t count) const;
         void add(int index, int64_t count);
-        [[nodiscard]] int64_t total() const;
+        [[nodiscard]] uint64_t total() const;
         void merge(const DenseStore& other);
         void reset();
     };
@@ -147,58 +155,56 @@ inline double DDSketch::validate_alpha(double alpha) {
 // ════════════════════════════════════════════════════════════════════════
 
 inline bool DDSketch::DenseStore::can_add(int index, int64_t count) const {
-    if (empty) return true;
-    if (index < offset || index >= offset + static_cast<int>(bins.size())) return true;
-    if (std::numeric_limits<int64_t>::max() - bins[static_cast<size_t>(index - offset)] < count) return false;
+    const auto it = bins.find(index);
+    if (it == bins.end()) return true;
+    if (std::numeric_limits<int64_t>::max() - it->second < count) return false;
     return true;
 }
 
+inline bool DDSketch::DenseStore::can_fit(int index) const {
+    return bins.find(index) != bins.end() || bins.size() < MAX_BINS;
+}
+
 inline void DDSketch::DenseStore::add(int index, int64_t count) {
+    if (!can_fit(index)) {
+        throw std::invalid_argument(
+            "DDSketch: occupied bucket count exceeds bounded sparse-store capacity");
+    }
+
     if (empty) {
-        // First insertion: allocate a single slot.
-        bins.resize(1, 0);
-        offset    = index;
         min_index = index;
         max_index = index;
         empty     = false;
     }
 
-    if (index < offset) {
-        // Grow leftward.
-        int grow = offset - index;
-        bins.insert(bins.begin(), static_cast<size_t>(grow), int64_t{0});
-        offset = index;
-    } else if (index >= offset + static_cast<int>(bins.size())) {
-        // Grow rightward.
-        bins.resize(static_cast<size_t>(index - offset + 1), int64_t{0});
-    }
-
-    size_t bin_idx = static_cast<size_t>(index - offset);
-    if (std::numeric_limits<int64_t>::max() - bins[bin_idx] < count) {
+    auto [it, inserted] = bins.try_emplace(index, 0);
+    (void)inserted;
+    if (std::numeric_limits<int64_t>::max() - it->second < count) {
         throw std::overflow_error("DDSketch: bin count overflow");
     }
-    bins[bin_idx] += count;
+    it->second += count;
     if (index < min_index) min_index = index;
     if (index > max_index) max_index = index;
 }
 
-inline int64_t DDSketch::DenseStore::total() const {
-    int64_t sum = 0;
-    for (auto c : bins) sum += c;
+inline uint64_t DDSketch::DenseStore::total() const {
+    uint64_t sum = 0;
+    for (const auto& [index, count] : bins) {
+        (void)index;
+        sum += static_cast<uint64_t>(count);
+    }
     return sum;
 }
 
 inline void DDSketch::DenseStore::merge(const DenseStore& other) {
     if (other.empty) return;
-    for (int i = other.min_index; i <= other.max_index; ++i) {
-        int64_t c = other.bins[static_cast<size_t>(i - other.offset)];
-        if (c > 0) add(i, c);
+    for (const auto& [index, count] : other.bins) {
+        add(index, count);
     }
 }
 
 inline void DDSketch::DenseStore::reset() {
     bins.clear();
-    offset    = 0;
     min_index = 0;
     max_index = 0;
     empty     = true;
@@ -230,13 +236,19 @@ inline DDSketch::State DDSketch::get_state() const {
     s.count = count_;
     s.min_value = min_value_;
     s.max_value = max_value_;
-    s.pos_bins = positive_.bins;
-    s.pos_offset = positive_.offset;
+    for (const auto& [index, count] : positive_.bins) {
+        s.pos_indices.push_back(index);
+        s.pos_bins.push_back(count);
+    }
+    s.pos_offset = 0;
     s.pos_min_index = positive_.min_index;
     s.pos_max_index = positive_.max_index;
     s.pos_empty = positive_.empty;
-    s.neg_bins = negative_.bins;
-    s.neg_offset = negative_.offset;
+    for (const auto& [index, count] : negative_.bins) {
+        s.neg_indices.push_back(index);
+        s.neg_bins.push_back(count);
+    }
+    s.neg_offset = 0;
     s.neg_min_index = negative_.min_index;
     s.neg_max_index = negative_.max_index;
     s.neg_empty = negative_.empty;
@@ -247,34 +259,85 @@ inline void DDSketch::set_state(const State& s) {
     if (std::abs(alpha_ - s.alpha) > 1e-9) {
         throw std::invalid_argument("Cannot restore state with mismatched alpha");
     }
-    auto validate_store = [](const std::vector<int64_t>& bins, int offset, int min_idx, int max_idx, bool empty) {
-        if (!empty) {
-            for (auto c : bins) {
-                if (c < 0) throw std::invalid_argument("Cannot restore state with negative bin counts");
+    if (s.zero_count < 0) {
+        throw std::invalid_argument("Cannot restore state with negative zero_count");
+    }
+
+    auto validate_store = [](const std::vector<int>& indices,
+                             const std::vector<int64_t>& bins, int min_idx,
+                             int max_idx, bool empty) -> uint64_t {
+        if (empty) {
+            if (!bins.empty() || !indices.empty()) {
+                throw std::invalid_argument("Empty DDSketch store must not contain bins");
             }
-            if (min_idx > max_idx) {
-                throw std::invalid_argument("Cannot restore state with min_index > max_index");
-            }
-            if (max_idx - offset >= static_cast<int>(bins.size()) || min_idx - offset < 0) {
-                throw std::invalid_argument("Cannot restore state with indices outside bin range");
-            }
+            return 0;
         }
+        if (bins.empty() || bins.size() != indices.size()
+                || bins.size() > DenseStore::MAX_BINS) {
+            throw std::invalid_argument("DDSketch store has an invalid bounded size");
+        }
+        if (min_idx > max_idx) {
+            throw std::invalid_argument("Cannot restore state with min_index > max_index");
+        }
+        if (indices.front() != min_idx || indices.back() != max_idx) {
+            throw std::invalid_argument("DDSketch min/max indexes must reference positive bins");
+        }
+
+        uint64_t total = 0;
+        for (size_t i = 0; i < bins.size(); ++i) {
+            const auto c = bins[i];
+            if (i > 0 && indices[i - 1] >= indices[i]) {
+                throw std::invalid_argument(
+                    "DDSketch restored indexes must be strictly increasing");
+            }
+            if (c <= 0) {
+                throw std::invalid_argument("DDSketch restored bin counts must be positive");
+            }
+            if (std::numeric_limits<uint64_t>::max() - total
+                    < static_cast<uint64_t>(c)) {
+                throw std::invalid_argument("DDSketch bin totals overflow");
+            }
+            total += static_cast<uint64_t>(c);
+        }
+        return total;
     };
 
-    validate_store(s.pos_bins, s.pos_offset, s.pos_min_index, s.pos_max_index, s.pos_empty);
-    validate_store(s.neg_bins, s.neg_offset, s.neg_min_index, s.neg_max_index, s.neg_empty);
+    const uint64_t pos_total = validate_store(
+        s.pos_indices, s.pos_bins, s.pos_min_index, s.pos_max_index, s.pos_empty);
+    const uint64_t neg_total = validate_store(
+        s.neg_indices, s.neg_bins, s.neg_min_index, s.neg_max_index, s.neg_empty);
+    uint64_t restored_total = static_cast<uint64_t>(s.zero_count);
+    if (std::numeric_limits<uint64_t>::max() - restored_total < pos_total
+            || std::numeric_limits<uint64_t>::max() - restored_total - pos_total < neg_total) {
+        throw std::invalid_argument("DDSketch restored count overflows");
+    }
+    restored_total += pos_total + neg_total;
+    if (restored_total != s.count) {
+        throw std::invalid_argument("DDSketch restored bins do not sum to count");
+    }
+    if (!std::isfinite(s.min_value) || !std::isfinite(s.max_value)
+            || (s.count > 0 && s.min_value > s.max_value)) {
+        throw std::invalid_argument("DDSketch restored extrema are invalid");
+    }
+    if (s.count == 0 && (!s.pos_empty || !s.neg_empty || s.zero_count != 0)) {
+        throw std::invalid_argument("Empty DDSketch has non-empty restored state");
+    }
 
     zero_count_ = s.zero_count;
     count_ = s.count;
     min_value_ = s.min_value;
     max_value_ = s.max_value;
-    positive_.bins = s.pos_bins;
-    positive_.offset = s.pos_offset;
+    positive_.bins.clear();
+    for (size_t i = 0; i < s.pos_indices.size(); ++i) {
+        positive_.bins.emplace(s.pos_indices[i], s.pos_bins[i]);
+    }
     positive_.min_index = s.pos_min_index;
     positive_.max_index = s.pos_max_index;
     positive_.empty = s.pos_empty;
-    negative_.bins = s.neg_bins;
-    negative_.offset = s.neg_offset;
+    negative_.bins.clear();
+    for (size_t i = 0; i < s.neg_indices.size(); ++i) {
+        negative_.bins.emplace(s.neg_indices[i], s.neg_bins[i]);
+    }
     negative_.min_index = s.neg_min_index;
     negative_.max_index = s.neg_max_index;
     negative_.empty = s.neg_empty;
@@ -307,29 +370,13 @@ inline void DDSketch::add(double value) {
 }
 
 inline void DDSketch::add_batch(const double* values, size_t size) {
-    size_t valid_count = 0;
+    // Apply to a copy so range/count failures cannot partially mutate the
+    // sketch. This also makes StreamLog::add_batch transactional.
+    DDSketch temp(*this);
     for (size_t i = 0; i < size; ++i) {
-        double value = values[i];
-        if (std::isnan(value) || std::isinf(value)) continue;
-        if (value != 0.0) {
-            double abs_v = std::abs(value);
-            int idx = key(abs_v);
-            double rep = bucket_value(idx);
-            if (std::abs(rep - abs_v) / abs_v > alpha_) {
-                throw std::invalid_argument("DDSketch: value magnitude too small to satisfy relative accuracy");
-            }
-        }
-        valid_count++;
+        temp.add(values[i]);
     }
-
-
-    if (std::numeric_limits<size_t>::max() - count_ < valid_count) {
-        throw std::overflow_error("DDSketch: total count overflow");
-    }
-
-    for (size_t i = 0; i < size; ++i) {
-        add(values[i]);
-    }
+    *this = std::move(temp);
 }
 
 inline void DDSketch::add_batch(const std::vector<double>& values) {
@@ -359,11 +406,21 @@ inline void DDSketch::add(double value, size_t count) {
     auto n = static_cast<int64_t>(count);
 
     if (value > 0.0) {
-        if (!positive_.can_add(key(value), n)) {
+        const int idx = key(value);
+        if (!positive_.can_fit(idx)) {
+            throw std::invalid_argument(
+                "DDSketch: value range exceeds the bounded dense-store capacity");
+        }
+        if (!positive_.can_add(idx, n)) {
              throw std::overflow_error("DDSketch: bin count overflow");
         }
     } else if (value < 0.0) {
-        if (!negative_.can_add(key(-value), n)) {
+        const int idx = key(-value);
+        if (!negative_.can_fit(idx)) {
+            throw std::invalid_argument(
+                "DDSketch: value range exceeds the bounded dense-store capacity");
+        }
+        if (!negative_.can_add(idx, n)) {
              throw std::overflow_error("DDSketch: bin count overflow");
         }
     } else {
@@ -408,12 +465,10 @@ inline double DDSketch::quantile(double q) const {
 
     // 1. Walk negative buckets (highest magnitude first → most-negative values first).
     if (!negative_.empty) {
-        for (int i = negative_.max_index; i >= negative_.min_index; --i) {
-            int64_t c = negative_.bins[static_cast<size_t>(i - negative_.offset)];
-            if (c == 0) continue;
-            rank -= static_cast<double>(c);
+        for (auto it = negative_.bins.rbegin(); it != negative_.bins.rend(); ++it) {
+            rank -= static_cast<double>(it->second);
             if (rank <= 0.0) {
-                return -bucket_value(i);
+                return -bucket_value(it->first);
             }
         }
     }
@@ -424,12 +479,10 @@ inline double DDSketch::quantile(double q) const {
 
     // 3. Walk positive buckets (smallest first).
     if (!positive_.empty) {
-        for (int i = positive_.min_index; i <= positive_.max_index; ++i) {
-            int64_t c = positive_.bins[static_cast<size_t>(i - positive_.offset)];
-            if (c == 0) continue;
-            rank -= static_cast<double>(c);
+        for (const auto& [index, count] : positive_.bins) {
+            rank -= static_cast<double>(count);
             if (rank <= 0.0) {
-                return bucket_value(i);
+                return bucket_value(index);
             }
         }
     }
@@ -448,9 +501,12 @@ inline uint64_t DDSketch::count_greater_than(double threshold) const {
     if (threshold < 0.0) {
         int idx = key(-threshold);
         if (!negative_.empty) {
-            for (int i = negative_.min_index; i <= negative_.max_index; ++i) {
-                if (i < idx) {
-                    count_gt += negative_.bins[static_cast<size_t>(i - negative_.offset)];
+            for (const auto& [index, count] : negative_.bins) {
+                // Include the threshold bucket. DDSketch cannot recover
+                // ordering within a bucket, so this is a conservative upper
+                // bound suitable for alerting rather than an unsafe undercount.
+                if (index <= idx) {
+                    count_gt += static_cast<uint64_t>(count);
                 }
             }
         }
@@ -470,9 +526,9 @@ inline uint64_t DDSketch::count_greater_than(double threshold) const {
 
     int idx = key(threshold);
     if (!positive_.empty) {
-        for (int i = positive_.min_index; i <= positive_.max_index; ++i) {
-            if (i > idx) {
-                count_gt += positive_.bins[static_cast<size_t>(i - positive_.offset)];
+        for (const auto& [index, count] : positive_.bins) {
+            if (index >= idx) {
+                count_gt += static_cast<uint64_t>(count);
             }
         }
     }
@@ -490,8 +546,8 @@ inline size_t DDSketch::count() const { return count_; }
 
 inline size_t DDSketch::memory_bytes() const {
     return sizeof(*this)
-         + positive_.bins.capacity() * sizeof(int64_t)
-         + negative_.bins.capacity() * sizeof(int64_t);
+         + (positive_.bins.size() + negative_.bins.size())
+           * (sizeof(std::pair<const int, int64_t>) + 3 * sizeof(void*));
 }
 
 // ════════════════════════════════════════════════════════════════════════

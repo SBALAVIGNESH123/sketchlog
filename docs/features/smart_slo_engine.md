@@ -1,47 +1,30 @@
-# Smart SLO Engine
+# Smart SLO engine
 
-The **Smart SLO Engine** introduces a declarative way to track Service Level Objectives (SLOs) directly against the streaming sketch data, without needing complex PromQL queries or heavy time-series infrastructure.
+The SLO engine derives a latency target from an explicit historical stream,
+then estimates the current fraction above that target. Percentages are supplied
+as fractions: `0.005` means 0.5%.
 
-## Defining SLOs
+```http
+POST /v1/streams/api-gateway/slo/evaluate
+Content-Type: application/json
 
-An SLO is defined by a target percentile (e.g., p99 latency must be < 200ms) or an error rate threshold (e.g., HTTP 5xx < 1%).
-
-You can evaluate SLOs in real-time using the `/slo/evaluate` endpoint.
-
-### Example: Latency SLO
-
-```json
-POST /v1/namespaces/default/streams/api-gateway/slo/evaluate
 {
   "baseline_stream_id": "api-gateway-baseline",
   "target_percentile": 0.99,
-  "budget_percent": 5.0
+  "budget_percent": 0.005
 }
 ```
 
-Response:
-```json
-{
-  "stream_id": "api-gateway",
-  "baseline_stream_id": "api-gateway-baseline",
-  "target_percentile": 0.99,
-  "target_latency": 250.0,
-  "budget_percent": 5.0,
-  "slo_met": true,
-  "current_latency": 184.2,
-  "margin_ms": 65.8,
-  "status": "HEALTHY"
-}
-```
+The response contains `target_latency`, `current_events`, `current_errors`,
+`current_error_rate`, `burn_rate`, and `is_alerting`. DDSketch cannot recover
+ordering within a bucket, so threshold counts deliberately use a conservative
+upper bound; an alert may fire early but will not hide a possible violation
+inside the threshold bucket.
 
-## Self-Writing SLOs (Auto-Calibration)
-
-The engine can also analyze the historical sketch of a service and automatically recommend reasonable SLOs based on the past 7 days of performance.
-
-To request an auto-calibrated SLO, send an empty request to the recommendation endpoint:
+To derive only the target:
 
 ```bash
-curl -X GET "http://localhost:8000/v1/streams/checkout-service/slo/recommend"
+curl "http://localhost:8000/v1/streams/api-gateway-baseline/slo/recommend?target_percentile=0.99&budget_percent=0.005"
 ```
 
-The system will return a mathematically sound set of objectives based on the service's historical bounds.
+Both endpoints reject empty baselines and values outside `(0, 1)`.

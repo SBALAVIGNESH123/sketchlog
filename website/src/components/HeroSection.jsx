@@ -1,17 +1,14 @@
-import React from 'react';
-
-
 export function HeroSection() {
   return (
     <section className="hero-section section animate-fade-in-up">
       <div className="container">
         <div className="hero-content">
-          <div className="badge">v0.1.0 Released</div>
+          <div className="badge">v1.2.0</div>
           <h1>
-            Compress 100M events to <span className="text-gradient-primary">93 KB</span>.
+            Bounded-memory metrics with <span className="text-gradient-primary">explicit guarantees</span>.
           </h1>
           <p className="subtitle delay-100 animate-fade-in-up">
-            SketchLog is the ultra-fast, probabilistically guaranteed metrics engine for high-throughput observability. Built on C++ and available everywhere.
+            SketchLog estimates percentiles, cardinality, and frequency with explicit error semantics, a compiled Python fast path, and portable SDKs.
           </p>
           <div className="hero-actions delay-200 animate-fade-in-up">
             <a href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank" rel="noopener noreferrer" className="btn btn-primary">

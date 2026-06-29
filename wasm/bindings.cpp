@@ -51,7 +51,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     val pos = val::object();
     for (size_t i = 0; i < lat.pos_bins.size(); ++i) {
         if (lat.pos_bins[i] > 0) {
-            pos.set(std::to_string(lat.pos_offset + static_cast<int>(i)), (double)lat.pos_bins[i]);
+            pos.set(std::to_string(lat.pos_indices[i]), std::to_string(lat.pos_bins[i]));
         }
     }
     latency.set("positive", pos);
@@ -59,7 +59,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     val neg = val::object();
     for (size_t i = 0; i < lat.neg_bins.size(); ++i) {
         if (lat.neg_bins[i] > 0) {
-            neg.set(std::to_string(lat.neg_offset + static_cast<int>(i)), (double)lat.neg_bins[i]);
+            neg.set(std::to_string(lat.neg_indices[i]), std::to_string(lat.neg_bins[i]));
         }
     }
     latency.set("negative", neg);
@@ -80,7 +80,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     for (size_t d = 0; d < ev.depth; ++d) {
         val row = val::array();
         for (size_t w = 0; w < ev.width; ++w) {
-            row.set(w, (double)ev.table[d * ev.width + w]);
+            row.set(w, std::to_string(ev.table[d * ev.width + w]));
         }
         table.set(d, row);
     }

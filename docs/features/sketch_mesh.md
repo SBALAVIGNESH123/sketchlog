@@ -1,33 +1,38 @@
-# Sketch Mesh (P2P Federation)
+# Sketch Mesh
 
-The **Sketch Mesh** is a distributed, peer-to-peer federation layer that allows multiple SketchLog servers to seamlessly combine their sketches in real-time. Because Sketches are mathematically mergeable (a union of two HyperLogLogs is exactly equivalent to a single HyperLogLog of all items, while DDSketch merges are bounded-approximate), SketchLog naturally scales horizontally.
+Mesh mode exchanges bounded version vectors and JSON origin snapshots,
+then merges visible origins at query time. It is eventually consistent.
+Deletion creates a versioned origin tombstone so stale relays cannot resurrect
+the deleted snapshot.
 
-## How It Works
+Every peer origin must be listed in `SKETCHLOG_PEER_ALLOWLIST`. Discovered
+addresses are canonicalized, credentials/paths/query strings are rejected,
+redirects are disabled, membership is capped, and every internal request needs
+`SKETCHLOG_CLUSTER_SECRET`.
 
-Instead of relying on a centralized database or heavy message brokers like Kafka, SketchLog instances form a mesh using a **Gossip Protocol**.
+Digest requests, responses, and snapshot syncs are capped by
+`SKETCHLOG_MAX_MESH_PAYLOAD_BYTES` (40 MiB by default, 64 MiB maximum).
+Large multi-stream exchanges are split across requests and anti-entropy rounds;
+the configured limit must accommodate the largest individual serialized stream.
+Deletion markers are retained for correctness and bounded by
+`SKETCHLOG_MAX_LOCAL_TOMBSTONES`; when the cap is reached, new deletes fail
+closed with HTTP 503 instead of allowing stale snapshots to be resurrected.
+With SQL storage, state deletion and tombstone persistence share one
+transaction.
 
-1. **Anti-Entropy Digest**: Nodes periodically exchange small version vectors to determine which node has the freshest data for a given `(namespace, stream_id)`.
-2. **Delta Sync**: If a node detects a peer has newer data, it requests the compressed sketch payload.
-3. **In-Memory Merge**: The remote sketch is merged locally into the thread-safe `StreamLog` in microseconds.
-
-This guarantees eventual consistency across all nodes without blocking ingestion paths.
-
-## Configuration
-
-To enable clustered mode, you just need to start the servers with the `SKETCHLOG_PEERS` and `SKETCHLOG_ADVERTISED_ADDRESS` environment variables.
-
-### Node 1 (192.168.1.100)
 ```bash
-export SKETCHLOG_ADVERTISED_ADDRESS="http://192.168.1.100:8000"
-export SKETCHLOG_PEERS="http://192.168.1.101:8000"
-uvicorn sketchlog.server:app --host 0.0.0.0 --port 8000
+export SKETCHLOG_NODE_ID=node-1
+export SKETCHLOG_ADVERTISED_ADDRESS=http://10.0.0.1:8000
+export SKETCHLOG_PEERS=http://10.0.0.2:8000
+export SKETCHLOG_PEER_ALLOWLIST=http://10.0.0.1:8000,http://10.0.0.2:8000
+export SKETCHLOG_CLUSTER_SECRET='rotate-this-secret'
+sketchlog-server
 ```
 
-### Node 2 (192.168.1.101)
-```bash
-export SKETCHLOG_ADVERTISED_ADDRESS="http://192.168.1.101:8000"
-export SKETCHLOG_PEERS="http://192.168.1.100:8000"
-uvicorn sketchlog.server:app --host 0.0.0.0 --port 8000
-```
+Use the Helm chart for stable Kubernetes identities. Increasing replica count
+without `mesh.enabled=true` is rejected because independent in-memory replicas
+behind a load balancer do not form a coherent service.
 
-Any API request (like `/v1/namespaces/default/streams/app/metrics`) made to *either* node will automatically return the globally merged statistics.
+During partitions, each node serves the origins it has observed. After rejoin,
+newer snapshots and tombstones converge. Mesh uses deterministic Python state
+for cross-node reproducibility, so benchmark mesh capacity separately.

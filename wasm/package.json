@@ -1,0 +1,46 @@
+{
+  "name": "@sketchlog/wasm",
+  "version": "1.2.0",
+  "description": "Bounded-memory SketchLog WebAssembly runtime",
+  "main": "sketchlog.js",
+  "types": "sketchlog.d.ts",
+  "exports": {
+    ".": {
+      "types": "./sketchlog.d.ts",
+      "require": "./sketchlog.js",
+      "default": "./sketchlog.js"
+    }
+  },
+  "files": [
+    "sketchlog.js",
+    "sketchlog.d.ts",
+    "dist/sketchlog.js",
+    "dist/sketchlog.wasm"
+  ],
+  "scripts": {
+    "test": "node test/smoke.cjs",
+    "test:browser": "node test/browser-smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.53.2"
+  },
+  "keywords": ["sketchlog", "wasm", "observability", "streaming"],
+  "author": "Bala Vignesh S",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SBALAVIGNESH123/sketchlog.git",
+    "directory": "wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/SBALAVIGNESH123/sketchlog/issues"
+  },
+  "homepage": "https://github.com/SBALAVIGNESH123/sketchlog/tree/main/wasm",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,15 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import useWebSocket from 'react-use-websocket';
-import type { SketchLogState, SketchLogContextType } from '../types';
-
-const SketchLogContext = createContext<SketchLogContextType>({
-  state: null,
-  isConnected: false,
-  error: null,
-});
-
-export const useSketchLog = () => useContext(SketchLogContext);
+import type { SketchLogState } from '../types';
+import { SketchLogContext } from './SketchLogContext';
 
 export interface SketchLogProviderProps {
   url: string;
@@ -20,12 +13,9 @@ export const SketchLogProvider: React.FC<SketchLogProviderProps> = ({ url, child
   const [state, setState] = useState<SketchLogState | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    setState(null);
-    setError(null);
-  }, [url]);
-
-  const { lastJsonMessage, readyState } = useWebSocket<SketchLogState>(url, {
+  const { lastJsonMessage, readyState } = useWebSocket<
+    SketchLogState | { error: string }
+  >(url, {
     shouldReconnect: () => true,
     reconnectAttempts: 10,
     reconnectInterval: 3000,
@@ -33,15 +23,17 @@ export const SketchLogProvider: React.FC<SketchLogProviderProps> = ({ url, child
   });
 
   useEffect(() => {
-    if (lastJsonMessage) {
+    if (!lastJsonMessage) return;
+    const update = window.setTimeout(() => {
       if ('error' in lastJsonMessage) {
-        setError(new Error((lastJsonMessage as any).error));
+        setError(new Error(lastJsonMessage.error));
         setState(null);
       } else {
         setState(lastJsonMessage);
         setError(null);
       }
-    }
+    }, 0);
+    return () => window.clearTimeout(update);
   }, [lastJsonMessage]);
 
   const isConnected = readyState === 1; // WebSocket.OPEN

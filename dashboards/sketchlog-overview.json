@@ -114,7 +114,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "rate(sketchlog_total_events{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])",
+          "expr": "rate(sketchlog_events_ingested_total{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])",
           "legendFormat": "Events / sec",
           "range": true,
           "refId": "A"
@@ -205,13 +205,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sketchlog_latency{job=~\"$job\", instance=~\"$instance\"}",
-          "legendFormat": "{{quantile}} Quantile",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(sketchlog_http_request_duration_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[$__rate_interval])))",
+          "legendFormat": "HTTP p99",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Latency Quantiles (DDSketch)",
+      "title": "Server HTTP Latency p99",
       "type": "timeseries"
     },
     {
@@ -266,13 +266,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sketchlog_unique_count{job=~\"$job\", instance=~\"$instance\"}",
-          "legendFormat": "Unique Count",
+          "expr": "sketchlog_active_streams{job=~\"$job\", instance=~\"$instance\"}",
+          "legendFormat": "Resident streams",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Estimated Unique Elements (HLL)",
+      "title": "Active Resident Streams",
       "type": "stat"
     },
     {
@@ -357,13 +357,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sketchlog_memory_kb{job=~\"$job\", instance=~\"$instance\"}",
+          "expr": "sketchlog_memory_current_bytes{job=~\"$job\", instance=~\"$instance\"} / 1024",
           "legendFormat": "Memory Usage",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Sketch Memory Footprint",
+      "title": "Server Memory Footprint",
       "type": "timeseries"
     }
   ],
@@ -398,14 +398,14 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(sketchlog_total_events, job)",
+        "definition": "label_values(sketchlog_events_ingested_total, job)",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "job",
         "options": [],
         "query": {
-          "query": "label_values(sketchlog_total_events, job)",
+          "query": "label_values(sketchlog_events_ingested_total, job)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -420,14 +420,14 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(sketchlog_total_events{job=~\"$job\"}, instance)",
+        "definition": "label_values(sketchlog_events_ingested_total{job=~\"$job\"}, instance)",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "instance",
         "options": [],
         "query": {
-          "query": "label_values(sketchlog_total_events{job=~\"$job\"}, instance)",
+          "query": "label_values(sketchlog_events_ingested_total{job=~\"$job\"}, instance)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,

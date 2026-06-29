@@ -1,3 +1,4 @@
+import ast
 import re
 import threading
 from typing import Any, Dict, List, Tuple, Optional
@@ -53,9 +54,18 @@ class SQLParser:
             func_match = re.match(r"^(\w+)\((.*?)\)$", expr)
             if func_match:
                 func = func_match.group(1).lower()
+                if func == "count_unique":
+                    func = "unique_count"
                 if func not in {"p99", "p95", "p50", "unique_count", "event_count"}:
                     raise ValueError(f"Unsupported aggregate function: {func}")
                 col = func_match.group(2).strip()
+                if func == "event_count":
+                    args = [arg.strip() for arg in re.split(
+                        r",(?=(?:[^']*'[^']*')*[^']*$)", col)]
+                    if len(args) == 2:
+                        col = args[1].strip("'\"")
+                    elif len(args) != 1:
+                        raise ValueError("event_count accepts one key or (column, key)")
                 selects.append({"type": "agg", "func": func, "col": col, "alias": alias})
             else:
                 selects.append({"type": "col", "col": expr, "alias": alias})
@@ -158,22 +168,88 @@ class SQLStreamEngine:
         return results
 
     def _eval_having(self, condition: str, row: Dict[str, Any]) -> bool:
-        """Safely evaluate the having condition using a restricted eval environment."""
-        expr = condition
-        # basic translate SQL '=' to Python '=='
-        expr = re.sub(r'(?<![<>=!])=(?![=])', '==', expr)
-
-        for k, v in row.items():
-            if not k.isidentifier():
-                if isinstance(v, str):
-                    expr = expr.replace(k, f"'{v}'")
-                else:
-                    expr = expr.replace(k, str(v))
-
+        """Evaluate a bounded expression AST without code execution."""
+        expression = re.sub(r'(?<![<>=!])=(?![=])', '==', condition)
         try:
-            # We enforce a strict character set to prevent execution of arbitrary code
-            if not re.match(r'^[a-zA-Z0-9\.\s\+\-\*\/\>\<\=\!\(\)\'\"\_]+$', expr):
-                return False
-            return bool(eval(expr, {"__builtins__": {}}, row))
-        except Exception:
+            tree = ast.parse(expression, mode="eval")
+            return bool(self._evaluate_node(tree.body, row))
+        except (SyntaxError, TypeError, ValueError, KeyError, ZeroDivisionError):
             return False
+
+    def _evaluate_node(self, node: ast.AST, row: Dict[str, Any]) -> Any:
+        if isinstance(node, ast.Constant) and isinstance(
+                node.value, (str, int, float, bool)):
+            return node.value
+        if isinstance(node, ast.Name):
+            return row[node.id]
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            value = self._evaluate_node(node.operand, row)
+            return value if isinstance(node.op, ast.UAdd) else -value
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, (ast.And, ast.Or)):
+            values = [bool(self._evaluate_node(value, row)) for value in node.values]
+            return all(values) if isinstance(node.op, ast.And) else any(values)
+        if isinstance(node, ast.BinOp) and isinstance(
+                node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+            left = self._evaluate_node(node.left, row)
+            right = self._evaluate_node(node.right, row)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            return left / right
+        if isinstance(node, ast.Compare) and len(node.ops) == len(node.comparators):
+            left = self._evaluate_node(node.left, row)
+            for operation, comparator in zip(node.ops, node.comparators):
+                right = self._evaluate_node(comparator, row)
+                if isinstance(operation, ast.Eq):
+                    result = left == right
+                elif isinstance(operation, ast.NotEq):
+                    result = left != right
+                elif isinstance(operation, ast.Lt):
+                    result = left < right
+                elif isinstance(operation, ast.LtE):
+                    result = left <= right
+                elif isinstance(operation, ast.Gt):
+                    result = left > right
+                elif isinstance(operation, ast.GtE):
+                    result = left >= right
+                else:
+                    raise ValueError("Unsupported HAVING comparison")
+                if not result:
+                    return False
+                left = right
+            return True
+        raise ValueError("Unsupported HAVING expression")
+
+
+def execute_stream_query(plan: Dict[str, Any], stream: StreamLog) -> Dict[str, Any]:
+    """Execute a parsed aggregate query against one existing StreamLog."""
+    if plan["group_by"]:
+        raise ValueError("GROUP BY is available only in embedded row-ingestion mode")
+    result: Dict[str, Any] = {}
+    for selection in plan["selects"]:
+        if selection["type"] != "agg":
+            raise ValueError("Live stream queries support aggregate expressions only")
+        function = selection["func"]
+        column = selection["col"]
+        if function == "p99":
+            value: Any = stream.p99()
+        elif function == "p95":
+            value = stream.p95()
+        elif function == "p50":
+            value = stream.p50()
+        elif function == "unique_count":
+            value = stream.unique_count()
+        elif function == "event_count":
+            value = stream.total_events if column == "*" else stream.event_count(column)
+        else:
+            raise ValueError(f"Unsupported aggregate function: {function}")
+        result[selection["alias"]] = value
+
+    if plan["having"]:
+        evaluator = SQLStreamEngine("SELECT event_count(*) FROM placeholder")
+        if not evaluator._eval_having(plan["having"], result):
+            return {}
+    return result

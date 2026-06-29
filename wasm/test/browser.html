@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SketchLog WASM browser smoke</title>
+<script src="../dist/sketchlog.js"></script>
+<script src="../sketchlog.js"></script>
+<script>
+  window.smoke = (async () => {
+    await StreamLog.init({ locateFile: (file) => `../dist/${file}` });
+    const log = new StreamLog();
+    log.addBatch([10, 20, 30]);
+    const result = {
+      count: log.latencyCount,
+      p99: log.p99,
+      serializedTotal: log.serialize().state.total,
+    };
+    log.destroy();
+    return result;
+  })();
+</script>

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "claims": [
+    {
+      "id": "default-memory-envelope",
+      "statement": "Default StreamLog state remains below 130 KiB, including adversarial finite value ranges.",
+      "command": "pytest tests/test_hardening.py::test_sparse_extreme_range_is_supported_with_bounded_memory",
+      "backend": "python-and-cpp",
+      "distribution": ["1e-300", "1e300"],
+      "gate": "required"
+    },
+    {
+      "id": "quantile-relative-error",
+      "statement": "Default DDSketch quantiles have at most 1% relative mapping error for non-zero values.",
+      "command": "python benchmarks/suite_accuracy.py --items 50000",
+      "backend": "default",
+      "distribution": "seeded-lognormal",
+      "gate": "latency_p99_error_percent <= 1.0"
+    },
+    {
+      "id": "scalar-throughput-floor",
+      "statement": "Scalar ingestion remains above the conservative shared-runner regression floor.",
+      "command": "python benchmarks/suite_throughput.py --items 500000 --iterations 5",
+      "backend": "python-facade-and-raw-cpp",
+      "distribution": "seeded-lognormal",
+      "gate": "p95 throughput >= 250000 events/second"
+    },
+    {
+      "id": "merge-memory-envelope",
+      "statement": "A highly skewed merge remains below the 130 KiB default stream envelope.",
+      "command": "python benchmarks/suite_accuracy.py --items 50000",
+      "backend": "default",
+      "distribution": "one-large-plus-100-small",
+      "gate": "merge_skew_memory_kb <= 130"
+    }
+  ]
+}

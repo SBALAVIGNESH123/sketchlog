@@ -2,6 +2,7 @@ import sys
 import time as _time
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 import json
+import math
 
 from sketchlog.core.stats import Stats, EventKey
 from sketchlog.core.ddsketch import DDSketch
@@ -15,12 +16,16 @@ except ImportError:
     _cpp = None
     HAS_CPP = False
 
+MAX_INT64 = (1 << 63) - 1
+MAX_UINT64 = (1 << 64) - 1
+
+
 class _PythonStreamLog:
     """
     Streaming approximate analytics engine in constant memory.
 
     Tracks latency percentiles (DDSketch), event frequency (Count-Min Sketch),
-    and cardinality (HyperLogLog) over unlimited events using ~93 KB of RAM.
+    and cardinality (HyperLogLog) using bounded memory.
 
     Usage:
         log = StreamLog()
@@ -30,7 +35,14 @@ class _PythonStreamLog:
         log.memory_breakdown()        # per-sketch memory transparency
     """
 
+    MAX_CMS_CELLS = 1_000_000
+
     def __init__(self, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5, deterministic: bool = False) -> None:
+        if cms_width <= 0 or cms_depth <= 0:
+            raise ValueError("CountMinSketch width and depth must be > 0")
+        if cms_width > self.MAX_CMS_CELLS // cms_depth:
+            raise ValueError(
+                f"CountMinSketch dimensions exceed {self.MAX_CMS_CELLS} cells")
         self._latency = DDSketch(relative_accuracy)
         self._events = CountMinSketch(cms_width, cms_depth)
         self._uniques = HyperLogLog(hll_precision)
@@ -41,6 +53,8 @@ class _PythonStreamLog:
 
     def add_latency(self, value: float) -> None:
         """Add a latency measurement."""
+        if math.isfinite(value) and self._total == MAX_UINT64:
+            raise OverflowError("StreamLog: total_events overflow")
         count_before = self._latency._count
         self._latency.add(value)
         if self._latency._count > count_before:
@@ -52,8 +66,12 @@ class _PythonStreamLog:
         Args:
             values: iterable of numeric latency values
         """
+        materialized = list(values)
+        valid_count = sum(math.isfinite(value) for value in materialized)
+        if self._total > MAX_UINT64 - valid_count:
+            raise OverflowError("StreamLog: total_events overflow")
         count_before = self._latency._count
-        self._latency.add_batch(values)
+        self._latency.add_batch(materialized)
         self._total += self._latency._count - count_before
 
     def percentile(self, q: float) -> float:
@@ -86,6 +104,12 @@ class _PythonStreamLog:
         """Record an event occurrence."""
         if count <= 0:
             raise ValueError("Event count must be strictly positive")
+        if count > MAX_INT64:
+            raise OverflowError("Event count exceeds int64 capacity")
+        if isinstance(name, int) and not (0 <= name <= 0xFFFFFFFFFFFFFFFF):
+            raise ValueError("Event integer key out of range for 64-bit unsigned")
+        if self._total > MAX_UINT64 - count:
+            raise OverflowError("StreamLog: total_events overflow")
         self._events.add(name, count)
         self._total += count
 
@@ -209,15 +233,13 @@ class _PythonStreamLog:
         return json.dumps(self.to_dict())
 
     def save(self, path: str) -> None:
-        """Save to file."""
-        with open(path, 'w') as f:
-            json.dump(self.to_dict(), f)
+        """Atomically save a crash-safe JSON checkpoint."""
+        from ._atomic import atomic_write_json
+        atomic_write_json(path, self.to_dict())
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "_PythonStreamLog":
         """Restore from dict with rigorous validation."""
-        import math
-
         if not isinstance(data, dict):
             raise ValueError("StreamLog data must be a dictionary")
 
@@ -227,8 +249,8 @@ class _PythonStreamLog:
                 raise ValueError(f"Unsupported serialization version: {version}")
 
             total = data['total']
-            if type(total) is not int or total < 0:
-                raise ValueError("StreamLog total must be a non-negative integer")
+            if type(total) is not int or not (0 <= total <= MAX_UINT64):
+                raise ValueError("StreamLog total must be an unsigned 64-bit integer")
 
             deterministic = data.get('deterministic', False)
             if type(deterministic) is not bool:
@@ -244,10 +266,12 @@ class _PythonStreamLog:
 
             zero_count = latency_data['zero_count']
             count = latency_data['count']
-            if type(zero_count) is not int or zero_count < 0:
-                raise ValueError("DDSketch zero_count must be a non-negative integer")
-            if type(count) is not int or count < 0:
-                raise ValueError("DDSketch count must be a non-negative integer")
+            if type(zero_count) is not int or not (0 <= zero_count <= MAX_INT64):
+                raise ValueError("DDSketch zero_count must be a non-negative int64")
+            if type(count) is not int or not (0 <= count <= MAX_UINT64):
+                raise ValueError(
+                    "DDSketch count must be a non-negative integer "
+                    "within the uint64 range")
 
             pos_data = latency_data.get('positive')
             neg_data = latency_data.get('negative')
@@ -278,8 +302,9 @@ class _PythonStreamLog:
 
                     if ik in res:
                         raise ValueError(f"Duplicate canonical bucket index: {ik}")
-                    if type(v) is not int or v <= 0:
-                        raise ValueError(f"DDSketch bucket counts must be strictly positive integers")
+                    if type(v) is not int or not (0 < v <= MAX_INT64):
+                        raise ValueError(
+                            "DDSketch bucket counts must be positive int64 values")
                     if ik < min_idx or ik > max_idx:
                         raise ValueError(f"DDSketch bucket index out of valid range: {ik}")
                     res[ik] = v
@@ -287,6 +312,10 @@ class _PythonStreamLog:
 
             positive = validate_buckets(pos_data)
             negative = validate_buckets(neg_data)
+            if len(positive) > DDSketch.MAX_BINS:
+                raise ValueError("DDSketch positive buckets exceed bounded capacity")
+            if len(negative) > DDSketch.MAX_BINS:
+                raise ValueError("DDSketch negative buckets exceed bounded capacity")
 
             sum_pos = sum(positive.values())
             sum_neg = sum(negative.values())
@@ -366,10 +395,13 @@ class _PythonStreamLog:
                 raise ValueError("CountMinSketch width must be >= 1")
             if type(depth) is not int or depth < 1:
                 raise ValueError("CountMinSketch depth must be >= 1")
+            if width > cls.MAX_CMS_CELLS // depth:
+                raise ValueError(
+                    f"CountMinSketch dimensions exceed {cls.MAX_CMS_CELLS} cells")
 
             events_total = events_data['total']
-            if type(events_total) is not int or events_total < 0:
-                raise ValueError("CountMinSketch total must be a non-negative integer")
+            if type(events_total) is not int or not (0 <= events_total <= MAX_INT64):
+                raise ValueError("CountMinSketch total must be a non-negative int64")
 
             table = events_data['table']
             if not isinstance(table, list) or len(table) != depth:
@@ -377,8 +409,10 @@ class _PythonStreamLog:
             for row in table:
                 if not isinstance(row, list) or len(row) != width:
                     raise ValueError(f"CountMinSketch table row must be a list of {width} columns")
-                if any(type(c) is not int or c < 0 for c in row):
-                    raise ValueError("CountMinSketch cell values must be non-negative integers")
+                if any(type(c) is not int or not (0 <= c <= MAX_INT64)
+                       for c in row):
+                    raise ValueError(
+                        "CountMinSketch cell values must be non-negative int64 values")
                 if sum(row) != events_total:
                     raise ValueError("CountMinSketch row sum does not match events total")
 
@@ -429,8 +463,8 @@ class _PythonStreamLog:
     @classmethod
     def load(cls, path: str) -> "_PythonStreamLog":
         """Load from file."""
-        with open(path, 'r') as f:
-            return cls.from_dict(json.load(f))
+        from ._atomic import read_json_checkpoint
+        return cls.from_dict(read_json_checkpoint(path))
 
     # ─── Merge ────────────────────────────────────────────────────────
 
@@ -460,29 +494,70 @@ class _PythonStreamLog:
                 f"({self._events._width}x{self._events._depth} vs "
                 f"{other._events._width}x{other._events._depth})")
 
+        if self._total > MAX_UINT64 - other._total:
+            raise OverflowError("StreamLog: total_events overflow")
+        if self._latency._count > MAX_UINT64 - other._latency._count:
+            raise OverflowError("DDSketch: total count overflow")
+        if self._latency._zero_count > MAX_INT64 - other._latency._zero_count:
+            raise OverflowError("DDSketch: zero count overflow")
+        if self._events._total > MAX_INT64 - other._events._total:
+            raise OverflowError("CountMinSketch: total_count overflow")
+
         # ── Merge DDSketch (bucket-wise addition) ─────────────────────
+        new_positive = dict(self._latency._positive)
         for idx, count in other._latency._positive.items():
-            self._latency._positive[idx] = self._latency._positive.get(idx, 0) + count
+            if new_positive.get(idx, 0) > MAX_INT64 - count:
+                raise OverflowError("DDSketch: bin count overflow")
+            new_positive[idx] = new_positive.get(idx, 0) + count
+        if len(new_positive) > DDSketch.MAX_BINS:
+            raise ValueError(
+                "DDSketch occupied positive bucket count exceeds bounded capacity")
+
+        new_negative = dict(self._latency._negative)
         for idx, count in other._latency._negative.items():
-            self._latency._negative[idx] = self._latency._negative.get(idx, 0) + count
-        self._latency._zero_count += other._latency._zero_count
-        self._latency._count += other._latency._count
+            if new_negative.get(idx, 0) > MAX_INT64 - count:
+                raise OverflowError("DDSketch: bin count overflow")
+            new_negative[idx] = new_negative.get(idx, 0) + count
+        if len(new_negative) > DDSketch.MAX_BINS:
+            raise ValueError(
+                "DDSketch occupied negative bucket count exceeds bounded capacity")
+
+        new_latency_count = self._latency._count + other._latency._count
         if other._latency._count > 0:
-            self._latency._min = min(self._latency._min, other._latency._min)
-            self._latency._max = max(self._latency._max, other._latency._max)
+            new_min = min(self._latency._min, other._latency._min)
+            new_max = max(self._latency._max, other._latency._max)
+        else:
+            new_min = self._latency._min
+            new_max = self._latency._max
 
         # ── Merge HyperLogLog (register-wise max) ─────────────────────
-        for i in range(self._uniques._m):
-            if other._uniques._registers[i] > self._uniques._registers[i]:
-                self._uniques._registers[i] = other._uniques._registers[i]
+        new_registers = bytearray(
+            max(left, right) for left, right in zip(
+                self._uniques._registers, other._uniques._registers))
 
         # ── Merge CountMinSketch (cell-wise addition) ─────────────────
-        for i in range(self._events._depth):
-            for j in range(self._events._width):
-                self._events._table[i][j] += other._events._table[i][j]
-        self._events._total += other._events._total
+        new_table: List[List[int]] = []
+        for self_row, other_row in zip(
+                self._events._table, other._events._table):
+            merged_row: List[int] = []
+            for left, right in zip(self_row, other_row):
+                if left > MAX_INT64 - right:
+                    raise OverflowError(
+                        "CountMinSketch: bucket counter overflow")
+                merged_row.append(left + right)
+            new_table.append(merged_row)
 
         # ── Integrity check ───────────────────────────────────────────
+        # Commit only after every component has been validated.
+        self._latency._positive = new_positive
+        self._latency._negative = new_negative
+        self._latency._zero_count += other._latency._zero_count
+        self._latency._count = new_latency_count
+        self._latency._min = new_min
+        self._latency._max = new_max
+        self._uniques._registers = new_registers
+        self._events._table = new_table
+        self._events._total += other._events._total
         self._total += other._total
 
     def __repr__(self) -> str:
@@ -494,7 +569,7 @@ class StreamLog:
     Streaming approximate analytics engine in constant memory.
 
     Tracks latency percentiles (DDSketch), event frequency (Count-Min Sketch),
-    and cardinality (HyperLogLog) over unlimited events using ~93 KB of RAM.
+    and cardinality (HyperLogLog) using bounded memory.
     """
 
     def __init__(self, relative_accuracy: float = 0.01, hll_precision: int = 10, cms_width: int = 2048, cms_depth: int = 5, deterministic: bool = False) -> None:
@@ -536,9 +611,17 @@ class StreamLog:
         return self._backend.count_greater_than(threshold)  # type: ignore[no-any-return]
 
     def add_event(self, name: EventKey, count: int = 1) -> None:
+        if type(count) is not int or count <= 0:
+            raise ValueError("Event count must be strictly positive")
+        if count > MAX_INT64:
+            raise OverflowError("Event count exceeds int64 capacity")
+        if isinstance(name, int) and not (0 <= name <= 0xFFFFFFFFFFFFFFFF):
+            raise ValueError("Event integer key out of range for 64-bit unsigned")
         self._backend.add_event(name, count)
 
     def event_count(self, event_name: Union[str, int, bytes]) -> int:
+        if isinstance(event_name, int) and not (0 <= event_name <= 0xFFFFFFFFFFFFFFFF):
+            raise ValueError("Event integer key out of range for 64-bit unsigned")
         return self._backend.event_count(event_name)  # type: ignore[no-any-return]
 
     def add_unique(self, item: Union[str, bytes, int]) -> None:
@@ -617,8 +700,46 @@ class StreamLog:
     def reset(self) -> None:
         self._backend.reset()
 
+    def diff(self, baseline: "StreamLog") -> Any:
+        """Compare this latency distribution with another bounded sketch."""
+        if not isinstance(baseline, StreamLog):
+            raise TypeError("baseline must be a StreamLog")
+        from .diff import SketchDiff
+        return SketchDiff(self, baseline)
+
+    def anomaly_score(self, baseline: "StreamLog") -> float:
+        """Return the approximate two-sample KS distance in ``[0, 1]``."""
+        return float(self.diff(baseline).ks_statistic)
+
+    def is_anomalous(
+        self, baseline: "StreamLog", sensitivity: float = 0.2
+    ) -> bool:
+        """Flag distribution drift when KS distance meets ``sensitivity``."""
+        if not 0.0 < sensitivity <= 1.0:
+            raise ValueError("sensitivity must be in (0, 1]")
+        return self.anomaly_score(baseline) >= sensitivity
+
     def merge(self, other: "StreamLog") -> None:
-        self._backend.merge(other._backend)
+        if isinstance(self._backend, _PythonStreamLog):
+            if isinstance(other._backend, _PythonStreamLog):
+                compatible_other = other._backend
+            else:
+                compatible_other = _PythonStreamLog.from_dict(other.to_dict())
+        else:
+            if not isinstance(other._backend, _PythonStreamLog):
+                compatible_other = other._backend
+            else:
+                if _cpp is None:
+                    raise RuntimeError("C++ backend is unavailable")
+                normalized = other.to_dict()
+                normalized["deterministic"] = False
+                # Canonical validation happens inside StreamLog.from_dict;
+                # call it explicitly here before crossing the C++ boundary.
+                validated = _PythonStreamLog.from_dict(normalized)
+                normalized = validated.to_dict()
+                normalized["deterministic"] = False
+                compatible_other = _cpp.StreamLog.from_dict(normalized)
+        self._backend.merge(compatible_other)
 
     def to_dict(self) -> Dict[str, Any]:
         return self._backend.to_dict()  # type: ignore[no-any-return]
@@ -628,26 +749,30 @@ class StreamLog:
         return json.dumps(self.to_dict())
 
     def save(self, path: str) -> None:
-        import json
-        with open(path, 'w') as f:
-            json.dump(self.to_dict(), f)
+        """Atomically save a crash-safe JSON checkpoint."""
+        from ._atomic import atomic_write_json
+        atomic_write_json(path, self.to_dict())
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "StreamLog":
         if not isinstance(data, dict):
             raise ValueError("StreamLog data must be a dictionary")
 
-        deterministic = data.get('deterministic', False)
+        # Use one canonical validator for every backend before any C++ state is
+        # allocated or restored. This keeps accept/reject behavior identical.
+        validated = _PythonStreamLog.from_dict(data)
+        normalized = validated.to_dict()
+        deterministic = normalized['deterministic']
         if _cpp is not None and not deterministic:
-            backend = _cpp.StreamLog.from_dict(data)
+            backend = _cpp.StreamLog.from_dict(normalized)
         else:
-            backend = _PythonStreamLog.from_dict(data)
+            backend = validated
 
         log = cls(
-            relative_accuracy=data['latency']['alpha'],
-            hll_precision=data['uniques']['precision'],
-            cms_width=data['events']['width'],
-            cms_depth=data['events']['depth'],
+            relative_accuracy=normalized['latency']['alpha'],
+            hll_precision=normalized['uniques']['precision'],
+            cms_width=normalized['events']['width'],
+            cms_depth=normalized['events']['depth'],
             deterministic=deterministic
         )
         log._backend = backend
@@ -660,9 +785,8 @@ class StreamLog:
 
     @classmethod
     def load(cls, path: str) -> "StreamLog":
-        import json
-        with open(path, 'r') as f:
-            return cls.from_dict(json.load(f))
+        from ._atomic import read_json_checkpoint
+        return cls.from_dict(read_json_checkpoint(path))
 
     def __repr__(self) -> str:
         return repr(self._backend)

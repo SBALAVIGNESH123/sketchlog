@@ -1,19 +1,43 @@
 {
   "name": "@sketchlog/client",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "TypeScript SDK for SketchLog",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "files": [
-    "dist"
+    "dist/index.js",
+    "dist/index.d.ts"
   ],
   "scripts": {
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run build && node --test test/*.test.cjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["sketchlog", "observability", "metrics", "streaming"],
+  "author": "Bala Vignesh S",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SBALAVIGNESH123/sketchlog.git",
+    "directory": "clients/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/SBALAVIGNESH123/sketchlog/issues"
+  },
+  "homepage": "https://github.com/SBALAVIGNESH123/sketchlog/tree/main/clients/typescript",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
   "type": "commonjs",
   "dependencies": {
     "undici": "^6.20.0"

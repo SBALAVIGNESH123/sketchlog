@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as d3 from 'd3';
-import { useSketchLog } from './SketchLogProvider';
+import { useSketchLog } from './SketchLogContext';
+import { counterToNumber } from '../counter';
 
 
 function getBucketValue(alpha: number, index: number): number {
@@ -31,25 +32,25 @@ export const CDFCurve: React.FC<CDFCurveProps> = ({
     const lat = state.latency;
     let accumulated = 0;
     const pts: { x: number, y: number }[] = [];
-    const totalCount = lat.count;
+    const totalCount = counterToNumber(lat.count);
 
     if (totalCount === 0) return [];
 
     // Negative buckets (not typical for latency, but handled for completeness)
     const negIndices = Object.keys(lat.negative).map(Number).sort((a, b) => b - a); // reverse sort
     for (const idx of negIndices) {
-      accumulated += lat.negative[idx];
+      accumulated += counterToNumber(lat.negative[idx]);
       pts.push({ x: -getBucketValue(lat.alpha, idx), y: accumulated / totalCount });
     }
 
-    if (lat.zero_count > 0) {
-      accumulated += lat.zero_count;
+    if (counterToNumber(lat.zero_count) > 0) {
+      accumulated += counterToNumber(lat.zero_count);
       pts.push({ x: 0, y: accumulated / totalCount });
     }
 
     const posIndices = Object.keys(lat.positive).map(Number).sort((a, b) => a - b);
     for (const idx of posIndices) {
-      accumulated += lat.positive[idx];
+      accumulated += counterToNumber(lat.positive[idx]);
       pts.push({ x: getBucketValue(lat.alpha, idx), y: accumulated / totalCount });
     }
     

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
-import { useSketchLog } from './SketchLogProvider';
+import { useSketchLog } from './SketchLogContext';
+import { counterToNumber } from '../counter';
 
 export interface CardinalitySparklineProps {
   width?: number;
@@ -25,16 +26,16 @@ export const CardinalitySparkline: React.FC<CardinalitySparklineProps> = ({
   useEffect(() => {
     if (!state) return;
 
-    const val = state.total;
+    const val = counterToNumber(state.metrics?.unique_count ?? 0);
     const now = Date.now();
 
-    setHistory(prev => {
-      const next = [...prev, { time: now, value: val }];
-      if (next.length > historySize) {
-        return next.slice(next.length - historySize);
-      }
-      return next;
-    });
+    const update = window.setTimeout(() => {
+      setHistory(prev => {
+        const next = [...prev, { time: now, value: val }];
+        return next.slice(-historySize);
+      });
+    }, 0);
+    return () => window.clearTimeout(update);
   }, [state, historySize]);
 
   useEffect(() => {
@@ -117,7 +118,7 @@ export const CardinalitySparkline: React.FC<CardinalitySparklineProps> = ({
 
   return (
     <div className={`relative rounded-xl overflow-hidden backdrop-blur-md bg-white/5 border border-white/10 p-2 shadow-xl flex flex-col ${className}`}>
-      <h3 className="text-white/70 font-medium mb-1 text-xs px-2 pt-1">Total Operations</h3>
+      <h3 className="text-white/70 font-medium mb-1 text-xs px-2 pt-1">Estimated Cardinality</h3>
       <svg ref={svgRef} width={width} height={height} className="w-full text-white/80" style={{ minHeight: height }} />
     </div>
   );

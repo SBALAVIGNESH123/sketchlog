@@ -1,282 +1,1566 @@
-openapi: 3.1.0
-info:
-  title: SketchLog API
-  description: Standalone network service for SketchLog event streaming and metrics
-    aggregation.
-  version: 0.1.0
-paths:
-  /health:
-    get:
-      summary: Health Check
-      operationId: health_check_health_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-                title: Response Health Check Health Get
-  /ready:
-    get:
-      summary: Readiness Check
-      operationId: readiness_check_ready_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                additionalProperties:
-                  type: string
-                type: object
-                title: Response Readiness Check Ready Get
-  /metrics:
-    get:
-      summary: Get Prometheus Metrics
-      operationId: get_prometheus_metrics_metrics_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            text/plain; version=0.0.4:
-              schema:
-                type: string
-  /v1/streams/{stream_id}/events:
-    post:
-      summary: Ingest Events
-      operationId: ingest_events_v1_streams__stream_id__events_post
-      parameters:
-      - name: stream_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Stream Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EventBatch'
-      responses:
-        '202':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties:
-                  type: string
-                title: Response Ingest Events V1 Streams  Stream Id  Events Post
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    get:
-      summary: Get Event Count
-      operationId: get_event_count_v1_streams__stream_id__events_get
-      parameters:
-      - name: stream_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Stream Id
-      - name: name
-        in: query
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EventCountResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /v1/streams/{stream_id}/metrics:
-    get:
-      summary: Get Metrics
-      operationId: get_metrics_v1_streams__stream_id__metrics_get
-      parameters:
-      - name: stream_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Stream Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MetricsResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /v1/streams/{stream_id}:
-    delete:
-      summary: Reset Stream
-      operationId: reset_stream_v1_streams__stream_id__delete
-      parameters:
-      - name: stream_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Stream Id
-      responses:
-        '204':
-          description: Successful Response
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-components:
-  schemas:
-    EventBatch:
-      properties:
-        latencies:
-          anyOf:
-          - items:
-              type: number
-            type: array
-            maxItems: 10000
-          - type: 'null'
-          title: Latencies
-          description: Array of latency values to ingest.
-        uniques:
-          anyOf:
-          - items:
-              type: string
-              maxLength: 255
-              minLength: 1
-            type: array
-            maxItems: 10000
-          - type: 'null'
-          title: Uniques
-          description: Array of distinct string items for cardinality tracking.
-        events:
-          anyOf:
-          - additionalProperties:
-              type: integer
-              exclusiveMaximum: 9.223372036854776e+18
-              exclusiveMinimum: 0.0
-            propertyNames:
-              maxLength: 255
-              minLength: 1
-            type: object
-            maxProperties: 10000
-          - type: 'null'
-          title: Events
-          description: Dictionary mapping event names to their positive occurrence
-            counts.
-      type: object
-      title: EventBatch
-    EventCountResponse:
-      properties:
-        stream_id:
-          type: string
-          title: Stream Id
-        event_name:
-          type: string
-          title: Event Name
-        count:
-          type: integer
-          title: Count
-      type: object
-      required:
-      - stream_id
-      - event_name
-      - count
-      title: EventCountResponse
-    HTTPValidationError:
-      properties:
-        detail:
-          items:
-            $ref: '#/components/schemas/ValidationError'
-          type: array
-          title: Detail
-      type: object
-      title: HTTPValidationError
-    MetricsResponse:
-      properties:
-        stream_id:
-          type: string
-          title: Stream Id
-        p50:
-          type: number
-          title: P50
-        p90:
-          type: number
-          title: P90
-        p99:
-          type: number
-          title: P99
-        p99_9:
-          type: number
-          title: P99 9
-        unique_count:
-          type: integer
-          title: Unique Count
-        total_events:
-          type: integer
-          title: Total Events
-        memory_footprint_bytes:
-          type: integer
-          title: Memory Footprint Bytes
-      type: object
-      required:
-      - stream_id
-      - p50
-      - p90
-      - p99
-      - p99_9
-      - unique_count
-      - total_events
-      - memory_footprint_bytes
-      title: MetricsResponse
-    ValidationError:
-      properties:
-        loc:
-          items:
-            anyOf:
-            - type: string
-            - type: integer
-          type: array
-          title: Location
-        msg:
-          type: string
-          title: Message
-        type:
-          type: string
-          title: Error Type
-        input:
-          title: Input
-        ctx:
-          type: object
-          title: Context
-      type: object
-      required:
-      - loc
-      - msg
-      - type
-      title: ValidationError
+{
+  "components": {
+    "schemas": {
+      "EventBatch": {
+        "properties": {
+          "events": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "exclusiveMaximum": 9.223372036854776e+18,
+                  "exclusiveMinimum": 0.0,
+                  "type": "integer"
+                },
+                "propertyNames": {
+                  "maxLength": 255,
+                  "minLength": 1
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dictionary mapping event names to their positive occurrence counts.",
+            "title": "Events"
+          },
+          "latencies": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Array of latency values to ingest.",
+            "title": "Latencies"
+          },
+          "uniques": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Array of distinct string items for cardinality tracking.",
+            "title": "Uniques"
+          }
+        },
+        "title": "EventBatch",
+        "type": "object"
+      },
+      "EventCountResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "event_name": {
+            "title": "Event Name",
+            "type": "string"
+          },
+          "stream_id": {
+            "title": "Stream Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stream_id",
+          "event_name",
+          "count"
+        ],
+        "title": "EventCountResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "MergeRequest": {
+        "properties": {
+          "state": {
+            "additionalProperties": true,
+            "title": "State",
+            "type": "object"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "MergeRequest",
+        "type": "object"
+      },
+      "MetricsResponse": {
+        "properties": {
+          "memory_footprint_bytes": {
+            "title": "Memory Footprint Bytes",
+            "type": "integer"
+          },
+          "p50": {
+            "title": "P50",
+            "type": "number"
+          },
+          "p90": {
+            "title": "P90",
+            "type": "number"
+          },
+          "p99": {
+            "title": "P99",
+            "type": "number"
+          },
+          "p99_9": {
+            "title": "P99 9",
+            "type": "number"
+          },
+          "stream_id": {
+            "title": "Stream Id",
+            "type": "string"
+          },
+          "total_events": {
+            "title": "Total Events",
+            "type": "integer"
+          },
+          "unique_count": {
+            "title": "Unique Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stream_id",
+          "p50",
+          "p90",
+          "p99",
+          "p99_9",
+          "unique_count",
+          "total_events",
+          "memory_footprint_bytes"
+        ],
+        "title": "MetricsResponse",
+        "type": "object"
+      },
+      "SLOEvaluationRequest": {
+        "properties": {
+          "baseline_stream_id": {
+            "title": "Baseline Stream Id",
+            "type": "string"
+          },
+          "budget_percent": {
+            "default": 0.005,
+            "title": "Budget Percent",
+            "type": "number"
+          },
+          "target_percentile": {
+            "default": 0.995,
+            "title": "Target Percentile",
+            "type": "number"
+          }
+        },
+        "required": [
+          "baseline_stream_id"
+        ],
+        "title": "SLOEvaluationRequest",
+        "type": "object"
+      },
+      "SLOResponse": {
+        "properties": {
+          "baseline_stream_id": {
+            "title": "Baseline Stream Id",
+            "type": "string"
+          },
+          "budget_percent": {
+            "title": "Budget Percent",
+            "type": "number"
+          },
+          "burn_rate": {
+            "title": "Burn Rate",
+            "type": "number"
+          },
+          "current_error_rate": {
+            "title": "Current Error Rate",
+            "type": "number"
+          },
+          "current_errors": {
+            "title": "Current Errors",
+            "type": "integer"
+          },
+          "current_events": {
+            "title": "Current Events",
+            "type": "integer"
+          },
+          "is_alerting": {
+            "title": "Is Alerting",
+            "type": "boolean"
+          },
+          "stream_id": {
+            "title": "Stream Id",
+            "type": "string"
+          },
+          "target_latency": {
+            "title": "Target Latency",
+            "type": "number"
+          },
+          "target_percentile": {
+            "title": "Target Percentile",
+            "type": "number"
+          }
+        },
+        "required": [
+          "stream_id",
+          "baseline_stream_id",
+          "target_percentile",
+          "target_latency",
+          "budget_percent",
+          "current_events",
+          "current_errors",
+          "current_error_rate",
+          "burn_rate",
+          "is_alerting"
+        ],
+        "title": "SLOResponse",
+        "type": "object"
+      },
+      "SQLQueryRequest": {
+        "properties": {
+          "query": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SQLQueryRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Standalone network service for SketchLog event streaming and metrics aggregation.",
+    "title": "SketchLog Server",
+    "version": "1.2.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Check Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Check"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "get_prometheus_metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Prometheus Metrics"
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "readiness_check_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Readiness Check Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness Check"
+      }
+    },
+    "/v1/namespaces/aggregate": {
+      "get": {
+        "operationId": "aggregate_streams_v1_namespaces_aggregate_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "namespaces",
+            "required": true,
+            "schema": {
+              "title": "Namespaces",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Aggregate Streams"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}": {
+      "delete": {
+        "operationId": "reset_stream_v1_namespaces__namespace__streams__stream_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Stream"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}/anomaly": {
+      "get": {
+        "operationId": "detect_anomaly_v1_namespaces__namespace__streams__stream_id__anomaly_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline_stream_id",
+            "required": true,
+            "schema": {
+              "title": "Baseline Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sensitivity",
+            "required": false,
+            "schema": {
+              "default": 0.2,
+              "title": "Sensitivity",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Detect Anomaly V1 Namespaces  Namespace  Streams  Stream Id  Anomaly Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Detect Anomaly"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}/diff": {
+      "get": {
+        "description": "Sketch Diffing — Visual & Programmatic Distribution Comparison.\nCompare any two time windows, deployments, or regions side-by-side.",
+        "operationId": "diff_streams_v1_namespaces__namespace__streams__stream_id__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline_stream_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline Stream Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Diff Streams V1 Namespaces  Namespace  Streams  Stream Id  Diff Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diff Streams"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}/events": {
+      "get": {
+        "operationId": "get_event_count_v1_namespaces__namespace__streams__stream_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventCountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event Count"
+      },
+      "post": {
+        "operationId": "ingest_events_v1_namespaces__namespace__streams__stream_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Ingest Events V1 Namespaces  Namespace  Streams  Stream Id  Events Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Events"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}/merge": {
+      "post": {
+        "description": "Merge a validated serialized sketch, including precision-safe WASM state.",
+        "operationId": "merge_stream_v1_namespaces__namespace__streams__stream_id__merge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Merge Stream V1 Namespaces  Namespace  Streams  Stream Id  Merge Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Merge Stream"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}/metrics": {
+      "get": {
+        "operationId": "get_metrics_v1_namespaces__namespace__streams__stream_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Metrics"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}/slo/evaluate": {
+      "post": {
+        "operationId": "evaluate_slo_v1_namespaces__namespace__streams__stream_id__slo_evaluate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SLOEvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SLOResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evaluate Slo"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}/slo/recommend": {
+      "get": {
+        "operationId": "recommend_slo_v1_namespaces__namespace__streams__stream_id__slo_recommend_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_percentile",
+            "required": false,
+            "schema": {
+              "default": 0.995,
+              "title": "Target Percentile",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "budget_percent",
+            "required": false,
+            "schema": {
+              "default": 0.005,
+              "title": "Budget Percent",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "title": "Response Recommend Slo V1 Namespaces  Namespace  Streams  Stream Id  Slo Recommend Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommend Slo"
+      }
+    },
+    "/v1/query": {
+      "post": {
+        "operationId": "query_stream_v1_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SQLQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Query Stream V1 Query Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Stream"
+      }
+    },
+    "/v1/streams/{stream_id}": {
+      "delete": {
+        "operationId": "reset_stream_v1_streams__stream_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Stream"
+      }
+    },
+    "/v1/streams/{stream_id}/anomaly": {
+      "get": {
+        "operationId": "detect_anomaly_v1_streams__stream_id__anomaly_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline_stream_id",
+            "required": true,
+            "schema": {
+              "title": "Baseline Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sensitivity",
+            "required": false,
+            "schema": {
+              "default": 0.2,
+              "title": "Sensitivity",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Detect Anomaly V1 Streams  Stream Id  Anomaly Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Detect Anomaly"
+      }
+    },
+    "/v1/streams/{stream_id}/diff": {
+      "get": {
+        "description": "Sketch Diffing — Visual & Programmatic Distribution Comparison.\nCompare any two time windows, deployments, or regions side-by-side.",
+        "operationId": "diff_streams_v1_streams__stream_id__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline_stream_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline Stream Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Baseline"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Diff Streams V1 Streams  Stream Id  Diff Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Diff Streams"
+      }
+    },
+    "/v1/streams/{stream_id}/events": {
+      "get": {
+        "operationId": "get_event_count_v1_streams__stream_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventCountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event Count"
+      },
+      "post": {
+        "operationId": "ingest_events_v1_streams__stream_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Ingest Events V1 Streams  Stream Id  Events Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Events"
+      }
+    },
+    "/v1/streams/{stream_id}/merge": {
+      "post": {
+        "description": "Merge a validated serialized sketch, including precision-safe WASM state.",
+        "operationId": "merge_stream_v1_streams__stream_id__merge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Merge Stream V1 Streams  Stream Id  Merge Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Merge Stream"
+      }
+    },
+    "/v1/streams/{stream_id}/metrics": {
+      "get": {
+        "operationId": "get_metrics_v1_streams__stream_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Metrics"
+      }
+    },
+    "/v1/streams/{stream_id}/slo/evaluate": {
+      "post": {
+        "operationId": "evaluate_slo_v1_streams__stream_id__slo_evaluate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SLOEvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SLOResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evaluate Slo"
+      }
+    },
+    "/v1/streams/{stream_id}/slo/recommend": {
+      "get": {
+        "operationId": "recommend_slo_v1_streams__stream_id__slo_recommend_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_percentile",
+            "required": false,
+            "schema": {
+              "default": 0.995,
+              "title": "Target Percentile",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "budget_percent",
+            "required": false,
+            "schema": {
+              "default": 0.005,
+              "title": "Budget Percent",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "title": "Response Recommend Slo V1 Streams  Stream Id  Slo Recommend Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommend Slo"
+      }
+    }
+  }
+}

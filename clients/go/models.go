@@ -1,6 +1,7 @@
 package sketchlog
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -15,14 +16,16 @@ func (e *SketchLogError) Error() string {
 }
 
 type EventBatch struct {
-	Latencies []float64          `json:"latencies,omitempty"`
-	Uniques   []string           `json:"uniques,omitempty"`
-	Events    map[string]int64   `json:"events,omitempty"`
+	Latencies []float64        `json:"latencies,omitempty"`
+	Uniques   []string         `json:"uniques,omitempty"`
+	Events    map[string]int64 `json:"events,omitempty"`
 }
 
 // ClientOptions allows configuring the SketchLog client.
 type ClientOptions struct {
-	Endpoint   string
-	MaxRetries int
-	Timeout    time.Duration
+	Endpoint          string
+	MaxRetries        int
+	Timeout           time.Duration
+	AuthToken         string
+	AuthTokenProvider func(context.Context) (string, error)
 }

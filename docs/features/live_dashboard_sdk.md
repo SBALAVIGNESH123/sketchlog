@@ -1,41 +1,38 @@
-# Live Dashboard SDK
-
-The **Live Dashboard SDK** is a suite of pre-built React components and JavaScript utilities that allow you to embed real-time observability widgets directly into your own applications.
-
-Instead of paying for heavy external BI tools or Grafana Cloud, you can integrate SketchLog's O(1) metrics directly into your internal admin panels, customer-facing dashboards, or developer portals.
-
-## Installation
+# React dashboard package
 
 ```bash
 npm install @sketchlog/react
 ```
 
-## Available Components
+The published package exports `SketchLogProvider`, `useSketchLog`,
+`QuantileHeatmap`, `CDFCurve`, and `CardinalitySparkline`.
 
-- `<LatencyHeatmap />`: Visualizes the latency distribution over time.
-- `<PercentileGauge />`: A real-time speedometer for p99/p95 SLAs.
-- `<TrafficHistogram />`: Shows frequency rates and counts.
+```tsx
+import {
+  SketchLogProvider,
+  QuantileHeatmap,
+  CardinalitySparkline,
+} from "@sketchlog/react";
 
-## Usage Example
-
-```javascript
-import { SketchProvider, PercentileGauge } from '@sketchlog/react';
-
-function App() {
+export function Dashboard() {
   return (
-    <SketchProvider endpoint="https://api.your-sketchlog.com" namespace="default">
-      <div className="dashboard">
-        <h2>API Performance</h2>
-        <PercentileGauge
-          stream="api-gateway"
-          percentile={0.99}
-          warningThreshold={200}
-          criticalThreshold={500}
-        />
-      </div>
-    </SketchProvider>
+    <SketchLogProvider url="wss://metrics.example/v1/streams/api/ws">
+      <QuantileHeatmap />
+      <CardinalitySparkline />
+    </SketchLogProvider>
   );
 }
 ```
 
-The components automatically connect to the SketchLog server via WebSockets, rendering live 60fps updates as new metrics flow in.
+The browser WebSocket API cannot set the SDK's HTTP authentication header.
+For browser deployments, an HTTPS gateway should set a `sketchlog_auth` cookie
+with `Secure`, `HttpOnly`, a narrow path/domain, and an appropriate `SameSite`
+policy. Do not put long-lived credentials in WebSocket URLs. The server also
+accepts `X-SketchLog-Auth-Token` from non-browser WebSocket clients.
+
+The provider reconnects with bounded attempts and exposes connection and error
+state. WebSocket counters are decimal strings so values above JavaScript's
+safe-integer range are not silently truncated; chart components convert them
+to approximate numbers only for rendering. `CardinalitySparkline` plots the
+server's HyperLogLog cardinality estimate. CI tests successful state updates,
+server error transitions, and the WebSocket contract.

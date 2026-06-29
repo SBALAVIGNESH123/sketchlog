@@ -5,6 +5,9 @@ import argparse
 import json
 import urllib.request
 import os
+import shutil
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class ConformanceSuite:
     def __init__(self, command: str, cwd: str, port: int = 8999):
@@ -12,6 +15,8 @@ class ConformanceSuite:
         self.cwd = cwd
         self.port = port
         self.server_process = None
+        self.retry_server = None
+        self.retry_thread = None
 
     def start_server(self):
         print(f"Starting sketchlog server on port {self.port}...")
@@ -19,7 +24,11 @@ class ConformanceSuite:
             [sys.executable, "-m", "uvicorn", "sketchlog.server:app", "--port", str(self.port)],
             stdout=sys.stdout,
             stderr=sys.stderr,
-            env={**os.environ, "PYTHONPATH": "python"}
+            env={
+                **os.environ,
+                "PYTHONPATH": "python",
+                "SKETCHLOG_AUTH_TOKEN": "conformance-secret",
+            }
         )
 
         # Wait for server to become healthy (up to 10 seconds)
@@ -40,12 +49,51 @@ class ConformanceSuite:
                 self.server_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.server_process.kill()
+        if self.retry_server:
+            self.retry_server.shutdown()
+            self.retry_server.server_close()
+        if self.retry_thread:
+            self.retry_thread.join(timeout=5)
 
-    def run_test(self, name: str, args: list[str]):
+    def start_retry_fixture(self):
+        class RetryHandler(BaseHTTPRequestHandler):
+            attempts = 0
+
+            def do_GET(self):
+                type(self).attempts += 1
+                status = 503 if type(self).attempts <= 2 else 200
+                payload = b'{"status":"ok"}'
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *_args):
+                return
+
+        self.retry_server = ThreadingHTTPServer(
+            ("127.0.0.1", self.port + 1), RetryHandler)
+        self.retry_thread = threading.Thread(
+            target=self.retry_server.serve_forever, daemon=True)
+        self.retry_thread.start()
+
+    def run_test(self, name: str, args: list[str], port=None):
         print(f"Running test: {name}...")
-        import shlex, sys
-        cmd_args = shlex.split(self.command) + [f"--endpoint=http://127.0.0.1:{self.port}"] + args
-        result = subprocess.run(cmd_args, cwd=self.cwd, capture_output=True, text=True, shell=(sys.platform == 'win32'))
+        import shlex
+        endpoint_port = port if port is not None else self.port
+        cmd_args = shlex.split(self.command, posix=os.name != "nt")
+        executable = shutil.which(cmd_args[0])
+        if executable is None:
+            raise RuntimeError(
+                f"Conformance command was not found: {cmd_args[0]}")
+        cmd_args[0] = executable
+        cmd_args += [
+            f"--endpoint=http://127.0.0.1:{endpoint_port}",
+            "--token=conformance-secret",
+        ] + args
+        result = subprocess.run(
+            cmd_args, cwd=self.cwd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
             print(f"Test '{name}' FAILED!")
             print(f"STDOUT: {result.stdout}")
@@ -56,9 +104,12 @@ class ConformanceSuite:
     def run_all(self):
         try:
             self.start_server()
+            self.start_retry_fixture()
 
             # Test 1: Basic Ingestion
             self.run_test("ingest_basic", ["test-ingest"])
+            self.run_test("auth_missing", ["test-auth-missing"])
+            self.run_test("auth_invalid", ["test-auth-invalid"])
 
             # Verify ingestion via metrics
             with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/metrics", timeout=5) as res:
@@ -67,11 +118,12 @@ class ConformanceSuite:
                     print("FAILED: Metrics did not record ingested events.")
                     sys.exit(1)
 
-            # Test 2: Idempotent Retry (SDK should retry 503s correctly)
-            # We can't easily force the server to 503 without a proxy, so the SDK test wrapper
-            # will just simulate it internally or we use a special endpoint if available.
-            # For now, we trust the SDK test wrapper runs its own mock tests for retries.
-            self.run_test("retries", ["test-retries"])
+            # Test 2: the retry fixture returns two 503 responses, then a 200.
+            self.run_test("retries", ["test-retries"], self.port + 1)
+            # No listener exists on this port. Real transport failures must
+            # exercise the idempotent retry path rather than fail immediately.
+            self.run_test(
+                "transport_retries", ["test-transport-retries"], self.port + 2)
 
             print("All conformance tests passed!")
 

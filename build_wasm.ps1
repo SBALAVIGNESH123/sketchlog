@@ -7,8 +7,9 @@ if (!(Test-Path "wasm/dist")) {
 }
 
 $CurrentDir = (Get-Item .).FullName
+$EmsdkImage = "emscripten/emsdk:5.0.4@sha256:ef91f658e0104636cf40a702c99169273969cf04d939f4f08e5d0223965d5788"
 
-docker run --rm -v "${CurrentDir}:/src" -w /src emscripten/emsdk emcc `
+docker run --rm -v "${CurrentDir}:/src" -w /src $EmsdkImage emcc `
     -O3 `
     --bind `
     -Iinclude `

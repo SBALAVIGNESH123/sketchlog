@@ -2,15 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 
-	"github.com/SBALAVIGNESH123/sketchlog-go"
+	sketchlog "github.com/SBALAVIGNESH123/sketchlog/clients/go"
 )
 
 func main() {
 	endpoint := flag.String("endpoint", "http://127.0.0.1:8999", "Server endpoint")
+	token := flag.String("token", "", "Server authentication token")
 	flag.Parse()
 
 	args := flag.Args()
@@ -23,6 +25,7 @@ func main() {
 	client := sketchlog.NewClient(sketchlog.ClientOptions{
 		Endpoint:   *endpoint,
 		MaxRetries: 3,
+		AuthToken:  *token,
 	})
 
 	ctx := context.Background()
@@ -41,11 +44,36 @@ func main() {
 		fmt.Println("Ingest success")
 
 	case "test-retries":
-		if err := client.TestFlake(ctx); err != nil {
+		if err := client.Health(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "Retry error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Retry/Health success")
+
+	case "test-transport-retries":
+		if err := client.Health(ctx); err == nil {
+			fmt.Fprintln(os.Stderr, "Expected transport failure")
+			os.Exit(1)
+		}
+		fmt.Println("Transport retries success")
+
+	case "test-auth-missing", "test-auth-invalid":
+		authToken := ""
+		if command == "test-auth-invalid" {
+			authToken = "wrong-token"
+		}
+		unauthorized := sketchlog.NewClient(sketchlog.ClientOptions{
+			Endpoint:  *endpoint,
+			AuthToken: authToken,
+		})
+		err := unauthorized.IngestEvents(
+			ctx, "auth-test", sketchlog.EventBatch{Latencies: []float64{1}})
+		var apiError *sketchlog.SketchLogError
+		if !errors.As(err, &apiError) || apiError.StatusCode != 401 {
+			fmt.Fprintf(os.Stderr, "Expected HTTP 401, got %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Authentication rejection success")
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)

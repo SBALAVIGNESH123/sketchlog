@@ -118,6 +118,10 @@ class StreamLog {
         return this._internal.to_dict();
     }
 
+    serialize() {
+        return { state: this.toDict() };
+    }
+
     stats() {
         return this._internal.stats();
     }

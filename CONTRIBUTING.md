@@ -7,12 +7,11 @@ Thanks for your interest in contributing. Whether it's a bug fix, new feature, d
 ```bash
 git clone https://github.com/SBALAVIGNESH123/sketchlog.git
 cd sketchlog
-pip install -e .[server]
-pip install pytest mypy pyright httpx
-python -m pytest tests/ -v
+pip install -e ".[dev,server,opentelemetry]"
+python -m pytest tests/ -m "not stress and not clustering"
 ```
 
-All 130+ core and server tests should pass.
+All selected core, server, integration, and slow tests should pass.
 
 To run static type checkers:
 ```bash

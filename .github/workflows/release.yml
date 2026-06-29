@@ -13,6 +13,9 @@ jobs:
   preflight:
     name: Validate Release Tag
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -23,33 +26,26 @@ jobs:
           python-version: 3.x
 
       - name: Verify Tag matches Version
+        run: python scripts/check_versions.py --tag "$GITHUB_REF_NAME"
+
+      - name: Require successful CI for production tag commit
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python -c "
-          import os, re, sys
-
-          with open('pyproject.toml') as f:
-              match = re.search(r'^version\s*=\s*[\'\"]([^\'\"]+)[\'\"]', f.read(), re.MULTILINE)
-              pyproject_version = match.group(1) if match else sys.exit('No version in pyproject.toml')
-
-          with open('python/sketchlog/__init__.py') as f:
-              match = re.search(r'__version__\s*=\s*[\'\"]([^\'\"]+)[\'\"]', f.read())
-              init_version = match.group(1) if match else sys.exit('No __version__ in __init__.py')
-
-          if pyproject_version != init_version:
-              sys.exit(f'Mismatch: pyproject.toml ({pyproject_version}) vs __init__.py ({init_version})')
-
-          ref_name = os.environ['GITHUB_REF_NAME']
-          if ref_name not in [f'v{pyproject_version}', f'test-v{pyproject_version}']:
-              sys.exit(f'Error: Tag {ref_name} does not match version {pyproject_version}')
-
-          print('Versions match and tag is valid.')
-          "
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          successful_runs=$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&event=push&status=success&per_page=1" \
+            --jq '.total_count')
+          test "$successful_runs" -gt 0
 
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     needs: preflight
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
@@ -62,13 +58,15 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@294735312765b09d24a2fbec22660ce817587d55 # v4.1.0
         env:
-          CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
+          CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_ARCHS_MACOS: "x86_64 arm64"
+          # SketchLog supports 64-bit Windows; the MSVC 64-bit HLL intrinsic
+          # and memory envelope are not supported on win32.
+          CIBW_ARCHS_WINDOWS: "AMD64"
           CIBW_TEST_EXTRAS: "test,server,opentelemetry"
-          CIBW_TEST_REQUIRES: "pytest numpy"
           CIBW_TEST_COMMAND: >-
             python -c "import sketchlog; assert sketchlog.HAS_CPP, 'Missing C++ backend in wheel'" &&
-            pytest {project}/tests
+            pytest {project}/tests -m "not slow and not stress and not clustering"
 
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
@@ -87,7 +85,7 @@ jobs:
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: 3.x
+          python-version: "3.11"
 
       - name: Build sdist
         run: pipx run build --sdist
@@ -107,6 +105,26 @@ jobs:
         with:
           name: cibw-sdist
           path: dist/*.tar.gz
+
+  publication_preflight:
+    name: Validate Publication Credentials
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Verify NPM publisher and @sketchlog scope access
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN"
+          npm whoami
+          npm access list packages @sketchlog --json >/dev/null
 
   publish_testpypi:
     name: Publish to TestPyPI
@@ -134,7 +152,7 @@ jobs:
   publish_pypi:
     name: Publish to PyPI
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build_wheels, build_sdist]
+    needs: [build_wheels, build_sdist, publication_preflight]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -190,7 +208,7 @@ jobs:
   github_release_pypi:
     name: Upload Production GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [publish_pypi]
+    needs: [post_publish_smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -223,41 +241,73 @@ jobs:
   publish_docker:
     name: Build and Push Docker Image
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [preflight, build_wheels]
+    needs: [publication_preflight, build_wheels]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      id-token: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3.2.0
+        uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3.2.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.6.1
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3.3.0
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Normalize image name
+        id: image-name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5.5.1
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # v5.5.1
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ steps.image-name.outputs.image }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
-      - name: Build and push
-        uses: docker/build-push-action@v6.7.0
+      - name: Build image for security scan
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: sketchlog:security-scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@cf5c088a69634cd13ccddc735d7926162c31f9a6 # master 2026-06-28
+        with:
+          image-ref: sketchlog:security-scan
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Build and push verified multi-platform image
+        id: push
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -266,49 +316,76 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+      - name: Sign verified image digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          cosign sign --yes "${image}@${DIGEST}"
 
   publish_helm:
     name: Package and Publish Helm Chart
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [preflight, build_wheels]
+    needs: [publication_preflight, build_wheels]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      id-token: write
+    outputs:
+      digest: ${{ steps.push-chart.outputs.digest }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4.2.0
+        uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
         with:
           version: v3.14.4
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
+
+      - name: Login Docker client to GitHub Container Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Login to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$REGISTRY_PASSWORD" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       - name: Package Chart
         run: helm package charts/sketchlog
 
       - name: Push Chart to GHCR
+        id: push-chart
         run: |
           CHART_PKG=$(ls sketchlog-*.tgz)
-          helm push ${CHART_PKG} oci://ghcr.io/${{ github.repository_owner }}/charts
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          output=$(helm push "${CHART_PKG}" "oci://ghcr.io/${owner}/charts")
+          echo "$output"
+          digest=$(echo "$output" | sed -n 's/^Digest: //p')
+          test -n "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Sign Helm chart digest
+        env:
+          DIGEST: ${{ steps.push-chart.outputs.digest }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          cosign sign --yes "ghcr.io/${owner}/charts/sketchlog@${DIGEST}"
 
   publish_typescript:
     name: Publish TypeScript SDK
-    needs: [preflight, build_wheels]
+    needs: [publication_preflight, build_wheels]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -325,19 +402,70 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - name: Install dependencies
         working-directory: clients/typescript
-        run: npm install
+        run: npm ci
       - name: Build TypeScript
         working-directory: clients/typescript
-        run: npm run build --if-present
+        run: npm test
       - name: Publish to NPM
         working-directory: clients/typescript
-        run: npm publish --access public
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish_react:
+    name: Publish React SDK
+    needs: [publication_preflight, build_wheels]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - working-directory: frontend/react-sketchlog
+        run: npm ci
+      - working-directory: frontend/react-sketchlog
+        run: npm run lint && npm test && npm run build
+      - working-directory: frontend/react-sketchlog
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish_wasm:
+    name: Publish WASM Runtime
+    needs: [publication_preflight, build_wheels]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - working-directory: wasm
+        run: npm ci
+      - run: bash build_wasm.sh
+      - working-directory: wasm
+        run: npm test
+      - working-directory: wasm
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish_go:
     name: Publish Go SDK Tag
-    needs: [preflight, build_wheels]
+    needs: [publication_preflight, build_wheels]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -347,10 +475,89 @@ jobs:
         with:
           persist-credentials: false
       - name: Create Go Module Tag
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME}"
           GO_TAG="clients/go/${VERSION}"
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git tag -a "${GO_TAG}" -m "Release Go SDK ${VERSION}"
-          git push origin "${GO_TAG}"
+          existing_sha=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GO_TAG}" \
+            --jq '.object.sha' 2>/dev/null || true)
+          if [ -n "$existing_sha" ]; then
+            test "$existing_sha" = "$GITHUB_SHA"
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${GO_TAG}" \
+              -f sha="${GITHUB_SHA}"
+          fi
+
+  post_publish_smoke:
+    name: Public Registry Smoke Tests
+    needs: [publish_pypi, publish_typescript, publish_react, publish_wasm, publish_go, publish_docker, publish_helm]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "20"
+      - uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
+        with:
+          go-version: "1.26.4"
+      - uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.14.4
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install released Python wheel from PyPI
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for attempt in {1..20}; do
+            python -m pip install --no-cache-dir "sketchlog==${version}" && break
+            test "$attempt" -lt 20
+            sleep 15
+          done
+          python -c "import sketchlog; assert sketchlog.HAS_CPP; assert sketchlog.__version__ == '${version}'"
+      - name: Install released NPM packages
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir npm-smoke && cd npm-smoke && npm init -y
+          for attempt in {1..20}; do
+            npm install \
+              "@sketchlog/client@${version}" \
+              "@sketchlog/react@${version}" \
+              "@sketchlog/wasm@${version}" && break
+            test "$attempt" -lt 20
+            sleep 15
+          done
+          node -e "for (const name of ['client','react','wasm']) { const p=require('./node_modules/@sketchlog/'+name+'/package.json'); if(p.version!=='${version}') process.exit(1) }"
+      - name: Resolve released Go module through public proxy
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+        run: |
+          for attempt in {1..20}; do
+            go list -m \
+              "github.com/SBALAVIGNESH123/sketchlog/clients/go@${GITHUB_REF_NAME}" \
+              && break
+            test "$attempt" -lt 20
+            sleep 15
+          done
+      - name: Pull released image and Helm chart
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${version}"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          docker pull "$image"
+          printf '%s' "$REGISTRY_PASSWORD" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          helm pull "oci://ghcr.io/${owner}/charts/sketchlog" --version "$version"

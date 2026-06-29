@@ -49,11 +49,9 @@ function App() {
                 />
                 
                 <div className="backdrop-blur-md bg-white/5 border border-white/10 p-6 shadow-xl rounded-xl flex flex-col justify-center items-center text-center">
-                  <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">Constant Memory</h3>
-                  <div className="text-5xl font-light text-white flex items-baseline gap-2">
-                    93 <span className="text-xl text-slate-500">KB</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-4">Fixed footprint regardless of event volume</p>
+                  <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">Bounded Memory</h3>
+                  <div className="text-4xl font-light text-white">Configured</div>
+                  <p className="text-xs text-slate-500 mt-4">Depends on sketch dimensions, not event volume</p>
                 </div>
               </div>
             </div>

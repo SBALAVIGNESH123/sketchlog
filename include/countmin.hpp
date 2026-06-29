@@ -116,9 +116,20 @@ inline void CountMinSketch::set_state(const State& s) {
     if (s.total_count < 0) {
         throw std::invalid_argument("Cannot restore state with negative total_count");
     }
-    for (int64_t count : s.table) {
-        if (count < 0) {
-            throw std::invalid_argument("Cannot restore state with negative counts in CMS table");
+    for (size_t row = 0; row < depth_; ++row) {
+        int64_t row_total = 0;
+        for (size_t col = 0; col < width_; ++col) {
+            const int64_t count = s.table[row * width_ + col];
+            if (count < 0) {
+                throw std::invalid_argument("Cannot restore state with negative counts in CMS table");
+            }
+            if (std::numeric_limits<int64_t>::max() - row_total < count) {
+                throw std::invalid_argument("Cannot restore state with overflowing CMS row");
+            }
+            row_total += count;
+        }
+        if (row_total != s.total_count) {
+            throw std::invalid_argument("Cannot restore state whose CMS row sums differ from total_count");
         }
     }
     total_count_ = s.total_count;

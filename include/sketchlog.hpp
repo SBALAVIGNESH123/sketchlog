@@ -94,9 +94,11 @@ public:
 
     /** Record an event occurrence. */
     void add_event(const std::string& name, int64_t count = 1);
+    void add_event(uint64_t key, int64_t count = 1);
 
     /** Estimated count for an event. */
     int64_t event_count(const std::string& name) const;
+    int64_t event_count(uint64_t key) const;
 
     // ─── Cardinality tracking (HyperLogLog) ──────────────────────────
 
@@ -228,8 +230,23 @@ inline void StreamLog::add_event(const std::string& name, int64_t count) {
     total_events_ += count;
 }
 
+inline void StreamLog::add_event(uint64_t key, int64_t count) {
+    if (count <= 0) {
+        throw std::invalid_argument("Event count must be strictly positive");
+    }
+    if (std::numeric_limits<uint64_t>::max() - total_events_ < static_cast<uint64_t>(count)) {
+        throw std::overflow_error("StreamLog: total_events overflow");
+    }
+    events_.add(key, count);
+    total_events_ += count;
+}
+
 inline int64_t StreamLog::event_count(const std::string& name) const {
     return events_.estimate_string(name.c_str(), name.size());
+}
+
+inline int64_t StreamLog::event_count(uint64_t key) const {
+    return events_.estimate(key);
 }
 
 // ─── Cardinality ────────────────────────────────────────────────────────────

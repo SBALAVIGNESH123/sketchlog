@@ -42,8 +42,10 @@ class OpenTelemetryAdapter:
     """
     Bridges a SketchLog instance to an OpenTelemetry Meter using Asynchronous Instruments.
 
-    Instead of actively pushing state to OTel, this registers callbacks that OTel's
-    MetricReader periodically invokes, ensuring zero memory duplication and correct temporality.
+    Instead of actively pushing state to OTel, this registers gauge callbacks
+    that the MetricReader invokes. Windowed logs build a bounded temporary
+    merged sketch during observation; other log types use their normal
+    snapshot or locking semantics.
     """
     def __init__(self, streamlog: Any, meter: Any, export_events: Optional[Iterable[str]] = None):
         if not HAS_OPENTELEMETRY:

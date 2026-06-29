@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
-import { useSketchLog } from './SketchLogProvider';
+import { useSketchLog } from './SketchLogContext';
+import { counterToNumber } from '../counter';
 
 function getBucketValue(alpha: number, index: number): number {
   const gamma = (1 + alpha) / (1 - alpha);
@@ -10,7 +11,7 @@ function getBucketValue(alpha: number, index: number): number {
 export interface QuantileHeatmapProps {
   width?: number;
   height?: number;
-  colorScheme?: readonly string[] | string;
+  colorScheme?: readonly string[] | string | ((value: number) => string);
   historySize?: number;
   className?: string;
 }
@@ -39,23 +40,29 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
     
     const posIndices = Object.keys(lat.positive).map(Number);
     for (const idx of posIndices) {
-      bins.set(idx, lat.positive[idx]);
+      bins.set(idx, counterToNumber(lat.positive[idx]));
     }
     const negIndices = Object.keys(lat.negative).map(Number);
     for (const idx of negIndices) {
-      bins.set(-idx, (bins.get(-idx) || 0) + lat.negative[idx]);
+      bins.set(
+        -idx,
+        (bins.get(-idx) || 0) + counterToNumber(lat.negative[idx]),
+      );
     }
-    if (lat.zero_count > 0) {
-      bins.set(0, (bins.get(0) || 0) + lat.zero_count);
+    if (counterToNumber(lat.zero_count) > 0) {
+      bins.set(0, (bins.get(0) || 0) + counterToNumber(lat.zero_count));
     }
 
-    setHistory(prev => {
-      const next = [...prev, { time: now, total: lat.count, bins }];
-      if (next.length > historySize) {
-        return next.slice(next.length - historySize);
-      }
-      return next;
-    });
+    const update = window.setTimeout(() => {
+      setHistory(prev => {
+        const next = [
+          ...prev,
+          { time: now, total: counterToNumber(lat.count), bins },
+        ];
+        return next.slice(-historySize);
+      });
+    }, 0);
+    return () => window.clearTimeout(update);
   }, [state, historySize]);
 
   useEffect(() => {
@@ -108,9 +115,15 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
       .range([innerHeight, 0]);
 
     // Color scale
-    const color = typeof colorScheme === 'string' 
-      ? d3.scaleSequential(d3.interpolate(d3.color('rgba(255,255,255,0)') as any, colorScheme)).domain([0, maxCount])
-      : d3.scaleSequential(colorScheme as any).domain([0, maxCount]);
+    let interpolator: (value: number) => string;
+    if (typeof colorScheme === 'function') {
+      interpolator = colorScheme;
+    } else if (typeof colorScheme === 'string') {
+      interpolator = d3.interpolateRgb('rgba(255,255,255,0)', colorScheme);
+    } else {
+      interpolator = d3.piecewise(d3.interpolateRgb, [...colorScheme]);
+    }
+    const color = d3.scaleSequential(interpolator).domain([0, maxCount]);
 
     const g = svg.append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
@@ -148,7 +161,7 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
       .call(yAxis)
       .attr("color", "rgba(255, 255, 255, 0.5)");
 
-  }, [history, width, height, colorScheme, state]);
+  }, [history, width, height, colorScheme, state, historySize]);
 
   return (
     <div className={`relative rounded-xl overflow-hidden backdrop-blur-md bg-white/5 border border-white/10 p-4 shadow-2xl ${className}`}>

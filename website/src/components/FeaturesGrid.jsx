@@ -1,19 +1,17 @@
-import React from 'react';
-
 const features = [
   {
     title: 'O(1) Memory Constraints',
-    description: 'Never worry about cardinality explosions again. SketchLog bounds memory to exactly 93KB per dimension, whether you have 10 events or 10 billion.',
+    description: 'SketchLog bounds each default stream with capped sketch dimensions and a 1,024-bucket-per-sign DDSketch store.',
     icon: '📦'
   },
   {
     title: 'Mathematical Accuracy',
-    description: 'Guaranteed relative error bounds using the exact same DDSketch algorithm trusted by Datadog. Know your p99 with mathematical certainty.',
+    description: 'DDSketch provides a configured relative mapping-error bound; HLL and Count-Min expose their approximation semantics.',
     icon: '📐'
   },
   {
     title: 'C++ Core Speed',
-    description: 'Built on a ruthless C++ extension wrapped in Pybind11. Ingest streams at millions of events per second with virtually zero overhead.',
+    description: 'Python wheels include a Pybind11 C++ fast path, with a deterministic Python backend for portability and mesh interoperability.',
     icon: '⚡'
   },
   {
@@ -23,12 +21,12 @@ const features = [
   },
   {
     title: 'DriftSketch Auto-Pilot',
-    description: 'Detect distribution shifts and anomalies automatically using advanced streaming statistics and CDF diffing. No manual thresholds.',
+    description: 'Compare bounded distribution summaries and configure explicit sensitivity thresholds for drift and anomaly signals.',
     icon: '🧠'
   },
   {
     title: 'Edge & WASM Ready',
-    description: 'Run identical sketching logic natively in the browser, Cloudflare Workers, or Deno using our upcoming WebAssembly core.',
+    description: 'Use the published WebAssembly package in browsers and compatible edge JavaScript runtimes.',
     icon: '🌐'
   }
 ];
@@ -38,7 +36,7 @@ export function FeaturesGrid() {
     <section id="features" className="container section">
       <div className="features-header text-center animate-fade-in-up">
         <h2>Engineering at the Edge</h2>
-        <p className="subtitle">Built for platform engineers who need absolute reliability and predictable resource utilization under massive scale.</p>
+        <p className="subtitle">Built for platform engineers who need bounded resources, observable failure modes, and reproducible performance evidence.</p>
       </div>
 
       <div className="grid">

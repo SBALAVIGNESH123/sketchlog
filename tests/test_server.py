@@ -215,8 +215,13 @@ def test_oversized_chunked_request():
     response_metric = client.get(f"/v1/streams/{stream_id}/metrics")
     assert response_metric.status_code == 404
 
-def test_malformed_content_length():
-    response = client.post("/v1/streams/test/events", json={}, headers={"Content-Length": "abc"})
+@pytest.mark.parametrize("content_length", ["abc", "-1"])
+def test_malformed_content_length(content_length):
+    response = client.post(
+        "/v1/streams/test/events",
+        json={},
+        headers={"Content-Length": content_length},
+    )
     assert response.status_code == 400
 
 def test_authentication_middleware():
@@ -257,6 +262,15 @@ def test_websocket_streaming():
         data = websocket.receive_json()
         assert data["version"] == 1
         assert int(data["total"]) == 8
+        assert data["metrics"]["unique_count"] == "1"
+        assert data["metrics"]["total_events"] == "8"
+        assert isinstance(data["latency"]["count"], str)
+        assert isinstance(data["events"]["total"], str)
+        assert all(
+            isinstance(value, str)
+            for row in data["events"]["table"]
+            for value in row
+        )
         assert "latency" in data
         assert "events" in data
         assert "uniques" in data
