@@ -30,6 +30,16 @@ void streamlog_add_batch(sketchlog::StreamLog& self, val js_array) {
     self.add_batch(vec.data(), vec.size());
 }
 
+void streamlog_add_event(
+        sketchlog::StreamLog& self, const std::string& name, int64_t count) {
+    self.add_event(name, count);
+}
+
+int64_t streamlog_event_count(
+        const sketchlog::StreamLog& self, const std::string& name) {
+    return self.event_count(name);
+}
+
 val streamlog_to_dict(const sketchlog::StreamLog& self) {
     auto lat = self.get_latency_state();
     auto uni = self.get_uniques_state();
@@ -125,8 +135,8 @@ EMSCRIPTEN_BINDINGS(sketchlog_wasm) {
         .function("count_greater_than", &sketchlog::StreamLog::count_greater_than)
         .function("latency_count", &sketchlog::StreamLog::latency_count)
 
-        .function("add_event", &sketchlog::StreamLog::add_event)
-        .function("event_count", &sketchlog::StreamLog::event_count)
+        .function("add_event", &streamlog_add_event)
+        .function("event_count", &streamlog_event_count)
 
         .function("add_unique_string", select_overload<void(const std::string&)>(&sketchlog::StreamLog::add_unique))
         .function("add_unique_int", select_overload<void(uint64_t)>(&sketchlog::StreamLog::add_unique))
