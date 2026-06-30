@@ -118,13 +118,12 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
-      - name: Verify NPM publisher and @sketchlog scope access
+      - name: Verify npm publisher identity
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           test -n "$NODE_AUTH_TOKEN"
-          npm whoami
-          npm access list packages @sketchlog --json >/dev/null
+          test "$(npm whoami)" = "balavignesh"
       - name: Verify coupled Go module tag
         run: |
           go_ref="refs/tags/clients/go/${GITHUB_REF_NAME}"
