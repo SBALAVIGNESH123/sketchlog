@@ -19,7 +19,8 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "npm run build && node test/smoke.cjs",
+    "test": "npm run test:build-script && npm run build && node test/smoke.cjs",
+    "test:build-script": "node --test test/build-script.test.mjs",
     "test:browser": "node test/browser-smoke.mjs"
   },
   "devDependencies": {

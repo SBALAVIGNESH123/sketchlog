@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Make clean WASM builds resilient to transient container-registry failures
+  while preserving digest pinning and bounded retries.
 - Separate cross-platform load correctness from performance enforcement: every
   request must succeed everywhere, while controlled Linux stress runs enforce
   median throughput and p99 latency across three trials.
