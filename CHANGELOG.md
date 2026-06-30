@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1
+
+### Fixed
+
+- Prevent Windows checkpoint writers from being starved by concurrent same-path
+  readers, while retaining bounded retries for readers in other processes.
+
 ## 1.2.0
 
 Python 3.10–3.14 are supported. Python 3.9 reached upstream end of life and is

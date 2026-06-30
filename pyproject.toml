@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sketchlog"
-version = "1.2.0"
+version = "1.2.1"
 description = "Bounded-memory streaming metrics with DDSketch, HyperLogLog, and Count-Min Sketch."
 authors = [
     {name = "Bala Vignesh S"}

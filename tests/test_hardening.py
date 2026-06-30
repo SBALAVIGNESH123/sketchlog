@@ -1,4 +1,5 @@
 import copy
+from contextlib import contextmanager
 import json
 import math
 import re
@@ -453,6 +454,68 @@ def test_concurrent_checkpoint_readers_never_observe_partial_json():
             stop.set()
             thread.join(timeout=5)
         assert failures == []
+
+
+def test_checkpoint_writer_waits_for_active_same_path_reader(monkeypatch):
+    from sketchlog import _atomic
+
+    with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
+        path = Path(directory) / "checkpoint.json"
+        path.write_text('{"version":0}', encoding="utf-8")
+        reader_opened = threading.Event()
+        release_reader = threading.Event()
+        writer_started = threading.Event()
+        thread_errors = []
+        replacement_states = []
+        real_open = open
+        real_replace = _atomic.os.replace
+
+        @contextmanager
+        def blocking_open(*args, **kwargs):
+            with real_open(*args, **kwargs) as handle:
+                reader_opened.set()
+                if not release_reader.wait(timeout=5):
+                    raise TimeoutError("test reader was not released")
+                yield handle
+
+        def observed_replace(source, destination):
+            replacement_states.append(not release_reader.is_set())
+            return real_replace(source, destination)
+
+        def read_checkpoint():
+            try:
+                _atomic.read_json_checkpoint(str(path))
+            except BaseException as exc:  # pragma: no cover - failure evidence
+                thread_errors.append(exc)
+
+        def write_checkpoint():
+            writer_started.set()
+            try:
+                _atomic.atomic_write_json(str(path), {"version": 1})
+            except BaseException as exc:  # pragma: no cover - failure evidence
+                thread_errors.append(exc)
+
+        monkeypatch.setattr(_atomic, "open", blocking_open, raising=False)
+        monkeypatch.setattr(_atomic.os, "replace", observed_replace)
+        reader = threading.Thread(target=read_checkpoint)
+        writer = threading.Thread(target=write_checkpoint)
+        reader.start()
+        assert reader_opened.wait(timeout=2)
+        writer.start()
+        assert writer_started.wait(timeout=2)
+        writer.join(timeout=0.1)
+
+        assert writer.is_alive()
+        assert replacement_states == []
+
+        release_reader.set()
+        reader.join(timeout=5)
+        writer.join(timeout=5)
+        assert not reader.is_alive()
+        assert not writer.is_alive()
+        assert thread_errors == []
+        assert replacement_states == [False]
+        assert json.loads(path.read_text(encoding="utf-8")) == {"version": 1}
 
 
 def test_checkpoint_size_limit_preserves_existing_file(monkeypatch):
