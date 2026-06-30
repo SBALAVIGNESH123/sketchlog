@@ -466,7 +466,6 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - working-directory: wasm
         run: npm ci
-      - run: bash build_wasm.sh
       - working-directory: wasm
         run: npm test
       - working-directory: wasm
@@ -538,7 +537,29 @@ jobs:
             test "$attempt" -lt 20
             sleep 15
           done
-          node -e "for (const name of ['client','react','wasm']) { const p=require('./node_modules/@sketchlog/'+name+'/package.json'); if(p.version!=='${version}') process.exit(1) }"
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const expectedVersion = process.env.GITHUB_REF_NAME.slice(1);
+          for (const name of ['client', 'react', 'wasm']) {
+            const metadata = require(`./node_modules/@sketchlog/${name}/package.json`);
+            assert.equal(metadata.version, expectedVersion);
+          }
+          const react = require('./node_modules/@sketchlog/react');
+          assert.equal(typeof react.SketchLogProvider, 'function');
+          assert.equal(typeof react.CDFCurve, 'function');
+          const { StreamLog } = require('./node_modules/@sketchlog/wasm');
+          (async () => {
+            await StreamLog.init();
+            const log = new StreamLog();
+            log.addBatch([10, 20, 30]);
+            assert.equal(log.totalEvents, 3n);
+            assert.ok(log.p99 > 29 && log.p99 < 31);
+            log.destroy();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
       - name: Resolve released Go module through public proxy
         env:
           GOPROXY: https://proxy.golang.org,direct
@@ -550,7 +571,7 @@ jobs:
             test "$attempt" -lt 20
             sleep 15
           done
-      - name: Pull released image and Helm chart
+      - name: Exercise released image and Helm chart
         env:
           REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -558,5 +579,48 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY,,}:${version}"
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           docker pull "$image"
+          container="sketchlog-release-smoke"
+          docker run --detach --rm --name "$container" \
+            --publish 18000:8000 "$image"
+          cleanup() {
+            docker logs "$container" || true
+            docker rm --force "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent --show-error \
+              http://127.0.0.1:18000/health >/dev/null && break
+            test "$attempt" -lt 30
+            sleep 1
+          done
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { SketchLogClient } =
+            require('./npm-smoke/node_modules/@sketchlog/client');
+          (async () => {
+            const client = new SketchLogClient({
+              endpoint: 'http://127.0.0.1:18000',
+              maxRetries: 0,
+            });
+            const health = await client.health();
+            assert.equal(health.status, 'ok');
+            await client.ingestEvents('release-smoke', {
+              latencies: [10, 20, 30],
+              uniques: ['alice', 'bob'],
+              events: { ok: 3 },
+            });
+            await client.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+          curl --fail --silent --show-error \
+            http://127.0.0.1:18000/v1/streams/release-smoke/metrics |
+            python -c \
+              'import json,sys; data=json.load(sys.stdin); assert data["total_events"] == 6'
           printf '%s' "$REGISTRY_PASSWORD" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           helm pull "oci://ghcr.io/${owner}/charts/sketchlog" --version "$version"
+          helm lint "sketchlog-${version}.tgz"
+          helm template release-smoke "sketchlog-${version}.tgz" \
+            --set "image.tag=${version}" >/dev/null

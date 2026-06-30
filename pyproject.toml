@@ -48,6 +48,7 @@ test = [
     "pytest-asyncio",
     "numpy",
     "httpx",
+    "httpx2>=2,<3",
     "hypothesis",
     "greenlet",
     "pytest-cov"
@@ -61,6 +62,7 @@ dev = [
     "mypy",
     "pyright",
     "httpx",
+    "httpx2>=2,<3",
     "hypothesis",
     "types-psutil"
 ]

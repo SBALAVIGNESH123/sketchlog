@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Separate cross-platform load correctness from performance enforcement: every
+  request must succeed everywhere, while controlled Linux stress runs enforce
+  median throughput and p99 latency across three trials.
+- Make the WASM source test build its digest-pinned Emscripten runtime from a
+  clean checkout.
+- Exercise installed npm runtimes, the published TypeScript client, the pulled
+  container, and the pulled Helm chart in post-publication smoke tests.
+- Expand React visualization and launch-site tests, align support/security
+  policies, and document the system architecture.
+
 ## 1.2.3
 
 ### Fixed

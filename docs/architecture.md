@@ -1,5 +1,35 @@
 # Architecture & Concepts
 
+## System Overview
+
+```mermaid
+flowchart LR
+    subgraph Ingestion
+        SDKs[Python / TypeScript / Go SDKs]
+        OTel[OpenTelemetry]
+        EBPF[Linux eBPF collector]
+    end
+
+    SDKs --> API[HTTP + WebSocket API]
+    OTel --> API
+    EBPF --> API
+    API --> Registry[Capacity-bounded namespace registry]
+    Registry --> Stream[Per-tenant StreamLog]
+    Stream --> DDS[DDSketch]
+    Stream --> HLL[HyperLogLog]
+    Stream --> CMS[Count-Min Sketch]
+    Stream --> Analysis[SQL / SLO / diff / anomaly]
+    Stream <--> Mesh[Authenticated Sketch Mesh]
+    API --> Dashboard[Live dashboard SDK]
+    API --> Prometheus[Prometheus exporter]
+```
+
+The server validates requests at the API boundary and stores bounded sketch
+state per stream. It does not retain raw event arrays. Namespace authorization
+and the global registry cap are enforced before state is created. Optional mesh
+replication exchanges validated deterministic snapshots between allowlisted
+peers.
+
 ## Accuracy and Guarantees
 
 See [Guarantees](guarantees.md) for published algorithmic bounds, their

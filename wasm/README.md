@@ -25,3 +25,16 @@ Browser bundlers must serve the packaged `dist/sketchlog.wasm` asset and make
 its URL available to the Emscripten loader. See the
 [WASM documentation](https://sbalavignesh123.github.io/sketchlog/features/wasm_runtime/)
 for browser and server-merge examples.
+
+## Source development
+
+Docker is the only build prerequisite. From `wasm/`, run:
+
+```bash
+npm ci
+npm test
+```
+
+`npm test` builds the runtime with a digest-pinned Emscripten image before
+running the Node smoke test, so a clean checkout does not depend on a hidden
+prebuilt `dist/` directory.
