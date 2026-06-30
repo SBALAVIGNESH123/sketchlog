@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import App from './App'
 
@@ -13,6 +13,14 @@ describe('launch website', () => {
         name: /bounded-memory metrics with explicit guarantees/i,
       }),
     ).toBeTruthy()
+    const navigation = within(screen.getByRole('navigation'))
+    expect(navigation.getByRole('link', { name: 'GitHub' }))
+      .toHaveProperty(
+        'href',
+        'https://github.com/SBALAVIGNESH123/sketchlog',
+      )
+    expect(navigation.getByRole('link', { name: 'Features' }))
+      .toHaveProperty('hash', '#features')
     expect(screen.getByRole('link', { name: 'View on GitHub' }))
       .toHaveProperty(
         'href',

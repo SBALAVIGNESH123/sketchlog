@@ -43,7 +43,7 @@ console.log(`Building @sketchlog/wasm with ${image}`);
 const result = spawnSync('docker', args, { stdio: 'inherit' });
 if (result.error) {
   console.error(
-    'Unable to start Docker. Install and start Docker, then rerun npm test.',
+    'Unable to start Docker. Install and start Docker, then rerun npm run build (or npm test).',
   );
   throw result.error;
 }
