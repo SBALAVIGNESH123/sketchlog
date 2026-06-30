@@ -13,9 +13,22 @@ import pytest
 
 pytestmark = [pytest.mark.stress, pytest.mark.load]
 
+
+def _positive_int_env(name: str, default: int) -> int:
+    value = int(os.environ.get(name, str(default)))
+    if value < 1:
+        raise ValueError(f"{name} must be at least 1, got {value}")
+    return value
+
+
+def _assert_p99_within_ceiling(p99: float, maximum_p99_ms: float) -> None:
+    assert p99 <= maximum_p99_ms, (
+        f"p99 {p99:.1f}ms exceeds {maximum_p99_ms:.1f}ms")
+
+
 CONCURRENCY = int(os.environ.get("LOAD_CONCURRENCY", "20"))
 REQUESTS_PER_CLIENT = int(os.environ.get("LOAD_REQUESTS", "50"))
-LOAD_TRIALS = int(os.environ.get("LOAD_TRIALS", "1"))
+LOAD_TRIALS = _positive_int_env("LOAD_TRIALS", 1)
 
 
 def _make_batch(rng: random.Random) -> dict:
@@ -125,8 +138,20 @@ async def test_load_ingestion(live_server, results_dir):
     configured_p99_ceiling = os.environ.get("LOAD_MAX_P99_MS")
     if configured_p99_ceiling is not None:
         maximum_p99_ms = float(configured_p99_ceiling)
-        assert p99 < maximum_p99_ms, (
-            f"p99 {p99:.1f}ms exceeds {maximum_p99_ms:.1f}ms")
+        _assert_p99_within_ceiling(p99, maximum_p99_ms)
+
+
+@pytest.mark.parametrize("configured_value", ["0", "-1"])
+def test_load_trials_must_be_positive(monkeypatch, configured_value):
+    """Reject invalid trial counts before attempting to aggregate results."""
+    monkeypatch.setenv("TEST_LOAD_TRIALS", configured_value)
+    with pytest.raises(ValueError, match="must be at least 1"):
+        _positive_int_env("TEST_LOAD_TRIALS", 1)
+
+
+def test_p99_ceiling_accepts_exact_boundary():
+    """Treat a measurement equal to the configured maximum as acceptable."""
+    _assert_p99_within_ceiling(2000.0, 2000.0)
 
 
 async def _query_worker(client: httpx.AsyncClient, base: str, stream_id: str,
