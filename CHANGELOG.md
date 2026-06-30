@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.3
+
+### Fixed
+
+- Validate the npm publisher identity without requiring unrelated organization
+  administration permission from the least-privilege publishing token.
+
 ## 1.2.2
 
 ### Fixed

@@ -28,7 +28,7 @@ For multi-threaded use:
     # safe to call from any thread
 """
 
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 
 from sketchlog.facade import StreamLog
 from sketchlog.concurrent import ThreadSafeStreamLog
