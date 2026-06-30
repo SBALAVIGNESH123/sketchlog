@@ -26,9 +26,11 @@ Please report all security vulnerabilities via the **[GitHub Security Advisories
 *   **Vulnerability Confirmation & Triage**: Within 5 days.
 *   **Patch Development**: Varies by complexity, but we aim for 14 days.
 
-## SLA & Release Blocking Policy
+## Security Remediation Targets & Release Blocking Policy
 
-To protect our users and software supply chain, Sketchlog enforces the following remediation Service Level Agreement (SLA) for confirmed vulnerabilities:
+These are public maintainer targets for the open-source project, not a
+commercial or contractual service-level agreement. To protect users and the
+software supply chain, confirmed vulnerabilities block releases as follows:
 
 *   **Critical / High Severity**: Must be patched within 30 days. No new feature releases or non-security patches will be published until the vulnerability is resolved.
 *   **Medium / Low Severity**: Will be patched in the next scheduled minor release.

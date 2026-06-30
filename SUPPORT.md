@@ -24,6 +24,6 @@ Instead, please privately report it to the maintainers or use the GitHub Securit
 ## Support Boundaries
 
 Sketchlog is an open-source project maintained by volunteers. While we aim to provide high-quality software, please note:
-*   **No Service Level Agreement (SLA)**: We do not guarantee a response time for issues or discussions.
+*   **No Commercial SLA**: Response times for general issues and discussions are not contractually guaranteed. The separate [security policy](SECURITY.md) publishes maintainer response and remediation targets for privately reported vulnerabilities.
 *   **Community Support**: The primary support mechanism is community-driven. Maintainers will help as time permits.
-*   **Supported Platforms**: We officially support standard CPython distributions (currently 3.9 - 3.12) on Linux, Windows, and macOS. Alternative implementations (e.g., PyPy) or highly specialized architectures may not be fully supported.
+*   **Supported Platforms**: We test CPython 3.10–3.14 on Linux, Windows, and macOS. Published native wheels cover the platform matrix in the [compatibility policy](docs/compatibility.md). Alternative implementations such as PyPy and architectures outside that matrix may use the Python fallback or may not be fully supported.

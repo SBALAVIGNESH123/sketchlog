@@ -18,7 +18,8 @@
     "dist/sketchlog.wasm"
   ],
   "scripts": {
-    "test": "node test/smoke.cjs",
+    "build": "node scripts/build.mjs",
+    "test": "npm run build && node test/smoke.cjs",
     "test:browser": "node test/browser-smoke.mjs"
   },
   "devDependencies": {

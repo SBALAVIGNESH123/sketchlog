@@ -31,7 +31,7 @@ jobs:
 
       - name: Install package
         run: |
-          pip install pytest pytest-asyncio numpy httpx hypothesis
+          pip install pytest pytest-asyncio numpy httpx "httpx2>=2,<3" hypothesis
           pip install .[server]
 
       - name: Verify C++ extension loaded
@@ -256,6 +256,12 @@ jobs:
       - name: Run stress tests
         env:
           SOAK_DURATION: ${{ github.event_name == 'schedule' && '300' || '30' }}
+          # Throughput is enforced only on this controlled Linux runner. Three
+          # trials avoid failing on a single noisy measurement; cross-platform
+          # matrix jobs still validate that every request succeeds.
+          LOAD_TRIALS: "3"
+          LOAD_MIN_RPS: "100"
+          LOAD_MAX_P99_MS: "2000"
         run: python -m pytest tests/test_load.py tests/test_soak.py tests/test_overload.py tests/test_lifecycle.py tests/test_failure_injection.py -v -m "stress" -o asyncio_mode=auto
       - name: Upload results
         if: always()
@@ -355,15 +361,13 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Build WebAssembly runtime
-        run: bash build_wasm.sh
       - name: Install browser test runtime
         working-directory: wasm
         run: |
           npm ci
           npm audit --audit-level=high
           npx playwright install --with-deps chromium
-      - name: Run Node package smoke test
+      - name: Build and run Node package smoke test
         working-directory: wasm
         run: npm test
       - name: Run real-browser smoke test

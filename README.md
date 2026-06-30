@@ -16,6 +16,35 @@ monitoring, edge devices, and memory-constrained environments.
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Sources
+        OTel[OpenTelemetry]
+        Prom[Prometheus clients]
+        SDKs[Python / TypeScript / Go]
+        EBPF[Linux eBPF collector]
+    end
+
+    Sources --> API[SketchLog HTTP + WebSocket API]
+    API --> Registry[Bounded namespace registry]
+    Registry --> Streams[Per-tenant streams]
+    Streams --> DDS[DDSketch percentiles]
+    Streams --> HLL[HyperLogLog cardinality]
+    Streams --> CMS[Count-Min event frequency]
+    Streams --> SQL[Streaming SQL / SLO / anomaly]
+    Streams <--> Mesh[Authenticated Sketch Mesh peers]
+    API --> Live[Live dashboard SDK]
+    API --> Metrics[Prometheus metrics]
+```
+
+Each stream retains bounded sketch state rather than raw telemetry. See the
+[architecture guide](https://sbalavignesh123.github.io/sketchlog/architecture/)
+for merge, windowing, drift, and runtime details.
+
+---
+
 ## 📚 Documentation
 
 The full documentation is available at [SketchLog Documentation Site](https://sbalavignesh123.github.io/sketchlog/) (or via `/docs` in the repository).
