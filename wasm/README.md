@@ -38,3 +38,5 @@ npm test
 `npm test` builds the runtime with a digest-pinned Emscripten image before
 running the Node smoke test, so a clean checkout does not depend on a hidden
 prebuilt `dist/` directory.
+If the pinned image is not already cached, the build retries transient registry
+failures three times with bounded backoff and then runs with `--pull=never`.
