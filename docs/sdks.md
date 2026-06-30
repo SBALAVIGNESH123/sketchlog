@@ -3,7 +3,7 @@
 ## TypeScript
 
 ```bash
-npm install @sketchlog/client@1.2.1
+npm install @sketchlog/client@1.2.2
 ```
 
 ```typescript
@@ -27,7 +27,7 @@ await client.close();
 The Go module lives in this repository:
 
 ```bash
-go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.1
+go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.2
 ```
 
 ```go

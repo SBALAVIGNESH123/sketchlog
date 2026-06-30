@@ -1,7 +1,7 @@
 {
   "name": "@sketchlog/react",
   "private": false,
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "React provider, hooks, and visualizations for SketchLog streams",
   "type": "module",
   "main": "./dist/index.cjs",

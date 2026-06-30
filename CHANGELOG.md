@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.2
+
+### Fixed
+
+- Remove build-only Python packaging tools from the runtime container so the
+  published image does not inherit vulnerabilities from its build environment.
+- Make Helm digest capture work with Helm's stderr output.
+- Verify the pre-created Go module tag before any registry publication, avoiding
+  partial releases when the restricted Actions token cannot create tags.
+
 ## 1.2.1
 
 ### Fixed

@@ -89,7 +89,7 @@ await client.ingestEvents('production_api', {
 
 ### 🐹 Go SDK
 ```bash
-go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.1
+go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.2
 ```
 ```go
 import "github.com/SBALAVIGNESH123/sketchlog/clients/go"
