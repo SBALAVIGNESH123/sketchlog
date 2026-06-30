@@ -67,16 +67,35 @@ def test_alert_state_transitions(mock_webhook):
 def test_webhook_retry_backoff():
     rule = AlertRule(name="test", dimension="test", min_drift_pct=10, webhook_url="http://dummy")
 
-    with patch("urllib.request.urlopen") as mock_urlopen:
-        mock_urlopen.side_effect = Exception("HTTP 503")
+    with patch("sketchlog.alerts._WEBHOOK_OPENER.open") as mock_open:
+        mock_open.side_effect = Exception("HTTP 503")
 
         with patch("time.sleep") as mock_sleep:
             success = WebhookRouter.send_webhook(rule, {"data": 1})
 
             assert not success
-            assert mock_urlopen.call_count == 3
+            assert mock_open.call_count == 3
             mock_sleep.assert_any_call(1)
             mock_sleep.assert_any_call(2)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "https://user:password@example.com/hook",
+        "https://example.com/hook#secret",
+        "relative/path",
+    ],
+)
+def test_alert_rules_reject_unsafe_webhook_urls(url):
+    with pytest.raises(ValueError, match="webhook_url"):
+        AlertRule(
+            name="unsafe",
+            dimension="latency",
+            min_drift_pct=10,
+            webhook_url=url,
+        )
 
 def test_autopilot_alert(mock_webhook):
     ds = DriftSketch(window="1m")

@@ -1,0 +1,17 @@
+{{- if .Values.mesh.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sketchlog.fullname" . }}-headless
+  labels:
+    {{- include "sketchlog.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+  selector:
+    {{- include "sketchlog.selectorLabels" . | nindent 4 }}
+{{- end }}

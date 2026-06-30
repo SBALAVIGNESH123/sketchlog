@@ -18,6 +18,11 @@ class ThreadSafeStreamLog:
             self._log.add_latency(value)
             self.last_updated = time.time()
 
+    @property
+    def relative_accuracy(self) -> float:
+        with self._lock:
+            return self._log.relative_accuracy
+
     def add_batch(self, values: Iterable[float]) -> None:
         with self._lock:
             self._log.add_batch(values)
@@ -89,6 +94,14 @@ class ThreadSafeStreamLog:
         with self._lock:
             self._log.reset()
             self.last_updated = time.time()
+
+    def drain(self) -> StreamLog:
+        """Atomically return current state and replace it with an empty sketch."""
+        with self._lock:
+            snapshot = self._log
+            self._log = snapshot.clone_empty()
+            self.last_updated = time.time()
+            return snapshot
 
     def merge(self, other: Union["ThreadSafeStreamLog", StreamLog]) -> None:
         if isinstance(other, ThreadSafeStreamLog):

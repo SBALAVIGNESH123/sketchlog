@@ -1,10 +1,10 @@
 # SketchLog
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
-![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
+![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**Streaming metrics compression engine. 100M events in 93 KB with bounded error.**
+**Bounded-memory streaming metrics with explicit approximation guarantees.**
 
 SketchLog allows you to ingest high-throughput event streams and extract accurate
 percentiles and cardinalities in constant memory. It combines **DDSketch** for latencies,
@@ -22,15 +22,16 @@ The full documentation is available at [SketchLog Documentation Site](https://sb
 It includes:
 - **Architecture**: Details on distributed merges, drift detection, and memory footprint.
 - **Benchmarks**: Memory footprint scaling and CPU throughput limits.
-- **Guarantees**: Formal mathematical proofs of error bounds.
+- **Guarantees**: Published error bounds, implementation preconditions, and
+  checked capacity limits.
 - **Integrations**: How to integrate with Prometheus, FastAPI, and OpenTelemetry.
-- **API Reference**: Comprehensive listing of classes and methods.
+- **API Reference**: Core classes, methods, and persistence operations.
 - **Contributing**: Guidelines for contributing to SketchLog.
 
 ### Local Documentation Build
 To build and preview the documentation locally:
 ```bash
-pip install mkdocs-material
+pip install ".[docs]"
 mkdocs serve
 ```
 
@@ -78,7 +79,7 @@ import { SketchLogClient } from '@sketchlog/client';
 
 const client = new SketchLogClient({ endpoint: 'http://localhost:8080' });
 
-// Non-blocking, buffered ingest
+// Validated HTTP ingestion with bounded retries
 await client.ingestEvents('production_api', {
   latencies: [42.5, 15.0, 88.2, 42.1],
   uniques: ["user_12345"],
@@ -88,10 +89,10 @@ await client.ingestEvents('production_api', {
 
 ### 🐹 Go SDK
 ```bash
-go get github.com/SBALAVIGNESH123/sketchlog-go
+go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.0
 ```
 ```go
-import "github.com/SBALAVIGNESH123/sketchlog-go"
+import "github.com/SBALAVIGNESH123/sketchlog/clients/go"
 
 client := sketchlog.NewClient(sketchlog.ClientOptions{
     Endpoint: "http://localhost:8080",
@@ -118,7 +119,9 @@ SKETCHLOG_CLUSTER_SECRET="your-secret-token"
 uvicorn sketchlog.server:app --port 8000
 ```
 
-> **Performance Trade-off**: Enabling clustering forces `deterministic=True` for all streams, bypassing the C++ high-performance path and using the pure Python backend. This is necessary because C++ data structures currently do not support serialization and snapshot extraction. Be aware that enabling clustering incurs a significant (~46x) performance penalty for metrics ingestion on the server.
+> **Performance trade-off**: Mesh mode currently uses deterministic Python
+> sketches to guarantee identical merge state across heterogeneous nodes. Measure
+> this mode with your own traffic before capacity planning.
 
 ## Community
 
@@ -138,4 +141,3 @@ SketchLog is a streaming metrics compression layer. It is deliberately not:
 ---
 
 MIT License
-

@@ -1,7 +1,8 @@
 # Formal Error Guarantees
 
-sketchlog is built on three algorithms with **proven mathematical bounds**.
-Every claim in the README traces back to a theorem.
+SketchLog combines three algorithms with published mathematical bounds. Those
+bounds apply under the preconditions below; implementation limits, hash
+assumptions, and windowing semantics are part of the contract.
 
 ---
 
@@ -21,9 +22,12 @@ where alpha is the `relative_accuracy` parameter (default 0.01 = 1%).
 - Does NOT hold for q = 0 (min) or q = 1 (max) — those are tracked exactly
 - Value must be nonzero (zero values stored separately)
 - Error is *relative*, not absolute — small values have small absolute error
+- Each positive and negative store accepts at most 1,024 occupied buckets.
+  Ingestion or merge fails transactionally rather than silently collapsing
+  buckets when that limit would be exceeded.
 
-**Memory:** O(log(max/min) / log(gamma)) buckets, where gamma = (1+alpha)/(1-alpha).
-For typical latency distributions (1ms - 10s), this is ~300-500 buckets = ~6-10 KB.
+**Memory:** At most 1,024 positive and 1,024 negative bucket entries, plus
+constant metadata. Actual byte usage depends on the backend and allocator.
 
 **Merge:** Bucket-wise addition preserves the relative error bound.
 Proven in Theorem 2 of the same paper. No accuracy degradation under merge.
@@ -48,7 +52,8 @@ where m = 2^p registers (p = precision parameter, default 10, so m = 1024).
 - Large range correction removed — not needed for 64-bit hashes (per HLL++ paper)
 - Error is *probabilistic*, not worst-case — ~68% of estimates fall within 1 SE
 
-**Memory:** Exactly m bytes = 2^p bytes. Default: 1024 bytes = 1 KB.
+**Memory:** The register payload is exactly `m = 2^p` bytes (1,024 bytes by
+default). Container and object overhead is additional and backend-dependent.
 
 **Merge:** Register-wise max. Standard HLL merge operation.
 Does not degrade accuracy — merged estimate has same SE as single-stream estimate.
@@ -75,11 +80,13 @@ where:
 **Source:** Theorem 1 in [Cormode & Muthukrishnan, 2005](https://dimacs.rutgers.edu/~graham/pubs/papers/cm-full.pdf)
 
 **Boundary conditions:**
-- CMS **never underestimates** (proven in our stress tests)
+- CMS does not underestimate for accepted positive updates
 - CMS **may overestimate** by up to epsilon * N
 - Overestimation increases with total event count N
 - Works for any item type (strings, integers)
 - Hash quality matters — we use murmur3 finalizer with deterministic seeds
+- Counters are signed 64-bit values. An update or merge that would overflow is
+  rejected transactionally.
 
 **Memory:** width * depth * 8 bytes. Default: 2048 * 5 * 8 = 81,920 bytes = 80 KB.
 
@@ -89,22 +96,23 @@ where:
 
 ## Combined Memory Budget
 
-| Sketch | Formula | Default | Memory |
-|--------|---------|---------|--------|
-| DDSketch | O(log(range) / log(gamma)) * 24 | ~400 buckets | ~6-10 KB |
-| HyperLogLog | 2^p bytes | p=10 | 1 KB |
-| Count-Min Sketch | width * depth * 8 | 2048 * 5 | 80 KB |
-| **Total** | | | **~87-91 KB** |
+| Sketch | Bound or formula | Default payload |
+|--------|------------------|-----------------|
+| DDSketch | At most 2 × 1,024 occupied bucket entries | Depends on occupied buckets and backend |
+| HyperLogLog | `2^p` register bytes | 1 KiB |
+| Count-Min Sketch | `width × depth × 8` counter bytes | 80 KiB |
 
-Memory is **independent of input size**. Whether you process 1K or 1B events,
-the memory stays within this budget (DDSketch grows logarithmically with the
-*range* of values seen, not the *count*).
+`memory_breakdown()` reports SketchLog's backend-specific estimate. Memory is
+bounded by configuration and occupied DDSketch buckets, not by the number of
+accepted events. Process RSS also includes interpreter/runtime, allocator,
+server, and SDK overhead that this method does not report.
 
 ---
 
 ## Merge Safety
 
-All three merge operations are:
+Within matching configurations and representable counter/bucket limits, the
+three merge operations are:
 - **Commutative:** merge(A, B) = merge(B, A)
 - **Associative:** merge(merge(A, B), C) = merge(A, merge(B, C))
 - **Accuracy-preserving:** merged result has same error bounds as single-stream
@@ -116,21 +124,25 @@ This means you can safely:
 
 **Requirement:** All instances must have identical configuration
 (alpha, precision, width, depth). Mismatched configs raise `ValueError`.
+Capacity or counter overflow raises without mutating the destination.
 
 ---
 
 ## Merge Algebra (Commutative Monoid)
 
-StreamLog merge forms a **commutative monoid** — the algebraic structure that
-distributed systems depend on for safe aggregation.
+The underlying bucket addition and register maximum operations have the usual
+commutative-monoid algebra. The concrete API is a **checked partial operation**:
+configuration mismatch, occupied-bucket capacity, or integer overflow can
+reject a merge.
 
 **Definition:** Let `S` be the set of all StreamLog instances with identical
 configuration. Define `⊕` as the merge operation. Then:
 
-1. **Closure:** `A ⊕ B ∈ S` for all A, B in S
-2. **Associativity:** `(A ⊕ B) ⊕ C = A ⊕ (B ⊕ C)`
-3. **Commutativity:** `A ⊕ B = B ⊕ A`
-4. **Identity:** An empty StreamLog `ε` satisfies `A ⊕ ε = A`
+For merges that remain in the representable domain:
+
+1. **Associativity:** `(A ⊕ B) ⊕ C = A ⊕ (B ⊕ C)`
+2. **Commutativity:** `A ⊕ B = B ⊕ A`
+3. **Identity:** An empty StreamLog `ε` satisfies `A ⊕ ε = A`
 
 **Per-sketch proof:**
 
@@ -144,12 +156,13 @@ configuration. Define `⊕` as the merge operation. Then:
 - **Count-Min Sketch:** Cell-wise addition inherits commutativity and
   associativity from integer addition. Total count is additive.
 
-**Why this matters:** Any system that distributes work across N nodes can
-merge results in any order (tree reduce, ring reduce, sequential) and get
-the identical result. No coordination required.
+**Why this matters:** A distributed system may reduce compatible, representable
+states in any order. It must still surface and handle rejected merges; the
+implementation never wraps counters or silently drops excess buckets.
 
-**Verified:** `test_advanced.py` tests 4 proves both properties empirically
-across 30,000 events with mixed distributions.
+Property and integration tests exercise identity, associativity,
+commutativity, cross-backend merge, overflow, and capacity rejection. Tests are
+evidence about this implementation, not a mathematical proof.
 
 ---
 
@@ -162,10 +175,10 @@ Understanding these is essential for production use.
 
 | Condition | Effect | Severity |
 |-----------|--------|----------|
-| Very small values (< 1e-9) | Bucket index becomes very negative, increasing bucket count | Low — memory grows, accuracy preserved |
+| Very small values (< 1e-9) | Bucket index becomes very negative | Accuracy remains bounded while occupied-bucket capacity remains available |
 | Zero values | Stored separately in zero_count, not in logarithmic buckets | None — exact |
 | All-duplicate stream | Single bucket, accuracy depends on bucket boundary | Low — tested at 100K duplicates, error < 2% |
-| Extreme range (1e-10 to 1e10) | ~700+ buckets needed, ~17 KB DDSketch memory | Low — still constant |
+| More than 1,024 occupied buckets per sign | Update or merge is rejected transactionally | Increase relative accuracy or partition streams |
 | Negative latencies | Stored in separate negative bucket store | None — handled correctly |
 
 ### HyperLogLog Bias
@@ -187,8 +200,9 @@ Understanding these is essential for production use.
 | Hash collisions across rows | Still overestimates (CMS is always ≥ true count) | By design |
 | Very large total count N | Additive error bound εN grows with N | Expected — increase width to compensate |
 
-**Key rule:** CMS **never underestimates**. Verified across 1000+ keys with
-deliberately small table (256×3) in `test_production.py`.
+**Key rule:** For accepted positive updates, CMS estimates are never below the
+true count. Tests exercise this invariant with deliberately collision-prone
+tables.
 
 ---
 
@@ -213,14 +227,15 @@ Total memory = `N × single_sketch_size`. This is constant regardless of:
 - Burst traffic patterns
 - Distribution changes over time
 
-**Verified:** `test_production.py` test 3 shows memory ratio of 1.07x after
-3 burst cycles with 30,000 events.
+**Verified:** `test_chaos_windowing` bounds memory after bursts, expiry, and
+reactivation; deterministic window tests cover idle reset and ring wraparound.
 
 ### Merge Correctness Across Windows
 
 Queries merge all active (non-expired) buckets into a temporary sketch.
-Because merge is a commutative monoid operation, the query result is
-independent of bucket rotation timing.
+For compatible states that remain within the checked representable domain,
+merge order does not change the result. Bucket rotation still defines which
+events are active at the instant of the query.
 
 ### Thread Safety
 
@@ -229,7 +244,8 @@ instance, not global. This means:
 - Multiple WindowedStreamLog instances can operate independently
 - A single instance serializes writes correctly under multi-thread access
 
-**Verified:** `test_production.py` test 1 shows zero data loss at 16 threads.
+**Verified:** `test_concurrency_profiling` covers 1, 2, 4, 8, and 16 writer
+threads; `test_thread_safety_built_in` covers concurrent windowed writes.
 
 ---
 
@@ -249,11 +265,13 @@ It is **not** a causal debugging system.
 
 ### What it guarantees
 
-- **Drift detection** is bounded by DDSketch relative error (alpha).
-  If true p99 changed by >20%, DriftSketch will detect it (given sufficient events).
+- **Drift inputs** use DDSketch percentile estimates with configured relative
+  accuracy. Detection itself remains threshold- and sample-dependent; there is
+  no universal false-positive or false-negative guarantee.
 - **Correlation scores** measure co-occurrence of drift direction and magnitude.
   Score of 1.0 = both metrics drifted identically. Score of -1.0 = opposite drift.
-- **Memory** scales as `O(dimensions)` — ~14 KB per tracked dimension.
+- **Memory** scales as `O(dimensions)` with configuration-dependent per-stream
+  memory.
 - **Thread safety** — all operations are lock-protected.
 
 ### What it does NOT guarantee

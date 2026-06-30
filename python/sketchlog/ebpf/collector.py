@@ -4,9 +4,17 @@ import sys
 import threading
 import time
 import ctypes
-from typing import Optional, List, Dict, Any
+import argparse
+import json
+import signal
+import urllib.error
+import urllib.parse
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Optional, List, Dict, Any, Union
 
 from sketchlog.facade import StreamLog
+from sketchlog.concurrent import ThreadSafeStreamLog
 
 from typing import TYPE_CHECKING
 
@@ -27,7 +35,7 @@ class EBPFCollector:
     in kernel space and sync directly into a StreamLog DDSketch.
     """
 
-    def __init__(self, log: StreamLog, min_ns: int = 1000, max_ns: int = 60_000_000_000, poll_interval_sec: float = 1.0):
+    def __init__(self, log: Union[StreamLog, ThreadSafeStreamLog], min_ns: int = 1000, max_ns: int = 60_000_000_000, poll_interval_sec: float = 1.0):
         self.log = log
         self.poll_interval_sec = poll_interval_sec
         self.bpf: Any = None
@@ -141,3 +149,112 @@ class EBPFCollector:
 
                     # Zero the kernel per-cpu counters
                     bucket_counts[ctypes.c_int(i)] = bucket_counts.Leaf()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Collect bounded TCP timing sketches with Linux eBPF")
+    parser.add_argument("--namespace", default="default")
+    parser.add_argument("--stream-id", default="universal-collector")
+    parser.add_argument("--server", required=True)
+    parser.add_argument("--auth-token", default=os.environ.get("SKETCHLOG_AUTH_TOKEN"))
+    parser.add_argument("--flush-interval", type=float, default=5.0)
+    parser.add_argument("--poll-interval", type=float, default=1.0)
+    parser.add_argument("--health-port", type=int, default=9091)
+    args = parser.parse_args()
+
+    if sys.platform != "linux":
+        parser.error("sketchlog-collector requires Linux")
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        parser.error("sketchlog-collector requires root/CAP_BPF privileges")
+    if not HAS_BCC:
+        parser.error("BCC Python bindings are not installed")
+    if args.flush_interval <= 0 or args.poll_interval <= 0:
+        parser.error("flush and poll intervals must be positive")
+    server_url = urllib.parse.urlsplit(args.server)
+    if (
+        server_url.scheme not in ("http", "https")
+        or not server_url.hostname
+        or server_url.username
+        or server_url.password
+        or server_url.path not in ("", "/")
+        or server_url.query
+        or server_url.fragment
+    ):
+        parser.error("--server must be an HTTP(S) origin without credentials or a path")
+
+    log = ThreadSafeStreamLog()
+    collector = EBPFCollector(log, poll_interval_sec=args.poll_interval)
+    stop_event = threading.Event()
+    last_export_error: List[Optional[str]] = [None]
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path not in ("/health", "/ready"):
+                self.send_error(404)
+                return
+            ready = collector._thread is not None and collector._thread.is_alive()
+            if self.path == "/ready" and last_export_error[0]:
+                ready = False
+            body = json.dumps({
+                "status": "ready" if ready else "degraded",
+                "buffered_events": log.total_events,
+                "last_export_error": last_export_error[0],
+            }).encode()
+            self.send_response(200 if ready else 503)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: Any) -> None:
+            return
+
+    health_server = ThreadingHTTPServer(("127.0.0.1", args.health_port), HealthHandler)
+    health_thread = threading.Thread(
+        target=health_server.serve_forever, daemon=True)
+    endpoint = (
+        f"{args.server.rstrip('/')}/v1/namespaces/"
+        f"{urllib.parse.quote(args.namespace, safe='')}/streams/"
+        f"{urllib.parse.quote(args.stream_id, safe='')}/merge"
+    )
+
+    def request_stop(_signum: int, _frame: Any) -> None:
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+    collector.start()
+    health_thread.start()
+    try:
+        while not stop_event.wait(args.flush_interval):
+            snapshot = log.drain()
+            if snapshot.total_events == 0:
+                continue
+            request = urllib.request.Request(
+                endpoint,
+                data=json.dumps({"state": snapshot.to_dict()}).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    **({"X-SketchLog-Auth-Token": args.auth_token}
+                       if args.auth_token else {}),
+                },
+                method="POST",
+            )
+            try:
+                # The base origin is validated above; only quoted namespace and
+                # stream path segments are appended.
+                with urllib.request.urlopen(  # nosec B310
+                        request, timeout=10) as response:
+                    if response.status != 202:
+                        raise RuntimeError(f"unexpected HTTP {response.status}")
+                last_export_error[0] = None
+            except (OSError, RuntimeError) as exc:
+                log.merge(snapshot)
+                last_export_error[0] = str(exc)
+    finally:
+        collector.stop()
+        health_server.shutdown()
+        health_server.server_close()
+        health_thread.join(timeout=5)
+    return 0

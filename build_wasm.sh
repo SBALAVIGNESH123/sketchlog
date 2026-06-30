@@ -1,11 +1,14 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 echo "Compiling SketchLog to WASM..."
 
 mkdir -p wasm/dist
 
-docker run --rm -v "$(pwd):/src" -w /src -u $(id -u):$(id -g) emscripten/emsdk emcc \
+readonly EMSDK_IMAGE="emscripten/emsdk:5.0.4@sha256:ef91f658e0104636cf40a702c99169273969cf04d939f4f08e5d0223965d5788"
+
+docker run --rm -v "$(pwd):/src" -w /src -u "$(id -u):$(id -g)" \
+    "${EMSDK_IMAGE}" emcc \
     -O3 \
     --bind \
     -Iinclude \

@@ -4,10 +4,11 @@ Advanced correctness tests for sketchlog.
 1. Distributed skew merge (heavy-tail shard + uniform shard)
 2. WindowedStreamLog expiration correctness
 3. WindowedStreamLog memory creep under burst traffic
-4. Scale-to-billion proof (extrapolated from 100M)
+4. Configurable bounded-memory scale proof
 5. Merge commutativity and associativity
 """
 
+import os
 import random
 import time
 import pytest
@@ -168,21 +169,31 @@ def test_merge_commutativity_and_associativity():
     assert abs(ab_c.p99() - a_bc.p99()) < 0.001
 
 @pytest.mark.slow
-def test_scale_proof_100m_events():
+def test_scale_proof_configured_events():
     log_scale = StreamLog()
     rnd = random.Random(42)
-    checkpoints = [1_000_000, 10_000_000, 50_000_000, 100_000_000]
+    event_count = int(os.environ.get("SKETCHLOG_SCALE_TEST_EVENTS", "1000000"))
+    assert event_count >= 100_000
+    checkpoints = {
+        max(100_000, event_count // 10),
+        event_count // 2,
+        event_count,
+    }
     memory_log = {}
-    batch_size = 100_000
+    batch_size = min(100_000, event_count // 10)
 
-    for i in range(0, 100_000_000, batch_size):
-        batch = [rnd.lognormvariate(2, 1) for _ in range(batch_size)]
+    for i in range(0, event_count, batch_size):
+        current_batch_size = min(batch_size, event_count - i)
+        batch = [
+            rnd.lognormvariate(2, 1) for _ in range(current_batch_size)
+        ]
         log_scale.add_batch(batch)
-        n = i + batch_size
+        n = i + current_batch_size
         if n in checkpoints:
             memory_log[n] = log_scale.memory_bytes()
 
-    ratio_100m_1m = memory_log[100_000_000] / memory_log[1_000_000]
-    assert ratio_100m_1m < 1.1, f"Memory ratio (100M/1M) = {ratio_100m_1m:.2f}x"
-    assert log_scale.total_events == 100_000_000
+    first_checkpoint = min(checkpoints)
+    memory_ratio = memory_log[event_count] / memory_log[first_checkpoint]
+    assert memory_ratio < 1.1, f"Memory ratio = {memory_ratio:.2f}x"
+    assert log_scale.total_events == event_count
     assert log_scale.p99() > 0.0

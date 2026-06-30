@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["replicaCount", "mesh", "image", "service", "resources", "autoscaling"],
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "mesh": {
+      "type": "object",
+      "required": ["enabled", "clusterSecret"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "clusterSecret": {"type": "string"}
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": ["repository", "pullPolicy", "tag"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        },
+        "tag": {"type": "string"}
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {"type": "boolean"},
+        "automountServiceAccountToken": {"type": "boolean"},
+        "annotations": {"type": "object"},
+        "name": {"type": "string"}
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["type", "port"],
+      "properties": {
+        "type": {"type": "string"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+      }
+    },
+    "resources": {"type": "object"},
+    "autoscaling": {
+      "type": "object",
+      "required": ["enabled", "minReplicas", "maxReplicas"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "minReplicas": {"type": "integer", "minimum": 1},
+        "maxReplicas": {"type": "integer", "minimum": 1},
+        "targetCPUUtilizationPercentage": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 100
+        },
+        "targetMemoryUtilizationPercentage": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {"type": ["string", "number", "boolean"]}
+    },
+    "extraEnv": {
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"replicaCount": {"minimum": 2}},
+        "required": ["replicaCount"]
+      },
+      "then": {
+        "properties": {
+          "mesh": {
+            "properties": {"enabled": {"const": true}},
+            "required": ["enabled"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mesh": {
+            "properties": {"enabled": {"const": true}},
+            "required": ["enabled"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mesh": {
+            "properties": {"clusterSecret": {"minLength": 1}},
+            "required": ["clusterSecret"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "autoscaling": {
+            "properties": {"enabled": {"const": true}},
+            "required": ["enabled"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mesh": {
+            "properties": {"enabled": {"const": true}},
+            "required": ["enabled"]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,41 +1,42 @@
-# WASM Runtime
+# WebAssembly runtime
 
-Because the core of SketchLog is written in highly portable C++, it has been compiled to WebAssembly (WASM) via Emscripten. The **WASM Runtime** allows you to execute the exact same O(1) compression engine directly at the edge or in the user's browser.
-
-## Browser Deployment
-
-Instead of sending thousands of raw interaction events over the network to a central backend (costing bandwidth and battery), you can sketch them on the client and periodically flush the compressed 93KB sketch.
-
-### Installation
+Install the versioned runtime:
 
 ```bash
 npm install @sketchlog/wasm
 ```
 
-### Usage (React/JS)
+Initialization is asynchronous and methods use camelCase:
 
 ```javascript
-import { StreamLog } from '@sketchlog/wasm';
+import { StreamLog } from "@sketchlog/wasm";
 
+await StreamLog.init();
 const log = new StreamLog();
+log.addLatency(42);
+log.addBatch([10, 20, 30]);
 
-// Ingest user interaction latencies locally
-document.addEventListener('click', (e) => {
-    const latency = calculateInteractionDelay();
-    log.add_latency(latency);
-});
-
-// Flush to the backend every 60 seconds
-setInterval(async () => {
-    const payload = log.serialize();
-    await fetch('https://api.yourdomain.com/v1/namespaces/frontend/streams/client-telemetry/merge', {
-        method: 'POST',
-        body: payload
-    });
-    log.reset();
-}, 60000);
+const response = await fetch(
+  "/v1/namespaces/frontend/streams/client-telemetry/merge",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-SketchLog-Auth-Token": token,
+    },
+    body: JSON.stringify(log.serialize()),
+  },
+);
+if (!response.ok) throw new Error(`merge failed: ${response.status}`);
+log.reset();
 ```
 
-## Edge Compute (Cloudflare Workers / Vercel Edge)
+Runtime 64-bit counter getters return `bigint`; serialized counters are decimal
+strings so JSON transport cannot round them.
+The authenticated merge endpoint validates the complete state, dimensions,
+counter sums, and compatibility before merging. Its normal request-size limit
+still applies.
 
-The WASM runtime is fully compatible with Edge runtimes that lack traditional Node.js/Python file system access, making it perfect for aggregating CDN metrics before they hit your origin servers.
+CI builds the Emscripten output and runs the packaged Node smoke test. Browser
+deployments must provide the generated `.wasm` file through the package's
+`locateFile` mechanism when their bundler does not do so automatically.

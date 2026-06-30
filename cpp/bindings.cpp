@@ -12,8 +12,41 @@
 
 #include <string>
 #include <vector>
+#include <limits>
 
 namespace py = pybind11;
+
+template <typename Sketch>
+void add_python_batch(Sketch& self, const py::object& values) {
+    // Check the buffer protocol first so ordinary Python iterables do not
+    // trigger NumPy's lazy import machinery.
+    if (PyObject_CheckBuffer(values.ptr())) {
+        auto raw = py::array::ensure(values);
+        if (!raw) {
+            throw std::invalid_argument("Batch buffer cannot be interpreted as an array");
+        }
+        if (raw.ndim() != 1) {
+            throw std::invalid_argument("NumPy batch input must be one-dimensional");
+        }
+        using ContiguousDoubles = py::array_t<
+            double, py::array::c_style | py::array::forcecast>;
+        auto arr = ContiguousDoubles::ensure(values);
+        if (!arr) {
+            throw std::invalid_argument(
+                "NumPy batch input cannot be converted to contiguous float64 values");
+        }
+        auto info = arr.request();
+        self.add_batch(static_cast<const double*>(info.ptr),
+                       static_cast<size_t>(info.shape[0]));
+        return;
+    }
+
+    std::vector<double> vec;
+    for (auto item : py::iter(values)) {
+        vec.push_back(item.cast<double>());
+    }
+    self.add_batch(vec.data(), vec.size());
+}
 
 PYBIND11_MODULE(_sketchlog_cpp, m) {
     m.doc() = "sketchlog C++ core — constant-memory streaming analytics engine";
@@ -27,28 +60,8 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         .def(py::init<double>(), py::arg("relative_accuracy") = 0.01)
         .def("add", py::overload_cast<double>(&sketchlog::DDSketch::add),
              py::arg("value"), "Add a single observation.")
-        .def("add_batch", [](sketchlog::DDSketch& self, py::object values) {
-            bool fast_path_used = false;
-
-            try {
-                if (py::isinstance<py::array_t<double>>(values)) {
-                    auto arr = values.cast<py::array_t<double>>();
-                    auto buf = arr.unchecked<1>();
-                    self.add_batch(buf.data(0), buf.shape(0));
-                    fast_path_used = true;
-                }
-            } catch (const py::error_already_set&) {
-                // numpy not installed or cast failed, ignore and fallback
-            }
-
-            if (!fast_path_used) {
-                std::vector<double> vec;
-                for (auto item : py::iter(values)) {
-                    vec.push_back(item.cast<double>());
-                }
-                self.add_batch(vec.data(), vec.size());
-            }
-        }, py::arg("values"), "Bulk-add values from an iterable (fast path for numpy arrays).")
+        .def("add_batch", &add_python_batch<sketchlog::DDSketch>,
+             py::arg("values"), "Bulk-add values from an iterable (fast path for numpy arrays).")
         .def("quantile", &sketchlog::DDSketch::quantile, py::arg("q"))
         .def("min", &sketchlog::DDSketch::min)
         .def("max", &sketchlog::DDSketch::max)
@@ -128,29 +141,8 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         // ─── Latency ─────────────────────────────────────────────────
         .def("add_latency", &sketchlog::StreamLog::add_latency,
              py::arg("value"), "Add a latency measurement.")
-        .def("add_batch", [](sketchlog::StreamLog& self,
-                              py::object values) {
-            bool fast_path_used = false;
-
-            try {
-                if (py::isinstance<py::array_t<double>>(values)) {
-                    auto arr = values.cast<py::array_t<double>>();
-                    auto buf = arr.unchecked<1>();
-                    self.add_batch(buf.data(0), buf.shape(0));
-                    fast_path_used = true;
-                }
-            } catch (const py::error_already_set&) {
-                // numpy not installed or cast failed, ignore and fallback
-            }
-
-            if (!fast_path_used) {
-                std::vector<double> vec;
-                for (auto item : py::iter(values)) {
-                    vec.push_back(item.cast<double>());
-                }
-                self.add_batch(vec.data(), vec.size());
-            }
-        }, py::arg("values"),
+        .def("add_batch", &add_python_batch<sketchlog::StreamLog>,
+             py::arg("values"),
            "Bulk-add latency values from an iterable (fast path for numpy arrays).")
         .def("percentile", &sketchlog::StreamLog::percentile, py::arg("q"))
         .def("p50", &sketchlog::StreamLog::p50)
@@ -160,10 +152,22 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
         .def("count_greater_than", &sketchlog::StreamLog::count_greater_than, py::arg("threshold"))
 
         // ─── Events ──────────────────────────────────────────────────
-        .def("add_event", &sketchlog::StreamLog::add_event,
+        .def("add_event",
+             py::overload_cast<const std::string&, int64_t>(
+                 &sketchlog::StreamLog::add_event),
              py::arg("name"), py::arg("count") = 1)
-        .def("event_count", &sketchlog::StreamLog::event_count,
+        .def("add_event",
+             py::overload_cast<uint64_t, int64_t>(
+                 &sketchlog::StreamLog::add_event),
+             py::arg("key"), py::arg("count") = 1)
+        .def("event_count",
+             py::overload_cast<const std::string&>(
+                 &sketchlog::StreamLog::event_count, py::const_),
              py::arg("name"))
+        .def("event_count",
+             py::overload_cast<uint64_t>(
+                 &sketchlog::StreamLog::event_count, py::const_),
+             py::arg("key"))
 
         // ─── Cardinality ─────────────────────────────────────────────
         .def("add_unique", py::overload_cast<const std::string&>(
@@ -213,7 +217,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             py::dict pos;
             for (size_t i = 0; i < lat.pos_bins.size(); ++i) {
                 if (lat.pos_bins[i] > 0) {
-                    pos[py::str(std::to_string(lat.pos_offset + static_cast<int>(i)))] = lat.pos_bins[i];
+                    pos[py::str(std::to_string(lat.pos_indices[i]))] = lat.pos_bins[i];
                 }
             }
             latency["positive"] = pos;
@@ -221,7 +225,7 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             py::dict neg;
             for (size_t i = 0; i < lat.neg_bins.size(); ++i) {
                 if (lat.neg_bins[i] > 0) {
-                    neg[py::str(std::to_string(lat.neg_offset + static_cast<int>(i)))] = lat.neg_bins[i];
+                    neg[py::str(std::to_string(lat.neg_indices[i]))] = lat.neg_bins[i];
                 }
             }
             latency["negative"] = neg;
@@ -256,19 +260,37 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             return d;
         })
         .def_static("from_dict", [](py::dict d) {
-            if (!d.contains("version") || d["version"].cast<int>() != 1) {
-                throw std::invalid_argument("Unsupported or missing serialization version");
+            // Run the same canonical validator used by the pure-Python
+            // backend before constructing or allocating any C++ sketch state.
+            // This prevents backend-specific accept/reject drift and bounds
+            // dimensions/bucket counts before native state is allocated.
+            py::object validated = py::module_::import("sketchlog.facade")
+                .attr("_PythonStreamLog").attr("from_dict")(d);
+            d = validated.attr("to_dict")().cast<py::dict>();
+
+            if (d["deterministic"].cast<bool>()) {
+                throw std::invalid_argument(
+                    "Deterministic serialized state must use the Python backend");
             }
 
             py::dict lat_d = d["latency"].cast<py::dict>();
             py::dict uni_d = d["uniques"].cast<py::dict>();
             py::dict ev_d = d["events"].cast<py::dict>();
 
+            const size_t width = ev_d["width"].cast<size_t>();
+            const size_t depth = ev_d["depth"].cast<size_t>();
+            constexpr size_t MAX_CMS_CELLS = 1'000'000;
+            if (depth == 0 || width == 0
+                    || width > MAX_CMS_CELLS / depth) {
+                throw std::invalid_argument(
+                    "CountMinSketch dimensions exceed bounded capacity");
+            }
+
             sketchlog::StreamLog log(
                 lat_d["alpha"].cast<double>(),
                 uni_d["precision"].cast<uint8_t>(),
-                ev_d["width"].cast<size_t>(),
-                ev_d["depth"].cast<size_t>()
+                width,
+                depth
             );
 
             // Latency
@@ -285,41 +307,58 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             }
 
             py::dict pos = lat_d["positive"].cast<py::dict>();
-            int p_min = 0, p_max = 0;
-            bool p_empty = true;
-            for (auto item : pos) {
-                int k = std::stoi(item.first.cast<py::str>().cast<std::string>());
-                if (p_empty) { p_min = p_max = k; p_empty = false; }
-                else { p_min = std::min(p_min, k); p_max = std::max(p_max, k); }
-            }
-            lat.pos_empty = p_empty;
-            lat.pos_min_index = p_min;
-            lat.pos_max_index = p_max;
-            lat.pos_offset = p_empty ? 0 : p_min;
-            if (!p_empty) {
-                lat.pos_bins.resize(p_max - p_min + 1, 0);
-                for (auto item : pos) {
-                    lat.pos_bins[std::stoi(item.first.cast<py::str>().cast<std::string>()) - p_min] = item.second.cast<int64_t>();
+            auto parse_bucket_key = [](py::handle value) -> int {
+                if (py::isinstance<py::int_>(value)) {
+                    return value.cast<int>();
                 }
+                if (!py::isinstance<py::str>(value)) {
+                    throw std::invalid_argument(
+                        "DDSketch bucket keys must be integers or canonical integer strings");
+                }
+                const std::string text = value.cast<std::string>();
+                size_t consumed = 0;
+                int result = 0;
+                try {
+                    result = std::stoi(text, &consumed);
+                } catch (const std::exception&) {
+                    throw std::invalid_argument("Invalid DDSketch bucket key");
+                }
+                if (consumed != text.size() || std::to_string(result) != text) {
+                    throw std::invalid_argument(
+                        "DDSketch bucket keys must be canonical integer strings");
+                }
+                return result;
+            };
+
+            std::vector<std::pair<int, int64_t>> pos_entries;
+            pos_entries.reserve(pos.size());
+            for (auto item : pos) {
+                pos_entries.emplace_back(
+                    parse_bucket_key(item.first), item.second.cast<int64_t>());
+            }
+            std::sort(pos_entries.begin(), pos_entries.end());
+            lat.pos_empty = pos_entries.empty();
+            lat.pos_min_index = lat.pos_empty ? 0 : pos_entries.front().first;
+            lat.pos_max_index = lat.pos_empty ? 0 : pos_entries.back().first;
+            for (const auto& [index, count] : pos_entries) {
+                lat.pos_indices.push_back(index);
+                lat.pos_bins.push_back(count);
             }
 
             py::dict neg = lat_d["negative"].cast<py::dict>();
-            int n_min = 0, n_max = 0;
-            bool n_empty = true;
+            std::vector<std::pair<int, int64_t>> neg_entries;
+            neg_entries.reserve(neg.size());
             for (auto item : neg) {
-                int k = std::stoi(item.first.cast<py::str>().cast<std::string>());
-                if (n_empty) { n_min = n_max = k; n_empty = false; }
-                else { n_min = std::min(n_min, k); n_max = std::max(n_max, k); }
+                neg_entries.emplace_back(
+                    parse_bucket_key(item.first), item.second.cast<int64_t>());
             }
-            lat.neg_empty = n_empty;
-            lat.neg_min_index = n_min;
-            lat.neg_max_index = n_max;
-            lat.neg_offset = n_empty ? 0 : n_min;
-            if (!n_empty) {
-                lat.neg_bins.resize(n_max - n_min + 1, 0);
-                for (auto item : neg) {
-                    lat.neg_bins[std::stoi(item.first.cast<py::str>().cast<std::string>()) - n_min] = item.second.cast<int64_t>();
-                }
+            std::sort(neg_entries.begin(), neg_entries.end());
+            lat.neg_empty = neg_entries.empty();
+            lat.neg_min_index = lat.neg_empty ? 0 : neg_entries.front().first;
+            lat.neg_max_index = lat.neg_empty ? 0 : neg_entries.back().first;
+            for (const auto& [index, count] : neg_entries) {
+                lat.neg_indices.push_back(index);
+                lat.neg_bins.push_back(count);
             }
             log.set_latency_state(lat);
 
@@ -327,7 +366,17 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             sketchlog::HyperLogLog::State uni;
             uni.precision = uni_d["precision"].cast<uint8_t>();
             py::list regs = uni_d["registers"].cast<py::list>();
-            for (auto r : regs) uni.registers.push_back(r.cast<uint8_t>());
+            const size_t expected_registers = size_t{1} << uni.precision;
+            if (static_cast<size_t>(py::len(regs)) != expected_registers) {
+                throw std::invalid_argument("HyperLogLog register count mismatch");
+            }
+            for (auto r : regs) {
+                const int value = r.cast<int>();
+                if (value < 0 || value > 64 - uni.precision + 1) {
+                    throw std::invalid_argument("HyperLogLog register value out of range");
+                }
+                uni.registers.push_back(static_cast<uint8_t>(value));
+            }
             log.set_uniques_state(uni);
 
             // Events
@@ -336,13 +385,29 @@ PYBIND11_MODULE(_sketchlog_cpp, m) {
             ev.depth = ev_d["depth"].cast<size_t>();
             ev.total_count = ev_d["total"].cast<int64_t>();
             py::list table = ev_d["table"].cast<py::list>();
+            if (static_cast<size_t>(py::len(table)) != depth) {
+                throw std::invalid_argument("CountMinSketch row count mismatch");
+            }
             for (auto r : table) {
                 py::list row = r.cast<py::list>();
-                for (auto c : row) ev.table.push_back(c.cast<int64_t>());
+                if (static_cast<size_t>(py::len(row)) != width) {
+                    throw std::invalid_argument("CountMinSketch column count mismatch");
+                }
+                for (auto c : row) {
+                    ev.table.push_back(c.cast<int64_t>());
+                }
             }
             log.set_events_state(ev);
 
-            log.set_total_events(d["total"].cast<uint64_t>());
+            const uint64_t total = d["total"].cast<uint64_t>();
+            if (ev.total_count < 0
+                    || std::numeric_limits<uint64_t>::max() - lat.count
+                       < static_cast<uint64_t>(ev.total_count)
+                    || total != lat.count + static_cast<uint64_t>(ev.total_count)) {
+                throw std::invalid_argument(
+                    "StreamLog total does not match latency and event totals");
+            }
+            log.set_total_events(total);
 
             return log;
         })

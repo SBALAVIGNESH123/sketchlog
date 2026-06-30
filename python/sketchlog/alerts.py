@@ -3,6 +3,7 @@ import math
 import json
 import urllib.request
 import urllib.error
+import urllib.parse
 import threading
 import logging
 from dataclasses import dataclass, field
@@ -14,6 +15,30 @@ import hashlib
 from sketchlog.drift import DriftSketch
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_webhook_url(url: Optional[str]) -> None:
+    if url is None:
+        return
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("webhook_url must be an absolute HTTP(S) URL")
+    if parsed.username or parsed.password:
+        raise ValueError("webhook_url must not contain credentials")
+    if parsed.fragment:
+        raise ValueError("webhook_url must not contain a fragment")
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, req: Any, fp: Any, code: int, msg: str,
+        headers: Any, newurl: str,
+    ) -> None:
+        return None
+
+
+_WEBHOOK_OPENER = urllib.request.build_opener(_NoRedirectHandler())
+
 
 class AlertStatus(Enum):
     OK = "OK"
@@ -32,12 +57,15 @@ class AlertRule:
     webhook_secret: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if self.sustained_windows <= 0:
+        if type(self.sustained_windows) is not int or self.sustained_windows <= 0:
             raise ValueError("sustained_windows must be > 0")
-        if self.min_samples < 0:
+        if type(self.min_samples) is not int or self.min_samples < 0:
             raise ValueError("min_samples must be >= 0")
-        if self.min_drift_pct < 0:
-            raise ValueError("min_drift_pct must be >= 0")
+        if not math.isfinite(self.min_drift_pct) or self.min_drift_pct < 0:
+            raise ValueError("min_drift_pct must be finite and >= 0")
+        if self.direction_filter not in (None, "up", "down"):
+            raise ValueError("direction_filter must be 'up', 'down', or None")
+        _validate_webhook_url(self.webhook_url)
 
 @dataclass
 class AlertState:
@@ -55,6 +83,17 @@ class AutoPilotRule:
     direction_filter: Optional[str] = "up"
     webhook_url: Optional[str] = None
     webhook_secret: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.sensitivity) or self.sensitivity <= 0:
+            raise ValueError("sensitivity must be a positive finite number")
+        if type(self.min_samples) is not int or self.min_samples < 0:
+            raise ValueError("min_samples must be >= 0")
+        if type(self.sustained_windows) is not int or self.sustained_windows <= 0:
+            raise ValueError("sustained_windows must be > 0")
+        if self.direction_filter not in (None, "up", "down"):
+            raise ValueError("direction_filter must be 'up', 'down', or None")
+        _validate_webhook_url(self.webhook_url)
 
 @dataclass
 class CUSUMState:
@@ -118,10 +157,14 @@ class WebhookRouter:
 
         for attempt in range(3):
             try:
-                with urllib.request.urlopen(req, timeout=5):
+                with _WEBHOOK_OPENER.open(req, timeout=5):
                     return True
             except Exception as e:
-                logger.warning(f"Webhook delivery failed for {rule.name}: {e}")
+                logger.warning(
+                    "Webhook delivery failed for %s (%s)",
+                    rule.name,
+                    type(e).__name__,
+                )
                 if attempt < 2:
                     time.sleep(2 ** attempt)
 

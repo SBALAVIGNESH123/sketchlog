@@ -1,5 +1,3 @@
-import React from 'react';
-
 export function CodePreview() {
   return (
     <div className="container section delay-300 animate-fade-in-up">
@@ -13,17 +11,18 @@ export function CodePreview() {
         <div className="code-block">
 <pre><code><span className="token-keyword">from</span> sketchlog <span className="token-keyword">import</span> StreamLog
 
-<span className="token-comment"># Initialize high-performance sketching engine</span>
+<span className="token-comment"># Create one bounded-memory metric stream</span>
 log = StreamLog()
 
-<span className="token-comment"># Ingest millions of events instantly (C++ fast-path)</span>
-log.<span className="token-function">add_latencies</span>(<span className="token-string">"api_latency"</span>, [<span className="token-number">42.5</span>, <span className="token-number">12.1</span>, <span className="token-number">55.0</span>, ...<span className="token-number">100_000_000</span> more])
+<span className="token-comment"># Use the batch path for latency observations</span>
+log.<span className="token-function">add_batch</span>([<span className="token-number">42.5</span>, <span className="token-number">12.1</span>, <span className="token-number">55.0</span>])
 
-<span className="token-comment"># Query exact percentiles with mathematical guarantees</span>
-p99 = log.<span className="token-function">p99</span>(<span className="token-string">"api_latency"</span>)
+<span className="token-comment"># Query an approximate percentile with configured relative accuracy</span>
+p99 = log.<span className="token-function">p99</span>()
 <span className="token-function">print</span>(<span className="token-string">{"f\"p99 Latency: {p99}ms\""}</span>)
 
-<span className="token-comment"># Memory footprint? Consistently &lt; 100 KB.</span></code></pre>
+<span className="token-comment"># Inspect the configuration-dependent memory estimate</span>
+<span className="token-function">print</span>(log.<span className="token-function">memory_breakdown</span>())</code></pre>
         </div>
       </div>
 

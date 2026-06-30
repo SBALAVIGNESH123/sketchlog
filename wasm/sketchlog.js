@@ -14,6 +14,23 @@ if (typeof require !== 'undefined' && typeof module !== 'undefined' && module.ex
 
 let wasmModule = null;
 let initPromise = null;
+const MAX_INT64 = (1n << 63n) - 1n;
+const MAX_UINT64 = (1n << 64n) - 1n;
+
+function toBoundedBigInt(value, maximum, label, strictlyPositive = false) {
+    let normalized;
+    if (typeof value === 'bigint') {
+        normalized = value;
+    } else if (typeof value === 'number' && Number.isSafeInteger(value)) {
+        normalized = BigInt(value);
+    } else {
+        throw new TypeError(`${label} must be a safe integer or bigint`);
+    }
+    if ((strictlyPositive ? normalized <= 0n : normalized < 0n) || normalized > maximum) {
+        throw new RangeError(`${label} is outside its supported integer range`);
+    }
+    return normalized;
+}
 
 // Ensure WASM module is loaded only once
 async function getModule(options = {}) {
@@ -67,7 +84,8 @@ class StreamLog {
     }
 
     addEvent(name, count = 1) {
-        this._internal.add_event(name, count);
+        this._internal.add_event(
+            name, toBoundedBigInt(count, MAX_INT64, "count", true));
     }
 
     eventCount(name) {
@@ -77,11 +95,9 @@ class StreamLog {
     addUnique(item) {
         if (typeof item === 'string') {
             this._internal.add_unique_string(item);
-        } else if (typeof item === 'number') {
-            if (!Number.isSafeInteger(item) || item < 0) {
-                throw new TypeError("Numeric items must be safe non-negative integers for addUnique");
-            }
-            this._internal.add_unique_int(item);
+        } else if (typeof item === 'number' || typeof item === 'bigint') {
+            this._internal.add_unique_int(
+                toBoundedBigInt(item, MAX_UINT64, "item"));
         } else {
             throw new Error("Item must be string or number");
         }
@@ -116,6 +132,10 @@ class StreamLog {
 
     toDict() {
         return this._internal.to_dict();
+    }
+
+    serialize() {
+        return { state: this.toDict() };
     }
 
     stats() {

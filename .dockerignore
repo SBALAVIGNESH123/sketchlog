@@ -2,7 +2,9 @@
 .github
 .agents
 build
+build-*
 dist
+**/dist
 docs
 tests
 venv
@@ -29,3 +31,11 @@ jobs_new.json
 !pyproject.toml
 !README.md
 website/
+frontend/
+clients/
+wasm/
+**/node_modules/
+.tools-*/
+.venv-*/
+coverage.json
+benchmark_*.json

@@ -1,8 +1,7 @@
 """
 sketchlog -- Streaming metrics engine with constant memory.
 
-Track p99 latency, event frequency, and cardinality over
-billions of events using ~93 KB of RAM.
+Track p99 latency, event frequency, and cardinality in bounded memory.
 
     from sketchlog import StreamLog
 
@@ -11,7 +10,7 @@ billions of events using ~93 KB of RAM.
         log.add_latency(latency)
 
     print(log.p99())              # bounded-error p99
-    print(log.memory_kb(), "KB")  # constant ~93 KB
+    print(log.memory_kb(), "KB")  # configuration-dependent bounded memory
 
 For real-time windows:
 
@@ -29,7 +28,7 @@ For multi-threaded use:
     # safe to call from any thread
 """
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 from sketchlog.facade import StreamLog
 from sketchlog.concurrent import ThreadSafeStreamLog
@@ -41,6 +40,7 @@ from sketchlog.core.ddsketch import DDSketch
 from sketchlog.core.hll import HyperLogLog
 from sketchlog.core.cms import CountMinSketch
 from sketchlog.ebpf import EBPFCollector
+from sketchlog.diff import SketchDiff
 
 import time as _time
 
@@ -54,7 +54,8 @@ __all__ = [
     "DDSketch",
     "HyperLogLog",
     "CountMinSketch",
-    "EBPFCollector"
+    "EBPFCollector",
+    "SketchDiff",
 ]
 
 # ── C++ backend auto-detection ───────────────────────────────────────────

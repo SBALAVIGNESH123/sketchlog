@@ -20,6 +20,11 @@ __pycache__/
 dist/
 *.whl
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.json
+coverage.xml
+benchmark_*.json
 
 # IDE
 .vscode/
@@ -35,6 +40,8 @@ Thumbs.db
 # Virtual environments
 venv*/
 .venv/
+.venv-*/
+.tools-*/
 venv/
 site/
 py38/
@@ -52,3 +59,4 @@ yarn-error.log*
 
 build-cmake/
 build-check/
+build-*/

@@ -1,5 +1,6 @@
 import pytest
-from sketchlog.sql import SQLParser, SQLStreamEngine
+from sketchlog import StreamLog
+from sketchlog.sql import SQLParser, SQLStreamEngine, execute_stream_query
 
 def test_sql_parser():
     q1 = "SELECT p99(latency) AS p99_lat, unique_count(user_id) FROM stream GROUP BY endpoint, method HAVING p99_lat > 100"
@@ -64,3 +65,46 @@ def test_sql_stream_engine_having_eq():
     assert len(results) == 1
     assert results[0]["endpoint"] == "/a"
     assert results[0]["users"] == 2
+
+
+def test_documented_live_stream_grammar():
+    log = StreamLog(deterministic=True)
+    log.add_batch([10.0, 20.0, 100.0])
+    log.add_unique("alice")
+    log.add_event("HTTP_500", 3)
+
+    p99 = SQLParser('SELECT p99(latency) FROM "default/my-service"').parse()
+    uniques = SQLParser(
+        'SELECT count_unique(users) FROM "default/my-service"').parse()
+    events = SQLParser(
+        "SELECT event_count(errors, 'HTTP_500') FROM \"default/my-service\""
+    ).parse()
+
+    assert execute_stream_query(p99, log)["p99(latency)"] > 90
+    assert execute_stream_query(uniques, log)["count_unique(users)"] == 1
+    assert execute_stream_query(events, log)[
+        "event_count(errors, 'HTTP_500')"] == 3
+
+
+def test_having_rejects_executable_ast_nodes():
+    engine = SQLStreamEngine(
+        "SELECT event_count(*) AS total FROM stream "
+        "HAVING __import__('os').system('echo unsafe') = 0"
+    )
+    engine.add_row({})
+    assert engine.execute_query() == []
+
+
+def test_parser_handles_whitespace_and_quoted_keywords_linearly():
+    query = (
+        " SELECT  p99(latency)  AS tail\n"
+        " FROM \"default/from stream\"  GROUP   BY endpoint "
+        " HAVING tail > 10 "
+    )
+    plan = SQLParser(query).parse()
+    assert plan["from"] == '"default/from stream"'
+    assert plan["group_by"] == ["endpoint"]
+    assert plan["having"] == "tail > 10"
+
+    with pytest.raises(ValueError, match="4096"):
+        SQLParser("SELECT " + ("x" * 4096) + " FROM stream")

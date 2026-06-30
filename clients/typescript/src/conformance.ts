@@ -5,7 +5,8 @@ async function main() {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
     options: {
-      endpoint: { type: 'string', default: 'http://127.0.0.1:8999' }
+      endpoint: { type: 'string', default: 'http://127.0.0.1:8999' },
+      token: { type: 'string' },
     },
     allowPositionals: true
   });
@@ -13,6 +14,7 @@ async function main() {
   const command = positionals[0];
   const client = new SketchLogClient({
     endpoint: values.endpoint!,
+    authToken: values.token,
     maxRetries: 3,
     timeoutMs: 5000
   });
@@ -26,8 +28,34 @@ async function main() {
       });
       console.log('Ingest success');
     } else if (command === 'test-retries') {
-      await (client as any).request('GET', '/test/flake');
+      await client.health();
       console.log('Retry/Health success');
+    } else if (command === 'test-transport-retries') {
+      const started = Date.now();
+      try {
+        await client.health();
+        throw new Error('Expected transport failure');
+      } catch (error) {
+        if (error instanceof SketchLogError && error.status === 0
+            && Date.now() - started >= 600) {
+          console.log('Transport retries success');
+        } else {
+          throw error;
+        }
+      }
+    } else if (command === 'test-auth-missing' || command === 'test-auth-invalid') {
+      const unauthorized = new SketchLogClient({
+        endpoint: values.endpoint!,
+        authToken: command === 'test-auth-invalid' ? 'wrong-token' : undefined,
+        maxRetries: 0,
+      });
+      try {
+        await unauthorized.ingestEvents('auth-test', { latencies: [1] });
+        throw new Error('Expected authentication failure');
+      } catch (error) {
+        if (!(error instanceof SketchLogError) || error.status !== 401) throw error;
+        console.log('Authentication rejection success');
+      }
     } else {
       console.error(`Unknown command: ${command}`);
       process.exit(1);

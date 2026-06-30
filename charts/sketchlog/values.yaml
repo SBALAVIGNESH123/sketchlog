@@ -4,6 +4,12 @@
 
 replicaCount: 1
 
+mesh:
+  enabled: false
+  # Required when mesh is enabled. Prefer injecting this through a protected
+  # values source; it is stored in a Kubernetes Secret.
+  clusterSecret: ""
+
 image:
   repository: ghcr.io/sbalavignesh123/sketchlog
   pullPolicy: IfNotPresent
@@ -16,6 +22,7 @@ fullnameOverride: ""
 
 serviceAccount:
   create: true
+  automountServiceAccountToken: false
   annotations: {}
   name: ""
 
@@ -25,6 +32,8 @@ podSecurityContext:
   fsGroup: 10001
   runAsUser: 10001
   runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -84,7 +93,9 @@ affinity: {}
 env:
   SKETCHLOG_MAX_STREAMS: "1000"
   SKETCHLOG_MEMORY_THRESHOLD: "90"
-  # Add other environment variables here
+
+# Additional Kubernetes EnvVar objects, including secretKeyRef/configMapKeyRef.
+extraEnv: []
 
 serviceMonitor:
   enabled: false

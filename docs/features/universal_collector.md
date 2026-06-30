@@ -1,49 +1,31 @@
-# Universal Collector
+# Linux eBPF collector
 
-The **Universal Collector** is a zero-instrumentation sidecar or daemon that automatically intercepts and sketches network and system metrics using **eBPF** (Extended Berkeley Packet Filter).
+The collector is a Linux/BCC TCP timing collector. It attaches kprobes to
+`tcp_sendmsg`, `tcp_cleanup_rbuf`, and `tcp_close`, periodically drains bounded
+kernel buckets, and sends validated sketches to the server merge endpoint.
+It does not claim HTTP/gRPC semantics, language uprobes, process attribution,
+or container discovery.
 
-This means you can capture accurate latencies, throughput, and error rates *without modifying a single line of application code*.
+Requirements:
 
-## eBPF Integration
-
-The collector loads our highly optimized eBPF program (`ebpf/bpf_code.c`) into the kernel. It attaches to:
-1. `kprobes` for socket send/recv (to measure network latencies).
-2. `uprobes` for standard library HTTP/gRPC calls (Go, Node.js, Python).
-
-As packets flow, the eBPF program captures and summarizes raw events into in-kernel BPF maps. Periodically, the SketchLog agent reads these kernel maps and constructs the `DDSketch` in userspace. The total data transferred from kernel to userspace remains extremely small, and accessing the map entries is an O(1) operation.
-
-## Getting Started
-
-### 1. Prerequisites
-
-- A Linux kernel version 5.4 or higher (for `bpf_spin_lock` and map-in-map support).
-- Root privileges (to load the eBPF program).
-
-### 2. Running the Collector
-
-You can run the collector as a standalone daemon or a DaemonSet in Kubernetes:
+- Linux with BCC-compatible kernel headers and BCC Python bindings;
+- root or the kernel capabilities needed to load and attach BPF programs;
+- network access to a SketchLog server.
 
 ```bash
-sudo sketchlog-collector --namespace k8s-cluster-1
+sudo sketchlog-collector \
+  --server https://sketchlog.example \
+  --namespace production \
+  --stream-id tcp-timing \
+  --auth-token "$SKETCHLOG_AUTH_TOKEN" \
+  --flush-interval 5
 ```
 
-By default, the collector will auto-discover running containers and tag streams with the container name (e.g., `k8s-cluster-1/payment-pod`).
+`GET /health` and `GET /ready` are served on loopback port 9091 by default.
+Readiness becomes degraded after an export failure and reports buffered event
+count. Failed exports are merged back into the local buffer. SIGINT/SIGTERM
+stops probes and the health server cleanly.
 
-## Advanced Configuration
-
-You can filter which processes or ports the collector monitors using a YAML config file:
-
-```yaml
-collector:
-  namespace: "production"
-  bpf:
-    attach_ports:
-      - 80
-      - 443
-      - 8080
-    ignore_namespaces:
-      - "kube-system"
-  export:
-    mesh_address: "http://sketchlog-mesh.internal:8000"
-    flush_interval_ms: 1000
-```
+The CLI exits non-zero on non-Linux systems, missing BCC, missing privileges,
+or invalid intervals. Kernel-level validation requires a privileged Linux CI
+runner and is separate from the mocked unit tests.

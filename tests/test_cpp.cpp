@@ -197,7 +197,50 @@ void test_overflow_guards() {
     assert(caught && "StreamLog should throw on CountMinSketch overflow during merge");
     assert(log1.p99() == p99_before && "StreamLog should not mutate on failed merge");
 
+    // 5. Batch failure must not commit earlier values.
+    StreamLog batch_log;
+    StreamLog batch_power;
+    batch_power.add_latency(1.0);
+    batch_power.merge(batch_power);  // start at 2
+    for (int exponent = 1; exponent < 63; ++exponent) {
+        batch_log.merge(batch_power);
+        if (exponent < 62) {
+            batch_power.merge(batch_power);
+        }
+    }
+    const double repeated[] = {1.0, 1.0};
+    total_before = batch_log.total_events();
+    caught = false;
+    try {
+        batch_log.add_batch(repeated, 2);
+    } catch (const std::overflow_error&) { caught = true; }
+    assert(caught && "Batch cumulative bin overflow must throw");
+    assert(batch_log.latency_count() == total_before
+           && "Failed batch must leave latency count unchanged");
+
     std::cout << "test_overflow_guards passed\n";
+}
+
+void test_sparse_store_bounds() {
+    DDSketch extremes;
+    const double values[] = {1e-300, 1e300};
+    extremes.add_batch(values, 2);
+    assert(extremes.count() == 2);
+    assert(extremes.memory_bytes() < 256 * 1024);
+
+    DDSketch capacity;
+    std::vector<double> too_many;
+    const double gamma = 1.01 / 0.99;
+    for (int index = 0; index < 1025; ++index) {
+        too_many.push_back(std::pow(gamma, index * 2));
+    }
+    bool caught = false;
+    try {
+        capacity.add_batch(too_many.data(), too_many.size());
+    } catch (const std::invalid_argument&) { caught = true; }
+    assert(caught && "Sparse bucket capacity must be enforced");
+    assert(capacity.count() == 0 && "Capacity rejection must be transactional");
+    std::cout << "test_sparse_store_bounds passed\n";
 }
 
 int main() {
@@ -208,6 +251,7 @@ int main() {
     test_cardinality();
     test_merge_mismatch();
     test_overflow_guards();
+    test_sparse_store_bounds();
 
     std::cout << "All tests passed successfully.\n";
     return 0;

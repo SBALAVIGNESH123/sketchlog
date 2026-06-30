@@ -2,32 +2,29 @@
 
 ## Accuracy and Guarantees
 
-Tested across 5 distributions (uniform, normal, lognormal, bimodal, and
-Zipf-like) from 1K to 1M events. All results: p99 relative error under 1%,
-cardinality error ~3%, stable regardless of scale. Asymmetric distributed
-merges (99:1 shard skew) stayed at 0.66% error.
-
-See [Guarantees](guarantees.md) for mathematical error bounds of each sketch,
-merge algebra proofs (commutative monoid closure, associativity, identity),
-bias characterization under edge cases, and windowed correctness properties.
+See [Guarantees](guarantees.md) for published algorithmic bounds, their
+preconditions, checked integer and bucket limits, merge algebra within the
+representable domain, edge cases, and window semantics. Reproducible measured
+results and fail-closed thresholds live in [Benchmarks](benchmarks.md).
 
 ## Distributed Merge
 
 Each StreamLog instance is independent. When you're ready, merge them — the
-result is mathematically identical regardless of merge order or shard distribution.
+compatible component states can be merged without retaining raw observations.
 
 ```python
 log_a = StreamLog()   # Worker 1
 log_b = StreamLog()   # Worker 2
 
-log_a.merge(log_b)    # commutative, associative, deterministic
+log_a.merge(log_b)    # checked merge of compatible, representable states
 log_a.p99()           # combined p99 across both shards
 ```
 
-This makes sketchlog safe for distributed ingestion pipelines. No coordination
-protocol needed — each worker maintains its own StreamLog, and merges happen
-whenever convenient. Configurations must match across instances (same alpha,
-precision, CMS dimensions). If they don't, `merge()` raises a clear `ValueError`.
+Each worker can maintain its own StreamLog; the application or Sketch Mesh owns
+state transfer and membership. Configurations must match across instances (same
+alpha, precision, CMS dimensions). Configuration mismatch, occupied-bucket
+capacity, and counter overflow reject the operation without partially mutating
+the destination.
 
 ## Real-time Windows
 
@@ -82,27 +79,21 @@ correlation(api_latency, redis_latency) = 0.74
 
 This is statistical co-movement detection — it answers "redis latency increased
 by 596%" and "error_rate and redis moved together," but it does not answer
-"redis caused the errors." Correlation is not causation. Memory cost is ~14 KB
-per tracked dimension.
+"redis caused the errors." Correlation is not causation. Per-dimension memory
+depends on the configured sketches and is inspectable through their memory
+reports.
 
 ## C++ Acceleration
 
-When the compiled C++ extension is available, sketchlog runs up to 46x faster
-with identical results. The extension is built with pybind11 and accelerates
+The compiled pybind11 extension accelerates
 the hot path — `add_latency`, `add_batch`, `merge`, and `percentile` — while
-keeping the Python API unchanged. All quantiles are bit-identical across backends.
+keeping the validated Python API and serialized format aligned across backends.
 
-| Mode | Throughput | Speedup |
-|------|-----------|---------|
-| Python scalar | 1.65M events/sec | 1x |
-| C++ scalar | 3.17M events/sec | 1.9x |
-| C++ batch (numpy) | 75.8M events/sec | 46x |
-
-The C++ extension is optional. Pure Python works everywhere and produces
-identical results. The extension accelerates when available:
+Measured performance depends on the machine and workload. Raw samples and
+variance are archived by the benchmark workflow. Pure Python remains available
+for deterministic mode. Check the selected runtime with:
 
 ```python
 import sketchlog
 print(sketchlog.HAS_CPP)  # True if C++ backend loaded
 ```
-

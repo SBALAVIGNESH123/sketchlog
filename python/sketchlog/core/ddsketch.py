@@ -2,8 +2,14 @@ import math
 import sys
 from typing import Dict, List, Iterable
 
+MAX_INT64 = (1 << 63) - 1
+MAX_UINT64 = (1 << 64) - 1
+
+
 class DDSketch:
     """Logarithmic quantile sketch. O(1) memory for any percentile."""
+
+    MAX_BINS = 1024
 
     def __init__(self, relative_accuracy: float = 0.01) -> None:
         if not (1e-6 <= relative_accuracy < 1.0):
@@ -32,11 +38,20 @@ class DDSketch:
         except OverflowError:
             return sys.float_info.max
 
+    def _store_can_fit(self, store: Dict[int, int], index: int) -> bool:
+        return index in store or len(store) < self.MAX_BINS
+
     def add(self, value: float, count: int = 1) -> None:
         if math.isnan(value) or math.isinf(value):
             return  # silently reject
+        if type(count) is not int:
+            raise TypeError("DDSketch count must be an integer")
         if count <= 0:
             return
+        if count > MAX_INT64:
+            raise OverflowError("DDSketch: count exceeds int64 capacity")
+        if self._count > MAX_UINT64 - count:
+            raise OverflowError("DDSketch: total count overflow")
 
         if value != 0.0:
             abs_v = abs(value)
@@ -44,6 +59,13 @@ class DDSketch:
             rep = self._bucket_value(idx)
             if abs(rep - abs_v) / abs_v > self._alpha:
                 raise ValueError("Value magnitude too small to satisfy relative accuracy")
+            target_store = self._positive if value > 0 else self._negative
+            if not self._store_can_fit(target_store, idx):
+                raise ValueError("DDSketch occupied bucket count exceeds bounded store capacity")
+            if target_store.get(idx, 0) > MAX_INT64 - count:
+                raise OverflowError("DDSketch: bin count overflow")
+        elif self._zero_count > MAX_INT64 - count:
+            raise OverflowError("DDSketch: zero count overflow")
 
         self._count += count
         if value < self._min:
@@ -104,6 +126,23 @@ class DDSketch:
 
         if tmp_count == 0:
             return
+
+        combined_pos = set(self._positive).union(tmp_pos)
+        if len(combined_pos) > self.MAX_BINS:
+            raise ValueError("DDSketch occupied bucket count exceeds bounded store capacity")
+        combined_neg = set(self._negative).union(tmp_neg)
+        if len(combined_neg) > self.MAX_BINS:
+            raise ValueError("DDSketch occupied bucket count exceeds bounded store capacity")
+        if self._count > MAX_UINT64 - tmp_count:
+            raise OverflowError("DDSketch: total count overflow")
+        if self._zero_count > MAX_INT64 - tmp_zero_count:
+            raise OverflowError("DDSketch: zero count overflow")
+        if any(self._positive.get(idx, 0) > MAX_INT64 - count
+               for idx, count in tmp_pos.items()):
+            raise OverflowError("DDSketch: bin count overflow")
+        if any(self._negative.get(idx, 0) > MAX_INT64 - count
+               for idx, count in tmp_neg.items()):
+            raise OverflowError("DDSketch: bin count overflow")
 
         # Commit ingestion
         pos = self._positive
@@ -168,7 +207,9 @@ class DDSketch:
         if threshold < 0:
             idx = self._key(-threshold)
             for k, v in self._negative.items():
-                if k < idx:
+                # Include the threshold bucket as a conservative upper bound.
+                # Ordering within one logarithmic bucket is irrecoverable.
+                if k <= idx:
                     count_gt += v
             count_gt += self._zero_count
             for v in self._positive.values():
@@ -182,7 +223,7 @@ class DDSketch:
 
         idx = self._key(threshold)
         for k, v in self._positive.items():
-            if k > idx:
+            if k >= idx:
                 count_gt += v
 
         return count_gt

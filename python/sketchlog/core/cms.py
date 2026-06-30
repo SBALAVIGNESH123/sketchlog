@@ -4,6 +4,9 @@ import hashlib
 from typing import List, Union
 from sketchlog.core.stats import EventKey
 
+MAX_INT64 = (1 << 63) - 1
+
+
 class CountMinSketch:
     """Estimate frequency of items in constant memory."""
 
@@ -51,18 +54,30 @@ class CountMinSketch:
 
     def add(self, item: EventKey, count: int = 1) -> None:
         """Add an item (str or int)."""
-        if count <= 0:
+        if type(count) is not int or count <= 0:
             raise ValueError("Event count must be strictly positive")
+        if count > MAX_INT64:
+            raise OverflowError("Event count exceeds int64 capacity")
 
         if isinstance(item, int):
             key = item
         else:
             key = self._key_from_bytes(item)
 
-        self._total += count
-        for i in range(self._depth):
-            col = self._hash(key, self._seeds[i]) % self._width
+        if self._total > MAX_INT64 - count:
+            raise OverflowError("CountMinSketch: total_count overflow")
+
+        columns = [
+            self._hash(key, self._seeds[i]) % self._width
+            for i in range(self._depth)
+        ]
+        if any(self._table[i][col] > MAX_INT64 - count
+               for i, col in enumerate(columns)):
+            raise OverflowError("CountMinSketch: bucket counter overflow")
+
+        for i, col in enumerate(columns):
             self._table[i][col] += count
+        self._total += count
 
     def estimate(self, item: EventKey) -> int:
         """Estimated frequency of an item."""

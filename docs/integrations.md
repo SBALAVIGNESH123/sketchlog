@@ -6,7 +6,11 @@ SketchLog is built to fit neatly into modern observability stacks without creati
 
 You can seamlessly bridge SketchLog into any OpenTelemetry-compatible observability backend (like Jaeger, Datadog, Honeycomb, or New Relic) using the built-in OTLP asynchronous integration.
 
-This exporter works by registering asynchronous OTel instruments (like `ObservableGauge`), mapping your StreamLog percentiles, cardinality estimates, and event frequencies into OTLP metrics. It guarantees zero memory duplication and respects OpenTelemetry temporality.
+This exporter registers asynchronous OTel gauges and maps StreamLog percentiles,
+cardinality estimates, resettable totals, and selected event frequencies into
+OTLP metrics. Windowed logs create a bounded temporary merged sketch during an
+observation callback; ordinary and thread-safe logs are observed under their
+normal snapshot/locking semantics.
 
 ```python
 from sketchlog import StreamLog
@@ -41,12 +45,16 @@ from sketchlog.integrations.prometheus import PrometheusExporter
 log = ThreadSafeStreamLog()
 exporter = PrometheusExporter(log)
 
-# Starts a background HTTP server on port 9090
-exporter.start(port=9090)
+# Loopback is the secure default. Bind explicitly when Prometheus is remote.
+exporter.start(host="0.0.0.0", port=9090)
 
 # Add metrics in your main thread
 log.add_latency(42.0)
 ```
+
+The lightweight exporter has no authentication or TLS termination. When
+binding beyond loopback, restrict access with a firewall, sidecar, ingress, or
+service mesh.
 
 ## FastAPI / Starlette Middleware
 
@@ -67,4 +75,3 @@ app.add_middleware(SketchLogMiddleware, log=log)
 def get_users():
     return {"status": "ok"}
 ```
-

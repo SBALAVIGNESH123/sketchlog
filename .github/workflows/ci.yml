@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -38,10 +38,10 @@ jobs:
         run: python -c "import sketchlog; assert sketchlog.HAS_CPP, 'C++ extension failed to load'"
 
       - name: Run fast tests
-        run: python -m pytest tests/ -v -m "not slow and not stress"
+        run: python -m pytest tests/ -v -m "not slow and not stress and not clustering"
 
       - name: Run slow tests
-        run: python -m pytest tests/ -v -m "slow and not stress"
+        run: python -m pytest tests/ -v -m "slow and not stress and not clustering"
 
   test-opentelemetry:
     name: OpenTelemetry Tests
@@ -84,10 +84,64 @@ jobs:
         run: mypy python/sketchlog
 
       - name: Run pyright
-        run: pyright python/sketchlog
+        run: pyright
 
       - name: Run API compatibility check
         run: python scripts/check_api_compat.py
+
+      - name: Verify generated OpenAPI contract
+        run: python scripts/generate_openapi.py --check
+
+      - name: Verify coupled artifact versions
+        run: python scripts/check_versions.py
+
+  python-security:
+    name: Python Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install audited runtime
+        run: |
+          python -m pip install --upgrade "pip==26.1.2" "setuptools==82.0.1"
+          python -m pip install ".[server,opentelemetry]" pip-audit bandit
+      - name: Audit installed dependencies
+        run: python -m pip_audit
+      - name: Scan Python source
+        run: bandit -q -r python/sketchlog -ll
+
+  coverage:
+    name: Python Branch Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install coverage test environment
+        run: pip install ".[test,server,opentelemetry]" pytest-cov
+      - name: Enforce branch coverage floor
+        run: >-
+          python -m pytest tests -m "not stress and not clustering and not slow"
+          --cov=sketchlog --cov-branch --cov-report=term-missing
+          --cov-report=xml:coverage.xml --cov-report=json:coverage.json
+          --cov-fail-under=70
+      - name: Enforce critical subsystem floors
+        run: python scripts/check_coverage.py
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
+        with:
+          name: python-coverage
+          path: |
+            coverage.xml
+            coverage.json
 
   test-cpp:
     name: C++ Build
@@ -211,6 +265,23 @@ jobs:
           path: tests/results/*.json
           if-no-files-found: ignore
 
+  cluster-tests:
+    name: Sketch Mesh Convergence
+    needs: [test-python]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: pip install ".[test,server]"
+      - name: Run multi-node convergence test
+        run: python -m pytest tests/test_clustering.py -v -m clustering
+
   helm-lint:
     name: Helm Chart Lint
     needs: [test-python]
@@ -220,13 +291,91 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Helm
-        uses: azure/setup-helm@v4.2.0
+        uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
         with:
           version: v3.14.4
       - name: Lint Helm Chart
         run: helm lint charts/sketchlog
       - name: Template Helm Chart
-        run: helm template test charts/sketchlog
+        run: |
+          helm template test charts/sketchlog
+          helm template test charts/sketchlog \
+            --set replicaCount=3 \
+            --set mesh.enabled=true \
+            --set mesh.clusterSecret=test-only-secret
+          helm template test charts/sketchlog \
+            --set replicaCount=3 \
+            --set mesh.enabled=true \
+            --set mesh.clusterSecret=test-only-secret \
+            --set autoscaling.enabled=true | grep HorizontalPodAutoscaler
+      - name: Reject unsafe Helm configurations
+        run: |
+          ! helm template test charts/sketchlog --set replicaCount=2
+          ! helm template test charts/sketchlog \
+            --set mesh.enabled=true
+          ! helm template test charts/sketchlog \
+            --set autoscaling.enabled=true
+          ! helm template test charts/sketchlog \
+            --set mesh.enabled=true \
+            --set mesh.clusterSecret=test-only-secret \
+            --set autoscaling.enabled=true \
+            --set autoscaling.minReplicas=5 \
+            --set autoscaling.maxReplicas=2
+
+  web-workspaces:
+    name: Web Quality (${{ matrix.workspace }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [frontend/react-sketchlog, website]
+    defaults:
+      run:
+        working-directory: ${{ matrix.workspace }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ matrix.workspace }}/package-lock.json
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run lint
+      - if: matrix.workspace == 'frontend/react-sketchlog'
+        run: npm test
+      - run: npm run build
+
+  wasm-runtime:
+    name: WASM Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build WebAssembly runtime
+        run: bash build_wasm.sh
+      - name: Install browser test runtime
+        working-directory: wasm
+        run: |
+          npm ci
+          npm audit --audit-level=high
+          npx playwright install --with-deps chromium
+      - name: Run Node package smoke test
+        working-directory: wasm
+        run: npm test
+      - name: Run real-browser smoke test
+        run: |
+          python -m http.server 8765 --directory wasm &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          cd wasm
+          npm run test:browser
+      - name: Verify publish contents
+        working-directory: wasm
+        run: npm pack --dry-run
 
   conformance-ts:
     name: Conformance Suite (TypeScript)
@@ -247,7 +396,12 @@ jobs:
           node-version: "20"
       - name: Install TS SDK dependencies
         working-directory: clients/typescript
-        run: npm install
+        run: npm ci
+      - name: Test TS SDK
+        working-directory: clients/typescript
+        run: |
+          npm audit --audit-level=high
+          npm test
       - name: Run Conformance Suite
         run: python clients/conformance/suite.py --cwd clients/typescript --command "npx tsx src/conformance.ts"
 
@@ -256,6 +410,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -265,6 +421,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
         with:
-          go-version: "1.21"
+          go-version: "1.26.4"
+      - name: Check Go SDK
+        working-directory: clients/go
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test ./...
       - name: Run Conformance Suite
         run: python clients/conformance/suite.py --cwd clients/go --command "go run cmd/conformance/main.go"

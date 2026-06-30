@@ -5,24 +5,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sketchlog"
-version = "1.1.1"
-description = "Streaming metrics compression engine. 100M events in 93 KB with bounded error. DDSketch + HyperLogLog + Count-Min Sketch."
+version = "1.2.0"
+description = "Bounded-memory streaming metrics with DDSketch, HyperLogLog, and Count-Min Sketch."
 authors = [
     {name = "Bala Vignesh S"}
 ]
 readme = {file = "README.md", content-type = "text/markdown"}
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["streaming", "metrics", "ddsketch", "hyperloglog", "count-min-sketch", "percentile", "p99", "monitoring"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: System :: Monitoring",
     "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
@@ -33,22 +34,30 @@ Homepage = "https://github.com/SBALAVIGNESH123/sketchlog"
 Repository = "https://github.com/SBALAVIGNESH123/sketchlog"
 Issues = "https://github.com/SBALAVIGNESH123/sketchlog/issues"
 
+[project.scripts]
+sketchlog-server = "sketchlog.server:main"
+sketchlog-collector = "sketchlog.ebpf.collector:main"
+
 [project.optional-dependencies]
 docs = [
-    "mkdocs-material>=9.5.0",
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5.0,<10",
 ]
 test = [
     "pytest",
     "pytest-asyncio",
+    "numpy",
     "httpx",
     "hypothesis",
-    "greenlet"
+    "greenlet",
+    "pytest-cov"
 ]
 dev = [
     "pytest",
     "pytest-asyncio",
     "numpy",
-    "mkdocs-material>=9.5.0",
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5.0,<10",
     "mypy",
     "pyright",
     "httpx",

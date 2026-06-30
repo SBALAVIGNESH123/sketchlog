@@ -1,10 +1,37 @@
+{{- if and (not .Values.mesh.enabled) (gt (int .Values.replicaCount) 1) }}
+{{- fail "replicaCount > 1 requires mesh.enabled=true; independent replicas are unsafe" }}
+{{- end }}
+{{- if and .Values.autoscaling.enabled (not .Values.mesh.enabled) }}
+{{- fail "autoscaling.enabled requires mesh.enabled=true" }}
+{{- end }}
+{{- if and .Values.autoscaling.enabled (lt (int .Values.autoscaling.maxReplicas) (int .Values.autoscaling.minReplicas)) }}
+{{- fail "autoscaling.maxReplicas must be greater than or equal to minReplicas" }}
+{{- end }}
+{{- if and .Values.autoscaling.enabled (not .Values.autoscaling.targetCPUUtilizationPercentage) (not .Values.autoscaling.targetMemoryUtilizationPercentage) }}
+{{- fail "autoscaling requires a CPU or memory utilization target" }}
+{{- end }}
+{{- if and .Values.mesh.enabled (not .Values.mesh.clusterSecret) }}
+{{- fail "mesh.clusterSecret is required when mesh.enabled=true" }}
+{{- end }}
+{{- $peerCount := int .Values.replicaCount }}
+{{- if .Values.autoscaling.enabled }}
+{{- $peerCount = int .Values.autoscaling.maxReplicas }}
+{{- end }}
+{{- $peerOrigins := list }}
+{{- range $i := until $peerCount }}
+{{- $peerOrigins = append $peerOrigins (printf "http://%s-%d.%s-headless.%s.svc.cluster.local:8000" (include "sketchlog.fullname" $) $i (include "sketchlog.fullname" $) $.Release.Namespace) }}
+{{- end }}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ ternary "StatefulSet" "Deployment" .Values.mesh.enabled }}
 metadata:
   name: {{ include "sketchlog.fullname" . }}
   labels:
     {{- include "sketchlog.labels" . | nindent 4 }}
 spec:
+  {{- if .Values.mesh.enabled }}
+  serviceName: {{ include "sketchlog.fullname" . }}-headless
+  podManagementPolicy: Parallel
+  {{- end }}
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
@@ -13,9 +40,14 @@ spec:
       {{- include "sketchlog.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.mesh.enabled .Values.podAnnotations }}
       annotations:
+        {{- if .Values.mesh.enabled }}
+        checksum/mesh-secret: {{ include (print $.Template.BasePath "/mesh-secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       labels:
         {{- include "sketchlog.labels" . | nindent 8 }}
@@ -23,6 +55,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -41,9 +74,39 @@ spec:
               containerPort: 8000
               protocol: TCP
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SKETCHLOG_MEMORY_LIMIT_BYTES
+              valueFrom:
+                resourceFieldRef:
+                  containerName: {{ .Chart.Name }}
+                  resource: limits.memory
+                  divisor: "1"
+            {{- if .Values.mesh.enabled }}
+            - name: SKETCHLOG_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SKETCHLOG_ADVERTISED_ADDRESS
+              value: "http://$(POD_NAME).{{ include "sketchlog.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:8000"
+            - name: SKETCHLOG_PEERS
+              value: {{ join "," $peerOrigins | quote }}
+            - name: SKETCHLOG_PEER_ALLOWLIST
+              value: {{ join "," $peerOrigins | quote }}
+            - name: SKETCHLOG_CLUSTER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sketchlog.fullname" . }}-mesh
+                  key: cluster-secret
+            {{- end }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
           livenessProbe:
             httpGet:

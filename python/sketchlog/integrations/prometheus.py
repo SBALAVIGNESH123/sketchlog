@@ -53,8 +53,8 @@ class PrometheusExporter:
             "# TYPE sketchlog_unique_count gauge",
             f'sketchlog_unique_count {stats.unique_count}',
             "",
-            "# HELP sketchlog_total_events Total number of events processed",
-            "# TYPE sketchlog_total_events counter",
+            "# HELP sketchlog_total_events Current resettable event count",
+            "# TYPE sketchlog_total_events gauge",
             f'sketchlog_total_events {stats.events}',
             "",
             "# HELP sketchlog_memory_kb Constant memory usage in KB across all sketches",
@@ -79,7 +79,7 @@ class PrometheusExporter:
         start_response(status, headers)
         return [b"Not Found\n"]
 
-    def start(self, port: int = 9090, host: str = "0.0.0.0") -> None:
+    def start(self, port: int = 9090, host: str = "127.0.0.1") -> None:
         """Start the Prometheus exporter HTTP server on a background thread."""
         if self._server is not None:
             return

@@ -30,6 +30,16 @@ void streamlog_add_batch(sketchlog::StreamLog& self, val js_array) {
     self.add_batch(vec.data(), vec.size());
 }
 
+void streamlog_add_event(
+        sketchlog::StreamLog& self, const std::string& name, int64_t count) {
+    self.add_event(name, count);
+}
+
+int64_t streamlog_event_count(
+        const sketchlog::StreamLog& self, const std::string& name) {
+    return self.event_count(name);
+}
+
 val streamlog_to_dict(const sketchlog::StreamLog& self) {
     auto lat = self.get_latency_state();
     auto uni = self.get_uniques_state();
@@ -51,7 +61,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     val pos = val::object();
     for (size_t i = 0; i < lat.pos_bins.size(); ++i) {
         if (lat.pos_bins[i] > 0) {
-            pos.set(std::to_string(lat.pos_offset + static_cast<int>(i)), (double)lat.pos_bins[i]);
+            pos.set(std::to_string(lat.pos_indices[i]), std::to_string(lat.pos_bins[i]));
         }
     }
     latency.set("positive", pos);
@@ -59,7 +69,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     val neg = val::object();
     for (size_t i = 0; i < lat.neg_bins.size(); ++i) {
         if (lat.neg_bins[i] > 0) {
-            neg.set(std::to_string(lat.neg_offset + static_cast<int>(i)), (double)lat.neg_bins[i]);
+            neg.set(std::to_string(lat.neg_indices[i]), std::to_string(lat.neg_bins[i]));
         }
     }
     latency.set("negative", neg);
@@ -80,7 +90,7 @@ val streamlog_to_dict(const sketchlog::StreamLog& self) {
     for (size_t d = 0; d < ev.depth; ++d) {
         val row = val::array();
         for (size_t w = 0; w < ev.width; ++w) {
-            row.set(w, (double)ev.table[d * ev.width + w]);
+            row.set(w, std::to_string(ev.table[d * ev.width + w]));
         }
         table.set(d, row);
     }
@@ -115,28 +125,28 @@ val streamlog_stats(const sketchlog::StreamLog& self) {
 EMSCRIPTEN_BINDINGS(sketchlog_wasm) {
     class_<sketchlog::StreamLog>("StreamLog")
         .constructor<double, uint8_t, size_t, size_t>()
-        .def("add_latency", &sketchlog::StreamLog::add_latency)
-        .def("add_batch", &streamlog_add_batch)
-        .def("percentile", &sketchlog::StreamLog::percentile)
-        .def("p50", &sketchlog::StreamLog::p50)
-        .def("p95", &sketchlog::StreamLog::p95)
-        .def("p99", &sketchlog::StreamLog::p99)
-        .def("p999", &sketchlog::StreamLog::p999)
-        .def("count_greater_than", &sketchlog::StreamLog::count_greater_than)
-        .def("latency_count", &sketchlog::StreamLog::latency_count)
+        .function("add_latency", &sketchlog::StreamLog::add_latency)
+        .function("add_batch", &streamlog_add_batch)
+        .function("percentile", &sketchlog::StreamLog::percentile)
+        .function("p50", &sketchlog::StreamLog::p50)
+        .function("p95", &sketchlog::StreamLog::p95)
+        .function("p99", &sketchlog::StreamLog::p99)
+        .function("p999", &sketchlog::StreamLog::p999)
+        .function("count_greater_than", &sketchlog::StreamLog::count_greater_than)
+        .function("latency_count", &sketchlog::StreamLog::latency_count)
 
-        .def("add_event", &sketchlog::StreamLog::add_event)
-        .def("event_count", &sketchlog::StreamLog::event_count)
+        .function("add_event", &streamlog_add_event)
+        .function("event_count", &streamlog_event_count)
 
-        .def("add_unique_string", select_overload<void(const std::string&)>(&sketchlog::StreamLog::add_unique))
-        .def("add_unique_int", select_overload<void(uint64_t)>(&sketchlog::StreamLog::add_unique))
-        .def("unique_count", &sketchlog::StreamLog::unique_count)
+        .function("add_unique_string", select_overload<void(const std::string&)>(&sketchlog::StreamLog::add_unique))
+        .function("add_unique_int", select_overload<void(uint64_t)>(&sketchlog::StreamLog::add_unique))
+        .function("unique_count", &sketchlog::StreamLog::unique_count)
 
-        .def("total_events", &sketchlog::StreamLog::total_events)
-        .def("memory_bytes", &sketchlog::StreamLog::memory_bytes)
-        .def("memory_kb", &sketchlog::StreamLog::memory_kb)
-        .def("reset", &sketchlog::StreamLog::reset)
-        .def("merge", &sketchlog::StreamLog::merge)
-        .def("to_dict", &streamlog_to_dict)
-        .def("stats", &streamlog_stats);
+        .function("total_events", &sketchlog::StreamLog::total_events)
+        .function("memory_bytes", &sketchlog::StreamLog::memory_bytes)
+        .function("memory_kb", &sketchlog::StreamLog::memory_kb)
+        .function("reset", &sketchlog::StreamLog::reset)
+        .function("merge", &sketchlog::StreamLog::merge)
+        .function("to_dict", &streamlog_to_dict)
+        .function("stats", &streamlog_stats);
 }

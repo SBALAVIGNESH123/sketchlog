@@ -1,18 +1,50 @@
 {
-  "name": "react-sketchlog",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@sketchlog/react",
+  "private": false,
+  "version": "1.2.0",
+  "description": "React provider, hooks, and visualizations for SketchLog streams",
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "keywords": ["sketchlog", "react", "observability", "visualization"],
+  "author": "Bala Vignesh S",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SBALAVIGNESH123/sketchlog.git",
+    "directory": "frontend/react-sketchlog"
+  },
+  "bugs": {
+    "url": "https://github.com/SBALAVIGNESH123/sketchlog/issues"
+  },
+  "homepage": "https://github.com/SBALAVIGNESH123/sketchlog/tree/main/frontend/react-sketchlog",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && tsc -p tsconfig.lib.json",
     "lint": "eslint .",
+    "test": "vitest run",
     "preview": "vite preview"
   },
-  "dependencies": {
+  "peerDependencies": {
     "d3": "^7.9.0",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "react": ">=18",
+    "react-dom": ">=18",
     "react-use-websocket": "^4.13.0"
   },
   "devDependencies": {
@@ -21,13 +53,16 @@
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@testing-library/react": "^16.3.0",
     "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^10.5.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.6.0",
+    "jsdom": "^26.1.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.61.0",
-    "vite": "^8.1.0"
+    "vite": "^8.1.0",
+    "vitest": "^3.2.4"
   }
 }

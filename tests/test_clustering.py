@@ -7,6 +7,9 @@ import pytest
 
 import socket
 
+pytestmark = pytest.mark.clustering
+
+
 def find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('127.0.0.1', 0))
@@ -127,3 +130,33 @@ def test_cluster_convergence(cluster):
     data = resp.json()
     assert data["total_events"] == 3
     assert data["unique_count"] == 3
+
+    def wait_for_total(expected):
+        for _ in range(30):
+            responses = [
+                httpx.get(
+                    f"{url}/v1/streams/my-cluster-stream/metrics",
+                    timeout=5,
+                )
+                for url in urls
+            ]
+            if expected == 0:
+                if all(response.status_code == 404 for response in responses):
+                    return
+            elif all(
+                response.status_code == 200
+                and response.json()["total_events"] == expected
+                for response in responses
+            ):
+                return
+            time.sleep(0.5)
+        raise AssertionError(
+            f"Cluster did not converge to {expected} visible events")
+
+    # Deletion is origin-scoped. Each node's durable tombstone must remove that
+    # origin everywhere without resurrecting a stale relayed snapshot.
+    for index, expected in ((0, 2), (1, 1), (2, 0)):
+        deleted = httpx.delete(
+            f"{urls[index]}/v1/streams/my-cluster-stream", timeout=5)
+        assert deleted.status_code == 204
+        wait_for_total(expected)

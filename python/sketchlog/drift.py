@@ -37,7 +37,7 @@ Guarantees:
     - Correlation ≠ causation (documented, not hidden)
     - Bounded by sketch error (DDSketch alpha) + sampling variance
     - Sensitive to window size selection
-    - Memory: O(dimensions) — ~14 KB per tracked dimension
+    - Memory: O(dimensions), with configuration-dependent per-stream bounds
 """
 
 import time as _time

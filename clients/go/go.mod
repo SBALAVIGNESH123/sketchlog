@@ -1,5 +1,3 @@
-module github.com/SBALAVIGNESH123/sketchlog-go
+module github.com/SBALAVIGNESH123/sketchlog/clients/go
 
 go 1.21
-
-replace github.com/SBALAVIGNESH123/sketchlog-go => ./

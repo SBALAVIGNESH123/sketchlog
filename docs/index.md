@@ -4,7 +4,7 @@
 ![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**Streaming metrics compression engine. 100M events in 93 KB with bounded error.**
+**Bounded-memory streaming metrics with explicit approximation guarantees.**
 
 SketchLog allows you to ingest high-throughput event streams and extract accurate
 percentiles and cardinalities in constant memory. It combines **DDSketch** for latencies,
@@ -18,9 +18,9 @@ monitoring, edge devices, and memory-constrained environments.
 
 ## Why SketchLog?
 
-1. **Constant Memory**: Track 10 events or 10 billion events; the data structure stays ~93 KB.
-2. **Mergeable**: Shard your data across 100 servers. Send the 93 KB sketches to a central node. Merge them. The result is mathematically identical to processing all events on one machine.
-3. **C++ Acceleration**: Pure Python by default, but drops into a zero-copy C++ backend (pybind11) if compiled, reaching up to 75 million events per second.
+1. **Bounded Memory**: Event volume does not grow the configured HLL/CMS dimensions, and each DDSketch sign store is capped at 1,024 occupied buckets.
+2. **Mergeable**: Compatible sketches can be combined without retaining raw observations.
+3. **C++ Acceleration**: Wheels include the native backend on supported 64-bit platforms; the Python backend remains available for deterministic operation.
 4. **Drift Detection**: Built-in statistical detection for when metrics meaningfully change over time.
 
 ---
@@ -31,7 +31,9 @@ monitoring, edge devices, and memory-constrained environments.
 pip install sketchlog
 ```
 
-If you have a C++ compiler installed (e.g., GCC, Clang, or MSVC), `pip` will automatically compile the native extension for a 46x speedup. If not, it gracefully falls back to the pure Python implementation.
+Supported wheels include the C++ extension. Source installations compile it
+with a suitable toolchain. See archived benchmark JSON for measured throughput
+on its recorded environment.
 
 ---
 
@@ -73,4 +75,3 @@ SketchLog is a streaming metrics compression layer. It is deliberately not:
 It sits between your event stream and your dashboards ? approximate answers
 good enough for monitoring, alerting, and capacity planning, without the
 infrastructure cost of storing every event.
-
