@@ -19,13 +19,18 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN python -m pip install --no-cache-dir --upgrade \
         "pip==26.1.2" "setuptools==82.0.1" && \
-    python -m pip install --no-cache-dir .[server]
+    python -m pip install --no-cache-dir .[server] && \
+    python -m pip uninstall --yes setuptools wheel pip && \
+    python -c "import sketchlog; assert sketchlog.HAS_CPP"
 
 # Stage 2: Runtime
 FROM ${PYTHON_IMAGE}
 
-# Create a fixed, non-root runtime identity.
-RUN groupadd -r sketchlog && useradd -r -g sketchlog -u 10001 sketchlog
+# Remove base-image packaging tools that are unnecessary at runtime, then
+# create a fixed, non-root runtime identity.
+RUN python -m pip uninstall --yes setuptools wheel pip && \
+    groupadd -r sketchlog && \
+    useradd -r -g sketchlog -u 10001 sketchlog
 
 # Copy the virtual environment from the builder
 COPY --from=builder --chown=sketchlog:sketchlog /opt/venv /opt/venv

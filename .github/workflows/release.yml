@@ -125,6 +125,13 @@ jobs:
           test -n "$NODE_AUTH_TOKEN"
           npm whoami
           npm access list packages @sketchlog --json >/dev/null
+      - name: Verify coupled Go module tag
+        run: |
+          go_ref="refs/tags/clients/go/${GITHUB_REF_NAME}"
+          go_sha=$(git ls-remote --refs \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            "$go_ref" | awk '{print $1}')
+          test "$go_sha" = "$GITHUB_SHA"
 
   publish_testpypi:
     name: Publish to TestPyPI
@@ -295,6 +302,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify runtime image
+        run: |
+          docker run --rm --entrypoint python sketchlog:security-scan -c \
+            "import importlib.util, sketchlog; assert sketchlog.HAS_CPP; assert importlib.util.find_spec('pip') is None; assert importlib.util.find_spec('setuptools') is None"
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@cf5c088a69634cd13ccddc735d7926162c31f9a6 # master 2026-06-28
         with:
@@ -370,7 +382,7 @@ jobs:
         run: |
           CHART_PKG=$(ls sketchlog-*.tgz)
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          output=$(helm push "${CHART_PKG}" "oci://ghcr.io/${owner}/charts")
+          output=$(helm push "${CHART_PKG}" "oci://ghcr.io/${owner}/charts" 2>&1)
           echo "$output"
           digest=$(echo "$output" | sed -n 's/^Digest: //p')
           test -n "$digest"
@@ -464,32 +476,20 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish_go:
-    name: Publish Go SDK Tag
+    name: Verify Go SDK Tag
     needs: [publication_preflight, build_wheels]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
-      contents: write
+      contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-      - name: Create Go Module Tag
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify coupled Go module tag
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          GO_TAG="clients/go/${VERSION}"
-          existing_sha=$(gh api \
-            "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GO_TAG}" \
-            --jq '.object.sha' 2>/dev/null || true)
-          if [ -n "$existing_sha" ]; then
-            test "$existing_sha" = "$GITHUB_SHA"
-          else
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/tags/${GO_TAG}" \
-              -f sha="${GITHUB_SHA}"
-          fi
+          go_ref="refs/tags/clients/go/${GITHUB_REF_NAME}"
+          go_sha=$(git ls-remote --refs \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            "$go_ref" | awk '{print $1}')
+          test "$go_sha" = "$GITHUB_SHA"
 
   post_publish_smoke:
     name: Public Registry Smoke Tests

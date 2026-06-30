@@ -29,7 +29,7 @@ The original creator and lead maintainer of the project. The Owner has administr
 
 ## Release Ownership
 
-*   **Standard Releases**: Releases are cut via GitHub Actions. The Project Owner initiates a release by pushing an annotated tag (e.g., `v1.2.0`). This triggers the CD pipeline to build wheels and push to PyPI.
+*   **Standard Releases**: Releases follow the immutable, coupled-tag procedure in [docs/releasing.md](docs/releasing.md). GitHub Actions publishes only after the Go module tag and the exact `main` commit have been verified.
 *   **Emergency Patches**: In the event of a critical security vulnerability or zero-day bug, any maintainer can author a hotfix. The Project Owner will expedite the review, merge the PR directly (bypassing normal wait times if necessary), and immediately cut a patch release.
 
 ## Contributor Permission Boundaries

@@ -67,10 +67,10 @@ nav:
   - Operations:
       - Runbooks: runbooks.md
       - Troubleshooting: troubleshooting.md
+      - Release Process: releasing.md
   - Reference:
       - API Reference: api.md
       - Security Threat Model: threat_model.md
       - Formal Guarantees: guarantees.md
       - Compatibility Guarantees: compatibility.md
   - Contributing: contributing.md
-
