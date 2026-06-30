@@ -20,23 +20,24 @@ monitoring, edge devices, and memory-constrained environments.
 
 ```mermaid
 flowchart LR
-    subgraph Sources
-        OTel[OpenTelemetry]
-        Prom[Prometheus clients]
+    subgraph Ingestion
         SDKs[Python / TypeScript / Go]
+        OTel[OpenTelemetry]
         EBPF[Linux eBPF collector]
     end
 
-    Sources --> API[SketchLog HTTP + WebSocket API]
-    API --> Registry[Bounded namespace registry]
-    Registry --> Streams[Per-tenant streams]
-    Streams --> DDS[DDSketch percentiles]
-    Streams --> HLL[HyperLogLog cardinality]
-    Streams --> CMS[Count-Min event frequency]
-    Streams --> SQL[Streaming SQL / SLO / anomaly]
-    Streams <--> Mesh[Authenticated Sketch Mesh peers]
-    API --> Live[Live dashboard SDK]
-    API --> Metrics[Prometheus metrics]
+    SDKs --> API[HTTP + WebSocket API]
+    OTel --> API
+    EBPF --> API
+    API --> Registry[Capacity-bounded namespace registry]
+    Registry --> Stream[Per-tenant StreamLog]
+    Stream --> DDS[DDSketch]
+    Stream --> HLL[HyperLogLog]
+    Stream --> CMS[Count-Min Sketch]
+    Stream --> Analysis[SQL / SLO / diff / anomaly]
+    Stream <--> Mesh[Authenticated Sketch Mesh]
+    API --> Dashboard[Live dashboard SDK]
+    API --> Prometheus[Prometheus exporter]
 ```
 
 Each stream retains bounded sketch state rather than raw telemetry. See the

@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { SketchLogState } from '../types';
 import { CardinalitySparkline } from './CardinalitySparkline';
@@ -57,6 +57,10 @@ function Harness({
 describe('dashboard visualizations', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders a connected CDF from the current distribution', () => {
