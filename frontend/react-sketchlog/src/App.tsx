@@ -1,76 +1,178 @@
-import { useState } from 'react';
-import { SketchLogProvider, CDFCurve, QuantileHeatmap, CardinalitySparkline } from './index';
+import { useEffect, useState } from 'react';
+import {
+  CardinalitySparkline,
+  CDFCurve,
+  QuantileHeatmap,
+  SketchLogProvider,
+  useSketchLog,
+} from './index';
+import { counterToNumber } from './counter';
 import './index.css';
 
-function App() {
-  const [streamUrl, setStreamUrl] = useState('ws://localhost:8000/v1/streams/demo-stream/ws');
+interface Metrics {
+  p50: number;
+  p90: number;
+  p99: number;
+  p99_9: number;
+  unique_count: number;
+  total_events: number;
+  memory_footprint_bytes: number;
+}
+
+interface Anomaly {
+  anomaly_score: number;
+  sensitivity: number;
+  is_anomalous: boolean;
+}
+
+interface QueryResult {
+  results: Array<{ metric: string; value: number }>;
+  execution_time_ms: number;
+}
+
+interface DashboardData {
+  anomaly: Anomaly;
+  query: QueryResult;
+  tenantA: Metrics;
+  tenantB: Metrics;
+}
+
+const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+  const response = await fetch(`/api${path}`, init);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json() as Promise<T>;
+};
+
+const formatInteger = (value: number) => new Intl.NumberFormat('en-US').format(value);
+const formatLatency = (value: number) => `${value.toFixed(value >= 100 ? 0 : 1)} ms`;
+
+function LiveDashboard() {
+  const { state, isConnected, error } = useSketchLog();
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const [anomaly, query, tenantA, tenantB] = await Promise.all([
+          api<Anomaly>('/v1/streams/demo-current/anomaly?baseline_stream_id=demo-baseline&sensitivity=0.20'),
+          api<QueryResult>('/v1/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: 'SELECT p50(latency), p99(latency), count_unique(users), event_count(errors, \'HTTP_500\') FROM "default/demo-current"',
+            }),
+          }),
+          api<Metrics>('/v1/namespaces/acme/streams/checkout/metrics'),
+          api<Metrics>('/v1/namespaces/globex/streams/checkout/metrics'),
+        ]);
+        if (active) {
+          setData({ anomaly, query, tenantA, tenantB });
+          setApiError(null);
+        }
+      } catch (refreshError) {
+        if (active) {
+          setApiError(refreshError instanceof Error ? refreshError.message : 'API unavailable');
+        }
+      }
+    };
+
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 2000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const metrics = state?.metrics;
+  const eventCount = counterToNumber(metrics?.total_events ?? 0);
+  const uniqueCount = counterToNumber(metrics?.unique_count ?? 0);
+  const memoryBytes = counterToNumber(metrics?.memory_footprint_bytes ?? 0);
+  const queryValues = Object.fromEntries(
+    (data?.query.results ?? []).map((result) => [result.metric, result.value]),
+  );
+  const healthy = isConnected && !error && !apiError;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 p-8 font-sans selection:bg-indigo-500/30">
-      <div className="max-w-6xl mx-auto space-y-8">
-        
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-white/10">
-          <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent mb-2">
-              SketchLog Live Dashboard
-            </h1>
-            <p className="text-slate-400 text-lg">Real-time distribution analytics via WebSocket.</p>
-          </div>
-          
-          <div className="flex items-center gap-3 bg-white/5 p-1.5 rounded-lg border border-white/10">
-            <input 
-              type="text" 
-              value={streamUrl}
-              onChange={(e) => setStreamUrl(e.target.value)}
-              className="bg-transparent border-none outline-none text-sm px-3 py-1.5 w-72 text-slate-300 font-mono"
-            />
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-2" />
-          </div>
-        </header>
+    <main className="launch-shell">
+      <header className="launch-header">
+        <div>
+          <div className="eyebrow"><span className="brand-mark">S</span> SKETCHLOG CONTROL PLANE</div>
+          <h1>Observe the shape of production.</h1>
+          <p>Bounded-memory telemetry, live distributions, and streaming decisions—without retaining raw events.</p>
+        </div>
+        <div className={`system-status ${healthy ? 'is-live' : 'is-waiting'}`} role="status">
+          <span className="status-dot" />
+          <div><strong>{healthy ? 'SYSTEM LIVE' : 'CONNECTING'}</strong><small>default/demo-current</small></div>
+        </div>
+      </header>
 
-        <SketchLogProvider url={streamUrl}>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Main CDF Curve spanning 2 columns */}
-            <div className="lg:col-span-2 space-y-6">
-              <CDFCurve 
-                width={800} 
-                height={400} 
-                color="#818cf8"
-                className="w-full h-[400px]" 
-              />
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <CardinalitySparkline 
-                  width={400} 
-                  height={150} 
-                  color="#34d399"
-                  className="w-full h-[150px]"
-                />
-                
-                <div className="backdrop-blur-md bg-white/5 border border-white/10 p-6 shadow-xl rounded-xl flex flex-col justify-center items-center text-center">
-                  <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">Bounded Memory</h3>
-                  <div className="text-4xl font-light text-white">Configured</div>
-                  <p className="text-xs text-slate-500 mt-4">Depends on sketch dimensions, not event volume</p>
-                </div>
-              </div>
-            </div>
+      <section className="metric-strip" aria-label="Live stream metrics">
+        <article><span>P50 LATENCY</span><strong>{formatLatency(metrics?.p50 ?? 0)}</strong><small>median request</small></article>
+        <article><span>P99 LATENCY</span><strong>{formatLatency(metrics?.p99 ?? 0)}</strong><small>tail pressure</small></article>
+        <article><span>UNIQUE USERS</span><strong>{formatInteger(uniqueCount)}</strong><small>HyperLogLog estimate</small></article>
+        <article><span>EVENTS SEEN</span><strong>{formatInteger(eventCount)}</strong><small>and still climbing</small></article>
+        <article><span>SKETCH MEMORY</span><strong>{(memoryBytes / 1024).toFixed(1)} KiB</strong><small>bounded footprint</small></article>
+      </section>
 
-            {/* Heatmap column */}
-            <div className="lg:col-span-1 h-full">
-              <QuantileHeatmap 
-                width={400} 
-                height={574} 
-                className="w-full h-full"
-              />
-            </div>
-            
+      {(error || apiError) && <div className="error-banner">Waiting for telemetry: {error?.message ?? apiError}</div>}
+
+      <section className="dashboard-grid">
+        <div className="chart-stack">
+          <CDFCurve width={820} height={330} color="#79f2c0" className="launch-chart" />
+          <div className="lower-grid">
+            <CardinalitySparkline width={430} height={128} color="#79f2c0" className="launch-chart" />
+            <article className="evidence-card">
+              <span className="card-label">BOUNDED MEMORY EVIDENCE</span>
+              <strong>{formatInteger(eventCount)} events</strong>
+              <div className="memory-line"><i style={{ width: `${Math.min(100, Math.max(8, memoryBytes / 900))}%` }} /></div>
+              <p>The sketch footprint stays compact as event volume grows.</p>
+            </article>
           </div>
-        </SketchLogProvider>
-        
-      </div>
-    </div>
+        </div>
+        <QuantileHeatmap width={430} height={546} className="launch-chart heatmap" />
+      </section>
+
+      <section className="proof-grid">
+        <article className="proof-card anomaly-card">
+          <div className="card-heading"><span>ANOMALY AUTO-PILOT</span><b className={data?.anomaly.is_anomalous ? 'alert' : 'nominal'}>{data?.anomaly.is_anomalous ? 'DETECTED' : 'NOMINAL'}</b></div>
+          <strong className="score">{((data?.anomaly.anomaly_score ?? 0) * 100).toFixed(1)}%</strong>
+          <div className="score-bar"><i style={{ width: `${Math.min(100, (data?.anomaly.anomaly_score ?? 0) * 100)}%` }} /></div>
+          <p>Live distribution drift versus a fixed healthy baseline. Threshold: {((data?.anomaly.sensitivity ?? 0.2) * 100).toFixed(0)}%.</p>
+        </article>
+
+        <article className="proof-card sql-card">
+          <div className="card-heading"><span>STREAMING SQL</span><b>REAL QUERY</b></div>
+          <code>SELECT p99(latency), count_unique(users)<br />FROM "default/demo-current"</code>
+          <div className="query-results">
+            <span>p99 <strong>{formatLatency(queryValues['p99(latency)'] ?? metrics?.p99 ?? 0)}</strong></span>
+            <span>users <strong>{formatInteger(queryValues['count_unique(users)'] ?? uniqueCount)}</strong></span>
+            <small>{(data?.query.execution_time_ms ?? 0).toFixed(2)} ms</small>
+          </div>
+        </article>
+
+        <article className="proof-card tenant-card">
+          <div className="card-heading"><span>MULTI-TENANT ISOLATION</span><b>2 NAMESPACES</b></div>
+          <div className="tenant-row"><span><i className="acme" />acme / checkout</span><strong>{formatLatency(data?.tenantA.p99 ?? 0)}</strong></div>
+          <div className="tenant-row"><span><i className="globex" />globex / checkout</span><strong>{formatLatency(data?.tenantB.p99 ?? 0)}</strong></div>
+          <p>Identical stream names, independently isolated sketches.</p>
+        </article>
+      </section>
+
+      <footer>
+        <span>LIVE DEMO · DETERMINISTIC TELEMETRY</span>
+        <span>WebSocket + REST + SQL + Prometheus</span>
+      </footer>
+    </main>
   );
+}
+
+function App() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const streamUrl = `${protocol}//${window.location.host}/api/v1/streams/demo-current/ws`;
+  return <SketchLogProvider url={streamUrl}><LiveDashboard /></SketchLogProvider>;
 }
 
 export default App;
