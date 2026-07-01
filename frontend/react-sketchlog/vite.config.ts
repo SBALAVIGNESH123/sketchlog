@@ -12,7 +12,7 @@ export default defineConfig({
       fileName: (format) => format === 'es' ? 'index.js' : 'index.cjs',
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime', 'd3', 'react-use-websocket'],
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'd3'],
     },
   },
 })

@@ -477,6 +477,9 @@ jobs:
           docker compose -f demo/compose.yml up --no-build --wait
           docker compose -f demo/compose.yml logs --no-color verifier |
             grep "Launch demo smoke verification passed."
+          google-chrome --headless --disable-gpu --no-sandbox \
+            --virtual-time-budget=5000 --dump-dom http://127.0.0.1:4173 |
+            grep "SYSTEM LIVE"
       - name: Show launch demo logs
         if: failure()
         run: docker compose -f demo/compose.yml logs --no-color
