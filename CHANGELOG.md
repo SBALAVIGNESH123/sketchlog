@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Upgrade pinned GitHub Actions to Node 24-compatible releases and disable the
+  inapplicable Go dependency cache for the dependency-free Go SDK.
 - Make clean WASM builds resilient to transient container-registry failures
   while preserving digest pinning and bounded retries.
 - Separate cross-platform load correctness from performance enforcement: every
