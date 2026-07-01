@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
-import os
 import base64
 import hashlib
+import json
+import os
 import socket
 import sys
 import time
@@ -17,6 +17,16 @@ from urllib.parse import urlsplit
 
 SERVER_URL = os.getenv("SKETCHLOG_SERVER_URL", "http://server:8000").rstrip("/")
 DASHBOARD_URL = os.getenv("SKETCHLOG_DASHBOARD_URL", "http://dashboard:8080").rstrip("/")
+
+
+class VerificationError(RuntimeError):
+    """Indicate that a required demo guarantee was not satisfied."""
+
+
+def require(condition: bool, message: str) -> None:
+    """Raise a verification error when a required condition is false."""
+    if not condition:
+        raise VerificationError(message)
 
 
 def get(url: str) -> tuple[int, bytes, str]:
@@ -62,7 +72,7 @@ def websocket_state() -> dict[str, Any]:
     target = urlsplit(DASHBOARD_URL)
     host = target.hostname or "dashboard"
     port = target.port or 80
-    key = base64.b64encode(b"sketchlog-demo-verifier").decode()
+    key = base64.b64encode(os.urandom(16)).decode()
     expected_accept = base64.b64encode(
         hashlib.sha1(f"{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11".encode()).digest()
     ).decode()
@@ -82,14 +92,20 @@ def websocket_state() -> dict[str, Any]:
         while b"\r\n\r\n" not in response:
             response.extend(recv_some(connection, 1024))
         headers, buffered = bytes(response).split(b"\r\n\r\n", 1)
-        assert headers.startswith(b"HTTP/1.1 101"), headers.decode(errors="replace")
-        assert f"sec-websocket-accept: {expected_accept}".lower().encode() in headers.lower()
+        require(
+            headers.startswith(b"HTTP/1.1 101"),
+            f"WebSocket upgrade failed: {headers.decode(errors='replace')}",
+        )
+        require(
+            f"sec-websocket-accept: {expected_accept}".lower().encode() in headers.lower(),
+            "WebSocket accept header did not match the request nonce",
+        )
 
         frame = bytearray(buffered)
         while len(frame) < 2:
             frame.extend(recv_some(connection, 2 - len(frame)))
         first, second = frame[0], frame[1]
-        assert first & 0x0F == 1, f"Expected text frame, received opcode {first & 0x0F}"
+        require(first & 0x0F == 1, f"Expected text frame, received opcode {first & 0x0F}")
         length = second & 0x7F
         offset = 2
         if length == 126:
@@ -103,7 +119,7 @@ def websocket_state() -> dict[str, Any]:
             length = int.from_bytes(frame[offset:offset + 8], "big")
             offset += 8
         if second & 0x80:
-            raise AssertionError("Server frames must not be masked")
+            raise VerificationError("Server frames must not be masked")
         payload = bytes(frame[offset:])
         if len(payload) < length:
             payload += read_exact(connection, length - len(payload))
@@ -131,20 +147,35 @@ def verify() -> None:
             page_status, page_body, page_type = get(DASHBOARD_URL)
             live_state = websocket_state()
 
-            assert current["total_events"] >= 800
-            assert current["p99"] > baseline["p99"]
-            assert current["memory_footprint_bytes"] > 0
-            assert anomaly["is_anomalous"] is True
-            assert anomaly["anomaly_score"] >= 0.20
-            assert len(query["results"]) == 2
-            assert acme["p99"] < globex["p99"]
-            assert metrics_status == 200 and b"sketchlog_events_ingested_total" in metrics_body
-            assert page_status == 200 and "text/html" in page_type
-            assert b"SketchLog" in page_body
-            assert int(live_state["metrics"]["total_events"]) >= current["total_events"]
-            assert float(live_state["metrics"]["p99"]) > 0
+            require(current["total_events"] >= 800, "Current stream was not fully seeded")
+            require(current["p99"] > baseline["p99"], "Current p99 did not exceed baseline")
+            require(current["memory_footprint_bytes"] > 0, "Sketch memory was not reported")
+            require(anomaly["is_anomalous"] is True, "Expected anomaly was not detected")
+            require(anomaly["anomaly_score"] >= 0.20, "Anomaly score was below threshold")
+            require(len(query["results"]) == 2, "Streaming SQL returned incomplete results")
+            require(acme["p99"] < globex["p99"], "Tenant streams were not independently seeded")
+            require(
+                metrics_status == 200 and b"sketchlog_events_ingested_total" in metrics_body,
+                "Prometheus output did not contain the ingestion metric",
+            )
+            require(
+                page_status == 200 and "text/html" in page_type,
+                "Dashboard did not return HTML",
+            )
+            require(b"SketchLog" in page_body, "Dashboard HTML did not identify SketchLog")
+            require(
+                int(live_state["metrics"]["total_events"]) >= current["total_events"],
+                "WebSocket state lagged behind the sampled current metrics",
+            )
+            require(float(live_state["metrics"]["p99"]) > 0, "WebSocket p99 was not populated")
             return
-        except (AssertionError, KeyError, OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        except (
+            VerificationError,
+            KeyError,
+            OSError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+        ) as exc:
             last_error = exc
             time.sleep(1)
     raise RuntimeError(f"Launch demo verification timed out: {last_error}")

@@ -61,7 +61,7 @@ services:
     build:
       context: .
       dockerfile: telemetry.Dockerfile
-    command: ["python", "/demo/smoke.py"]
+    command: ["python", "-O", "/demo/smoke.py"]
     depends_on:
       dashboard:
         condition: service_healthy

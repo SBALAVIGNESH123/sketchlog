@@ -4,7 +4,7 @@ ARG NGINX_IMAGE=nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edc
 FROM ${NODE_IMAGE} AS builder
 WORKDIR /build
 COPY frontend/react-sketchlog/package.json frontend/react-sketchlog/package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts && npm rebuild esbuild
 COPY frontend/react-sketchlog/index.html frontend/react-sketchlog/tsconfig*.json ./
 COPY frontend/react-sketchlog/vite*.ts ./
 COPY frontend/react-sketchlog/public ./public

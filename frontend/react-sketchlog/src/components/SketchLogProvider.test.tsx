@@ -103,6 +103,12 @@ describe('SketchLogProvider', () => {
       </SketchLogProvider>,
     );
     const retiredSocket = MockWebSocket.instances[0];
+    act(() => {
+      retiredSocket.onopen?.();
+      retiredSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(state) }));
+    });
+    expect(screen.getByTestId('connected').textContent).toBe('true');
+    expect(screen.getByTestId('total').textContent).toBe('4');
 
     view.rerender(
       <SketchLogProvider url="ws://example.test/second">
@@ -110,6 +116,8 @@ describe('SketchLogProvider', () => {
       </SketchLogProvider>,
     );
     const activeSocket = MockWebSocket.instances[1];
+    expect(screen.getByTestId('connected').textContent).toBe('false');
+    expect(screen.getByTestId('total').textContent).toBe('none');
 
     act(() => {
       retiredSocket.onopen?.();
