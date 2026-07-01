@@ -20,11 +20,13 @@ DASHBOARD_URL = os.getenv("SKETCHLOG_DASHBOARD_URL", "http://dashboard:8080").rs
 
 
 def get(url: str) -> tuple[int, bytes, str]:
+    """Fetch a URL and return status, body, and content type."""
     with urllib.request.urlopen(url, timeout=10) as response:
         return response.status, response.read(), response.headers.get("Content-Type", "")
 
 
 def json_request(path: str, payload: dict[str, Any] | None = None) -> Any:
+    """Send a JSON request directly to the SketchLog server."""
     body = json.dumps(payload).encode() if payload is not None else None
     request = urllib.request.Request(
         f"{SERVER_URL}{path}",
@@ -37,6 +39,7 @@ def json_request(path: str, payload: dict[str, Any] | None = None) -> Any:
 
 
 def read_exact(connection: socket.socket, length: int) -> bytes:
+    """Read exactly length bytes or fail when the socket closes."""
     chunks = bytearray()
     while len(chunks) < length:
         chunk = connection.recv(length - len(chunks))
@@ -46,7 +49,16 @@ def read_exact(connection: socket.socket, length: int) -> bytes:
     return bytes(chunks)
 
 
+def recv_some(connection: socket.socket, length: int) -> bytes:
+    """Read a non-empty socket chunk."""
+    chunk = connection.recv(length)
+    if not chunk:
+        raise ConnectionError("WebSocket closed unexpectedly")
+    return chunk
+
+
 def websocket_state() -> dict[str, Any]:
+    """Perform an RFC 6455 handshake and decode one live state frame."""
     target = urlsplit(DASHBOARD_URL)
     host = target.hostname or "dashboard"
     port = target.port or 80
@@ -68,26 +80,26 @@ def websocket_state() -> dict[str, Any]:
         )
         response = bytearray()
         while b"\r\n\r\n" not in response:
-            response.extend(connection.recv(1024))
+            response.extend(recv_some(connection, 1024))
         headers, buffered = bytes(response).split(b"\r\n\r\n", 1)
         assert headers.startswith(b"HTTP/1.1 101"), headers.decode(errors="replace")
         assert f"sec-websocket-accept: {expected_accept}".lower().encode() in headers.lower()
 
         frame = bytearray(buffered)
         while len(frame) < 2:
-            frame.extend(connection.recv(2 - len(frame)))
+            frame.extend(recv_some(connection, 2 - len(frame)))
         first, second = frame[0], frame[1]
         assert first & 0x0F == 1, f"Expected text frame, received opcode {first & 0x0F}"
         length = second & 0x7F
         offset = 2
         if length == 126:
             while len(frame) < offset + 2:
-                frame.extend(connection.recv(offset + 2 - len(frame)))
+                frame.extend(recv_some(connection, offset + 2 - len(frame)))
             length = int.from_bytes(frame[offset:offset + 2], "big")
             offset += 2
         elif length == 127:
             while len(frame) < offset + 8:
-                frame.extend(connection.recv(offset + 8 - len(frame)))
+                frame.extend(recv_some(connection, offset + 8 - len(frame)))
             length = int.from_bytes(frame[offset:offset + 8], "big")
             offset += 8
         if second & 0x80:
@@ -99,6 +111,7 @@ def websocket_state() -> dict[str, Any]:
 
 
 def verify() -> None:
+    """Verify every feature path required by the launch dashboard."""
     deadline = time.monotonic() + 120
     last_error: Exception | None = None
     while time.monotonic() < deadline:
@@ -138,7 +151,10 @@ def verify() -> None:
 
 
 class HealthHandler(BaseHTTPRequestHandler):
+    """Serve the successful end-to-end verification probe."""
+
     def do_GET(self) -> None:  # noqa: N802
+        """Expose verification success to the Compose health check."""
         payload = b'{"status":"verified"}'
         self.send_response(200 if self.path == "/health" else 404)
         self.send_header("Content-Type", "application/json")
@@ -147,6 +163,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def log_message(self, _format: str, *_args: object) -> None:
+        """Suppress per-probe access logs."""
         return
 
 

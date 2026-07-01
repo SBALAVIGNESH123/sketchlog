@@ -53,36 +53,54 @@ function LiveDashboard() {
 
   useEffect(() => {
     let active = true;
+    let refreshTimer: number | null = null;
+    let controller: AbortController | null = null;
+
     const refresh = async () => {
+      const currentController = new AbortController();
+      controller = currentController;
       try {
         const [anomaly, query, tenantA, tenantB] = await Promise.all([
-          api<Anomaly>('/v1/streams/demo-current/anomaly?baseline_stream_id=demo-baseline&sensitivity=0.20'),
+          api<Anomaly>(
+            '/v1/streams/demo-current/anomaly?baseline_stream_id=demo-baseline&sensitivity=0.20',
+            { signal: currentController.signal },
+          ),
           api<QueryResult>('/v1/query', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: currentController.signal,
             body: JSON.stringify({
               query: 'SELECT p50(latency), p99(latency), count_unique(users), event_count(errors, \'HTTP_500\') FROM "default/demo-current"',
             }),
           }),
-          api<Metrics>('/v1/namespaces/acme/streams/checkout/metrics'),
-          api<Metrics>('/v1/namespaces/globex/streams/checkout/metrics'),
+          api<Metrics>(
+            '/v1/namespaces/acme/streams/checkout/metrics',
+            { signal: currentController.signal },
+          ),
+          api<Metrics>(
+            '/v1/namespaces/globex/streams/checkout/metrics',
+            { signal: currentController.signal },
+          ),
         ]);
         if (active) {
           setData({ anomaly, query, tenantA, tenantB });
           setApiError(null);
         }
       } catch (refreshError) {
+        if (currentController.signal.aborted) return;
         if (active) {
           setApiError(refreshError instanceof Error ? refreshError.message : 'API unavailable');
         }
+      } finally {
+        if (active) refreshTimer = window.setTimeout(() => void refresh(), 2000);
       }
     };
 
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 2000);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      controller?.abort();
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
     };
   }, []);
 
@@ -121,9 +139,9 @@ function LiveDashboard() {
 
       <section className="dashboard-grid">
         <div className="chart-stack">
-          <CDFCurve width={820} height={330} color="#79f2c0" className="launch-chart" />
+          <CDFCurve height={330} color="#79f2c0" className="launch-chart" />
           <div className="lower-grid">
-            <CardinalitySparkline width={430} height={128} color="#79f2c0" className="launch-chart" />
+            <CardinalitySparkline height={128} color="#79f2c0" className="launch-chart" />
             <article className="evidence-card">
               <span className="card-label">BOUNDED MEMORY EVIDENCE</span>
               <strong>{formatInteger(eventCount)} events</strong>
@@ -132,7 +150,7 @@ function LiveDashboard() {
             </article>
           </div>
         </div>
-        <QuantileHeatmap width={430} height={546} className="launch-chart heatmap" />
+        <QuantileHeatmap height={546} className="launch-chart heatmap" />
       </section>
 
       <section className="proof-grid">

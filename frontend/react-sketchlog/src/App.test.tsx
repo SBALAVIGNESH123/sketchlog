@@ -34,12 +34,20 @@ const jsonResponse = (body: unknown) => Promise.resolve(
 
 describe('launch dashboard', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes('/anomaly')) {
+      if (url === '/api/v1/streams/demo-current/anomaly?baseline_stream_id=demo-baseline&sensitivity=0.20') {
+        expect(init?.method).toBeUndefined();
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
         return jsonResponse({ anomaly_score: 1, sensitivity: 0.2, is_anomalous: true });
       }
-      if (url.includes('/query')) {
+      if (url === '/api/v1/query') {
+        expect(init?.method).toBe('POST');
+        expect(init?.headers).toEqual({ 'Content-Type': 'application/json' });
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+        expect(JSON.parse(String(init?.body))).toEqual({
+          query: 'SELECT p50(latency), p99(latency), count_unique(users), event_count(errors, \'HTTP_500\') FROM "default/demo-current"',
+        });
         return jsonResponse({
           results: [
             { metric: 'p99(latency)', value: 327 },
@@ -48,15 +56,24 @@ describe('launch dashboard', () => {
           execution_time_ms: 0.48,
         });
       }
-      return jsonResponse({
-        p50: url.includes('/acme/') ? 47 : 145,
-        p90: 160,
-        p99: url.includes('/acme/') ? 55 : 172,
-        p99_9: 180,
-        unique_count: 100,
-        total_events: 320,
-        memory_footprint_bytes: 80000,
-      });
+      if (
+        url === '/api/v1/namespaces/acme/streams/checkout/metrics'
+        || url === '/api/v1/namespaces/globex/streams/checkout/metrics'
+      ) {
+        expect(init?.method).toBeUndefined();
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+        const isAcme = url.includes('/acme/');
+        return jsonResponse({
+          p50: isAcme ? 47 : 145,
+          p90: 160,
+          p99: isAcme ? 55 : 172,
+          p99_9: 180,
+          unique_count: 100,
+          total_events: 320,
+          memory_footprint_bytes: 80000,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
     }));
   });
 

@@ -23,13 +23,19 @@ export const SketchLogProvider: React.FC<SketchLogProviderProps> = ({ url, child
     let stopped = false;
 
     const connect = () => {
-      socket = new WebSocket(url);
-      socket.onopen = () => {
+      if (stopped) return;
+      const nextSocket = new WebSocket(url);
+      socket = nextSocket;
+      const isCurrent = () => !stopped && socket === nextSocket;
+
+      nextSocket.onopen = () => {
+        if (!isCurrent()) return;
         reconnectAttempts = 0;
         setIsConnected(true);
         setError(null);
       };
-      socket.onmessage = (event) => {
+      nextSocket.onmessage = (event) => {
+        if (!isCurrent()) return;
         try {
           const message = JSON.parse(String(event.data)) as SketchLogState | { error: string };
           if ('error' in message) {
@@ -43,12 +49,19 @@ export const SketchLogProvider: React.FC<SketchLogProviderProps> = ({ url, child
           setError(new Error('Invalid WebSocket message'));
         }
       };
-      socket.onerror = () => setError(new Error('WebSocket connection error'));
-      socket.onclose = () => {
+      nextSocket.onerror = () => {
+        if (isCurrent()) setError(new Error('WebSocket connection error'));
+      };
+      nextSocket.onclose = () => {
+        if (!isCurrent()) return;
+        socket = null;
         setIsConnected(false);
-        if (!stopped && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttempts += 1;
-          reconnectTimer = window.setTimeout(connect, RECONNECT_INTERVAL_MS);
+          reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+          }, RECONNECT_INTERVAL_MS);
         }
       };
     };
@@ -57,7 +70,9 @@ export const SketchLogProvider: React.FC<SketchLogProviderProps> = ({ url, child
     return () => {
       stopped = true;
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
-      socket?.close();
+      const currentSocket = socket;
+      socket = null;
+      currentSocket?.close();
     };
   }, [url]);
 

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useSketchLog } from './SketchLogContext';
 import { counterToNumber } from '../counter';
+import { useResponsiveWidth } from './useResponsiveWidth';
 
 export interface CardinalitySparklineProps {
   width?: number;
@@ -20,6 +21,7 @@ export const CardinalitySparkline: React.FC<CardinalitySparklineProps> = ({
 }) => {
   const { state } = useSketchLog();
   const svgRef = useRef<SVGSVGElement>(null);
+  const renderWidth = useResponsiveWidth(svgRef, width);
   
   const [history, setHistory] = useState<{ time: number; value: number }[]>([]);
 
@@ -45,7 +47,7 @@ export const CardinalitySparkline: React.FC<CardinalitySparklineProps> = ({
     svg.selectAll("*").remove();
 
     const margin = { top: 5, right: 5, bottom: 5, left: 5 };
-    const innerWidth = width - margin.left - margin.right;
+    const innerWidth = Math.max(1, renderWidth - margin.left - margin.right);
     const innerHeight = height - margin.top - margin.bottom;
 
     const x = d3.scaleTime()
@@ -114,12 +116,19 @@ export const CardinalitySparkline: React.FC<CardinalitySparklineProps> = ({
       .attr("font-size", "14px")
       .attr("font-weight", "600");
 
-  }, [history, width, height, color]);
+  }, [history, renderWidth, height, color]);
 
   return (
     <div className={`relative rounded-xl overflow-hidden backdrop-blur-md bg-white/5 border border-white/10 p-2 shadow-xl flex flex-col ${className}`}>
       <h3 className="text-white/70 font-medium mb-1 text-xs px-2 pt-1">Estimated Cardinality</h3>
-      <svg ref={svgRef} width={width} height={height} className="w-full text-white/80" style={{ minHeight: height }} />
+      <svg
+        ref={svgRef}
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${renderWidth} ${height}`}
+        className="w-full text-white/80"
+        style={{ minHeight: height }}
+      />
     </div>
   );
 };

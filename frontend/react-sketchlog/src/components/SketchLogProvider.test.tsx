@@ -95,4 +95,34 @@ describe('SketchLogProvider', () => {
     expect(screen.getByTestId('total').textContent).toBe('none');
     expect(screen.getByTestId('error').textContent).toBe('Stream not found');
   });
+
+  it('ignores callbacks from a retired socket after the URL changes', () => {
+    const view = render(
+      <SketchLogProvider url="ws://example.test/first">
+        <Probe />
+      </SketchLogProvider>,
+    );
+    const retiredSocket = MockWebSocket.instances[0];
+
+    view.rerender(
+      <SketchLogProvider url="ws://example.test/second">
+        <Probe />
+      </SketchLogProvider>,
+    );
+    const activeSocket = MockWebSocket.instances[1];
+
+    act(() => {
+      retiredSocket.onopen?.();
+      retiredSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(state) }));
+    });
+    expect(screen.getByTestId('connected').textContent).toBe('false');
+    expect(screen.getByTestId('total').textContent).toBe('none');
+
+    act(() => {
+      activeSocket.onopen?.();
+      activeSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(state) }));
+    });
+    expect(screen.getByTestId('connected').textContent).toBe('true');
+    expect(screen.getByTestId('total').textContent).toBe('4');
+  });
 });

@@ -18,6 +18,7 @@ HEALTH_PORT = int(os.getenv("DEMO_HEALTH_PORT", "8090"))
 
 
 def request(path: str, payload: dict[str, Any] | None = None) -> Any:
+    """Send a JSON request to the demo SketchLog server."""
     body = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(
         f"{SERVER_URL}{path}",
@@ -31,10 +32,12 @@ def request(path: str, payload: dict[str, Any] | None = None) -> Any:
 
 
 def wait_for_server() -> None:
+    """Wait until the server's readiness contract reports success."""
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         try:
-            if request("/ready") == {"status": "ready"}:
+            response = request("/ready")
+            if isinstance(response, dict) and response.get("status") == "ready":
                 return
         except (OSError, urllib.error.URLError, json.JSONDecodeError):
             pass
@@ -43,6 +46,7 @@ def wait_for_server() -> None:
 
 
 def ingest(path: str, latencies: list[float], users: list[str], errors: int) -> None:
+    """Ingest one deterministic latency, cardinality, and error batch."""
     response = request(
         path,
         {"latencies": latencies, "uniques": users, "events": {"HTTP_500": errors}},
@@ -52,6 +56,7 @@ def ingest(path: str, latencies: list[float], users: list[str], errors: int) -> 
 
 
 def initial_seed() -> None:
+    """Create the baseline, current, and isolated tenant demo streams."""
     baseline = [34 + 4 * math.sin(index / 13) + (index % 7) * 0.35 for index in range(800)]
     current = [
         88 + 16 * math.sin(index / 11) + (210 if index % 17 == 0 else 0)
@@ -84,7 +89,10 @@ def initial_seed() -> None:
 
 
 class HealthHandler(BaseHTTPRequestHandler):
+    """Serve the telemetry generator readiness probe."""
+
     def do_GET(self) -> None:  # noqa: N802
+        """Report generator readiness to the Compose health check."""
         status = 200 if self.path == "/health" else 404
         payload = b'{"status":"ready"}' if status == 200 else b'{"status":"not_found"}'
         self.send_response(status)
@@ -94,15 +102,18 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def log_message(self, _format: str, *_args: object) -> None:
+        """Suppress per-probe access logs."""
         return
 
 
 def start_health_server() -> None:
+    """Start the generator health endpoint without blocking ingestion."""
     server = ThreadingHTTPServer(("0.0.0.0", HEALTH_PORT), HealthHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
 def run() -> None:
+    """Seed the demo and continuously append deterministic live traffic."""
     wait_for_server()
     initial_seed()
     start_health_server()
