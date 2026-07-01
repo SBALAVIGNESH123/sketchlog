@@ -1,19 +1,26 @@
-import { act, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SketchLogState } from '../types';
 import { SketchLogProvider } from './SketchLogProvider';
 import { useSketchLog } from './SketchLogContext';
 
-const socket = vi.hoisted(() => ({
-  value: {
-    lastJsonMessage: null as SketchLogState | { error: string } | null,
-    readyState: 0,
-  },
-}));
+class MockWebSocket {
+  static instances: MockWebSocket[] = [];
+  readonly url: string;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: (() => void) | null = null;
 
-vi.mock('react-use-websocket', () => ({
-  default: () => socket.value,
-}));
+  constructor(url: string | URL) {
+    this.url = String(url);
+    MockWebSocket.instances.push(this);
+  }
+
+  close() {
+    return;
+  }
+}
 
 const state: SketchLogState = {
   version: 1,
@@ -54,39 +61,76 @@ function Probe() {
 
 describe('SketchLogProvider', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    socket.value = { lastJsonMessage: null, readyState: 0 };
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
   });
 
-  it('applies state and error transitions from the WebSocket', async () => {
-    const view = render(
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('applies state and error transitions from the WebSocket', () => {
+    render(
       <SketchLogProvider url="ws://example.test/stream">
         <Probe />
       </SketchLogProvider>,
     );
+    const socket = MockWebSocket.instances[0];
+    expect(socket.url).toBe('ws://example.test/stream');
     expect(screen.getByTestId('connected').textContent).toBe('false');
 
-    socket.value = { lastJsonMessage: state, readyState: 1 };
-    view.rerender(
-      <SketchLogProvider url="ws://example.test/stream">
-        <Probe />
-      </SketchLogProvider>,
-    );
-    await act(async () => vi.runAllTimers());
+    act(() => {
+      socket.onopen?.();
+      socket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(state) }));
+    });
     expect(screen.getByTestId('connected').textContent).toBe('true');
     expect(screen.getByTestId('total').textContent).toBe('4');
 
-    socket.value = {
-      lastJsonMessage: { error: 'Stream not found' },
-      readyState: 1,
-    };
-    view.rerender(
-      <SketchLogProvider url="ws://example.test/stream">
+    act(() => {
+      socket.onmessage?.(new MessageEvent('message', {
+        data: JSON.stringify({ error: 'Stream not found' }),
+      }));
+    });
+    expect(screen.getByTestId('total').textContent).toBe('none');
+    expect(screen.getByTestId('error').textContent).toBe('Stream not found');
+  });
+
+  it('ignores callbacks from a retired socket after the URL changes', () => {
+    const view = render(
+      <SketchLogProvider url="ws://example.test/first">
         <Probe />
       </SketchLogProvider>,
     );
-    await act(async () => vi.runAllTimers());
+    const retiredSocket = MockWebSocket.instances[0];
+    act(() => {
+      retiredSocket.onopen?.();
+      retiredSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(state) }));
+    });
+    expect(screen.getByTestId('connected').textContent).toBe('true');
+    expect(screen.getByTestId('total').textContent).toBe('4');
+
+    view.rerender(
+      <SketchLogProvider url="ws://example.test/second">
+        <Probe />
+      </SketchLogProvider>,
+    );
+    const activeSocket = MockWebSocket.instances[1];
+    expect(screen.getByTestId('connected').textContent).toBe('false');
     expect(screen.getByTestId('total').textContent).toBe('none');
-    expect(screen.getByTestId('error').textContent).toBe('Stream not found');
+
+    act(() => {
+      retiredSocket.onopen?.();
+      retiredSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(state) }));
+    });
+    expect(screen.getByTestId('connected').textContent).toBe('false');
+    expect(screen.getByTestId('total').textContent).toBe('none');
+
+    act(() => {
+      activeSocket.onopen?.();
+      activeSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(state) }));
+    });
+    expect(screen.getByTestId('connected').textContent).toBe('true');
+    expect(screen.getByTestId('total').textContent).toBe('4');
   });
 });

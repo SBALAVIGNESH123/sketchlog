@@ -61,6 +61,7 @@ describe('dashboard visualizations', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('renders a connected CDF from the current distribution', () => {
@@ -73,6 +74,41 @@ describe('dashboard visualizations', () => {
     expect(screen.getByText('Latency CDF')).toBeTruthy();
     expect(screen.getByText('LIVE')).toBeTruthy();
     expect(view.container.querySelectorAll('path').length).toBeGreaterThan(0);
+  });
+
+  it('recomputes chart coordinates from the rendered container width', () => {
+    let resizeCallback: ResizeObserverCallback | null = null;
+    class MockResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe() {
+        return;
+      }
+      disconnect() {
+        return;
+      }
+      unobserve() {
+        return;
+      }
+    }
+    vi.stubGlobal('ResizeObserver', MockResizeObserver);
+
+    const view = render(
+      <Harness state={makeState(10, 2)}>
+        <CDFCurve width={400} height={240} />
+      </Harness>,
+    );
+    const svg = view.container.querySelector('svg');
+
+    act(() => {
+      const callback = resizeCallback as ResizeObserverCallback;
+      callback(
+        [{ contentRect: { width: 280 } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+    });
+    expect(svg?.getAttribute('viewBox')).toBe('0 0 280 240');
   });
 
   it('renders cardinality history after two live updates', async () => {

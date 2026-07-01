@@ -468,3 +468,21 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
+      - name: Build launch demo support images
+        run: |
+          docker tag sketchlog:ci-security sketchlog-demo-server:local
+          docker compose -f demo/compose.yml build telemetry dashboard
+      - name: Verify launch demo end to end
+        run: |
+          docker compose -f demo/compose.yml up --no-build --wait
+          docker compose -f demo/compose.yml logs --no-color verifier |
+            grep "Launch demo smoke verification passed."
+          google-chrome --headless --disable-gpu --no-sandbox \
+            --virtual-time-budget=5000 --dump-dom http://127.0.0.1:4173 |
+            grep "SYSTEM LIVE"
+      - name: Show launch demo logs
+        if: failure()
+        run: docker compose -f demo/compose.yml logs --no-color
+      - name: Stop launch demo
+        if: always()
+        run: docker compose -f demo/compose.yml down --remove-orphans

@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 import { useSketchLog } from './SketchLogContext';
 import { counterToNumber } from '../counter';
+import { useResponsiveWidth } from './useResponsiveWidth';
 
 
 function getBucketValue(alpha: number, index: number): number {
@@ -24,6 +25,7 @@ export const CDFCurve: React.FC<CDFCurveProps> = ({
 }) => {
   const { state, isConnected } = useSketchLog();
   const svgRef = useRef<SVGSVGElement>(null);
+  const renderWidth = useResponsiveWidth(svgRef, width);
 
   // Compute CDF points
   const points = useMemo(() => {
@@ -69,7 +71,7 @@ export const CDFCurve: React.FC<CDFCurveProps> = ({
     svg.selectAll("*").remove();
 
     const margin = { top: 20, right: 30, bottom: 40, left: 50 };
-    const innerWidth = width - margin.left - margin.right;
+    const innerWidth = Math.max(1, renderWidth - margin.left - margin.right);
     const innerHeight = height - margin.top - margin.bottom;
 
     const x = d3.scaleLog()
@@ -160,7 +162,7 @@ export const CDFCurve: React.FC<CDFCurveProps> = ({
       .attr("d", line)
       .style("transition", "d 0.5s ease");
 
-  }, [points, width, height, color]);
+  }, [points, renderWidth, height, color]);
 
   return (
     <div className={`relative rounded-xl overflow-hidden backdrop-blur-md bg-white/5 border border-white/10 p-4 shadow-2xl ${className}`}>
@@ -172,7 +174,14 @@ export const CDFCurve: React.FC<CDFCurveProps> = ({
         </span>
         <span className="text-xs text-white/50">{isConnected ? 'LIVE' : 'OFFLINE'}</span>
       </div>
-      <svg ref={svgRef} width={width} height={height} className="w-full h-full text-white/80" style={{ minHeight: height }} />
+      <svg
+        ref={svgRef}
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${renderWidth} ${height}`}
+        className="w-full h-full text-white/80"
+        style={{ minHeight: height }}
+      />
     </div>
   );
 };

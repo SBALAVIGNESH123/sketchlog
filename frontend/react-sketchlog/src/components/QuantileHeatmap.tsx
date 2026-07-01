@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useSketchLog } from './SketchLogContext';
 import { counterToNumber } from '../counter';
+import { useResponsiveWidth } from './useResponsiveWidth';
 
 function getBucketValue(alpha: number, index: number): number {
   const gamma = (1 + alpha) / (1 - alpha);
@@ -25,6 +26,7 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
 }) => {
   const { state, isConnected } = useSketchLog();
   const svgRef = useRef<SVGSVGElement>(null);
+  const renderWidth = useResponsiveWidth(svgRef, width);
   
   // Keep rolling history of bucket distributions
   const [history, setHistory] = useState<{ time: number; total: number; bins: Map<number, number> }[]>([]);
@@ -72,7 +74,7 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
     svg.selectAll("*").remove();
 
     const margin = { top: 20, right: 10, bottom: 30, left: 50 };
-    const innerWidth = width - margin.left - margin.right;
+    const innerWidth = Math.max(1, renderWidth - margin.left - margin.right);
     const innerHeight = height - margin.top - margin.bottom;
 
     // Collect all unique bucket indices across history to determine Y axis
@@ -161,7 +163,7 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
       .call(yAxis)
       .attr("color", "rgba(255, 255, 255, 0.5)");
 
-  }, [history, width, height, colorScheme, state, historySize]);
+  }, [history, renderWidth, height, colorScheme, state, historySize]);
 
   return (
     <div className={`relative rounded-xl overflow-hidden backdrop-blur-md bg-white/5 border border-white/10 p-4 shadow-2xl ${className}`}>
@@ -172,7 +174,14 @@ export const QuantileHeatmap: React.FC<QuantileHeatmapProps> = ({
           <span className={`relative inline-flex rounded-full h-2 w-2 ${isConnected ? 'bg-blue-500' : 'bg-red-500'}`}></span>
         </span>
       </div>
-      <svg ref={svgRef} width={width} height={height} className="w-full h-full text-white/80" style={{ minHeight: height }} />
+      <svg
+        ref={svgRef}
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${renderWidth} ${height}`}
+        className="w-full h-full text-white/80"
+        style={{ minHeight: height }}
+      />
     </div>
   );
 };

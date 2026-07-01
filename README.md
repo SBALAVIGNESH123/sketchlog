@@ -16,6 +16,20 @@ monitoring, edge devices, and memory-constrained environments.
 
 ---
 
+## Live Product Demo
+
+Run the deterministic dashboard and its end-to-end verifier with one command:
+
+```bash
+docker compose -f demo/compose.yml up --build --wait
+```
+
+Then open <http://localhost:4173>. See the
+[launch demo runbook](demo/README.md) for the verified feature list, alternate
+port configuration, recording sequence, and cleanup command.
+
+---
+
 ## Architecture
 
 ```mermaid
