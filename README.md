@@ -1,10 +1,20 @@
-# SketchLog
+<p align="center">
+  <img src="website-standalone/logo.png" alt="SketchLog" width="80" />
+</p>
 
-![Status](https://img.shields.io/badge/status-beta-orange)
-![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+<h1 align="center">SketchLog</h1>
 
-**Bounded-memory streaming metrics with explicit approximation guarantees.**
+<p align="center">
+  <strong>Bounded-memory streaming metrics with explicit approximation guarantees.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/status-beta-orange" alt="Status" />
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python Version" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
+  <a href="https://github.com/SBALAVIGNESH123/sketchlog/actions"><img src="https://img.shields.io/github/actions/workflow/status/SBALAVIGNESH123/sketchlog/ci.yml?label=CI" alt="CI" /></a>
+</p>
+
 
 SketchLog allows you to ingest high-throughput event streams and extract accurate
 percentiles and cardinalities in constant memory. It combines **DDSketch** for latencies,
