@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SketchLog — Bounded-Memory Streaming Metrics</title>
+  <meta name="description" content="Open-source observability engine that compresses telemetry streams into bounded, mergeable summaries. DDSketch, HyperLogLog, Count-Min Sketch — in 84 KB." />
+  <meta property="og:title" content="SketchLog — Bounded-Memory Streaming Metrics" />
+  <meta property="og:description" content="Stop storing everything. Start summarizing everything. Open-source streaming metrics in constant memory." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="logo.png" type="image/png" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       DESIGN SYSTEM
+       ═══════════════════════════════════════════════════════════════ */
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #111118;
+      --bg-card: #16161f;
+      --bg-card-hover: #1c1c28;
+      --bg-code: #0d0d14;
+
+      --text-primary: #f0f0f5;
+      --text-secondary: #a0a0b8;
+      --text-muted: #6b6b82;
+
+      --accent-cyan: #06d6a0;
+      --accent-cyan-dim: rgba(6, 214, 160, 0.12);
+      --accent-blue: #118ab2;
+      --accent-purple: #7b61ff;
+      --accent-red: #ef476f;
+      --accent-amber: #ffd166;
+
+      --border: rgba(255, 255, 255, 0.06);
+      --border-hover: rgba(255, 255, 255, 0.12);
+
+      --radius: 12px;
+      --radius-sm: 8px;
+
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+      --shadow-glow: 0 0 80px rgba(6, 214, 160, 0.08);
+      --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       RESET & BASE
+       ═══════════════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    a { color: var(--accent-cyan); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: #3dffc0; }
+
+    ::selection { background: rgba(6, 214, 160, 0.25); color: #fff; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       UTILITIES
+       ═══════════════════════════════════════════════════════════════ */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .container-narrow { max-width: 800px; margin: 0 auto; padding: 0 24px; }
+
+    .section { padding: 120px 0; position: relative; }
+    .section-alt { background: var(--bg-secondary); }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 100px;
+      background: var(--accent-cyan-dim);
+      color: var(--accent-cyan);
+      font-size: 13px; font-weight: 600;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      border: 1px solid rgba(6, 214, 160, 0.2);
+    }
+    .badge-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent-cyan);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .section-label {
+      font-size: 13px; font-weight: 600; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--accent-cyan);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: clamp(32px, 5vw, 48px); font-weight: 800;
+      line-height: 1.15; letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+    .section-subtitle {
+      font-size: 18px; color: var(--text-secondary);
+      max-width: 640px; line-height: 1.7;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 28px; border-radius: var(--radius-sm);
+      font-size: 15px; font-weight: 600;
+      cursor: pointer; border: none;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      font-family: var(--font-sans);
+    }
+    .btn-primary {
+      background: var(--accent-cyan); color: #000;
+      box-shadow: 0 0 20px rgba(6, 214, 160, 0.3);
+    }
+    .btn-primary:hover {
+      background: #3dffc0; color: #000;
+      box-shadow: 0 0 40px rgba(6, 214, 160, 0.5);
+      transform: translateY(-2px);
+    }
+    .btn-ghost {
+      background: transparent; color: var(--text-primary);
+      border: 1px solid var(--border-hover);
+    }
+    .btn-ghost:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      transform: translateY(-2px);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       NAVBAR
+       ═══════════════════════════════════════════════════════════════ */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 16px 0;
+      background: rgba(10, 10, 15, 0.7);
+      backdrop-filter: blur(20px) saturate(1.5);
+      border-bottom: 1px solid var(--border);
+      transition: all 0.3s;
+    }
+    .navbar.scrolled {
+      padding: 10px 0;
+      background: rgba(10, 10, 15, 0.92);
+    }
+    .navbar .container {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 20px; font-weight: 800; color: var(--text-primary);
+      letter-spacing: -0.5px;
+    }
+    .nav-brand img { width: 32px; height: 32px; border-radius: 6px; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a {
+      color: var(--text-secondary); font-size: 14px; font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text-primary); }
+    .nav-cta {
+      display: flex; align-items: center; gap: 16px;
+    }
+    .nav-github {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-radius: var(--radius-sm);
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--text-primary); font-size: 14px; font-weight: 500;
+      transition: all 0.2s;
+    }
+    .nav-github:hover {
+      border-color: var(--accent-cyan); color: var(--accent-cyan);
+      background: var(--accent-cyan-dim);
+    }
+    .nav-github svg { width: 18px; height: 18px; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       HERO
+       ═══════════════════════════════════════════════════════════════ */
+    .hero {
+      min-height: 100vh; display: flex; align-items: center;
+      position: relative; padding-top: 100px; overflow: hidden;
+    }
+    .hero-bg {
+      position: absolute; inset: 0; z-index: 0;
+    }
+    .hero-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+    }
+    .hero-glow {
+      position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
+      width: 900px; height: 600px;
+      background: radial-gradient(ellipse, rgba(6, 214, 160, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-glow-2 {
+      position: absolute; bottom: -100px; right: -200px;
+      width: 600px; height: 400px;
+      background: radial-gradient(ellipse, rgba(17, 138, 178, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative; z-index: 1; text-align: center;
+      max-width: 860px; margin: 0 auto;
+    }
+    .hero-title {
+      font-size: clamp(40px, 7vw, 72px); font-weight: 900;
+      line-height: 1.05; letter-spacing: -0.04em;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #f0f0f5 0%, #a0a0b8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-title .highlight {
+      background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-blue) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-subtitle {
+      font-size: clamp(17px, 2.2vw, 20px); color: var(--text-secondary);
+      max-width: 600px; margin: 0 auto 40px; line-height: 1.7;
+    }
+    .hero-actions {
+      display: flex; gap: 16px; justify-content: center;
+      flex-wrap: wrap; margin-bottom: 56px;
+    }
+    .hero-install {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 14px 20px;
+      font-family: var(--font-mono); font-size: 14px;
+      color: var(--text-secondary); max-width: 420px; margin: 0 auto;
+      cursor: pointer; transition: border-color 0.2s;
+    }
+    .hero-install:hover { border-color: var(--accent-cyan); }
+    .hero-install .prompt { color: var(--accent-cyan); user-select: none; }
+    .hero-install .cmd { color: var(--text-primary); }
+    .hero-install .copy-hint {
+      margin-left: auto; font-size: 11px; color: var(--text-muted);
+      font-family: var(--font-sans); text-transform: uppercase; letter-spacing: 1px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       METRICS BAR
+       ═══════════════════════════════════════════════════════════════ */
+    .metrics-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1px; background: var(--border);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; margin-top: 64px;
+    }
+    .metric-item {
+      background: var(--bg-card); padding: 28px 24px; text-align: center;
+      transition: background 0.2s;
+    }
+    .metric-item:hover { background: var(--bg-card-hover); }
+    .metric-value {
+      font-size: 32px; font-weight: 800; letter-spacing: -0.02em;
+      font-family: var(--font-mono);
+    }
+    .metric-value.cyan { color: var(--accent-cyan); }
+    .metric-value.blue { color: var(--accent-blue); }
+    .metric-value.amber { color: var(--accent-amber); }
+    .metric-value.purple { color: var(--accent-purple); }
+    .metric-label {
+      font-size: 13px; color: var(--text-muted); margin-top: 6px;
+      text-transform: uppercase; letter-spacing: 1px; font-weight: 500;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       WHY SECTION
+       ═══════════════════════════════════════════════════════════════ */
+    .why-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 40px; margin-top: 56px; align-items: start;
+    }
+    .why-text { font-size: 17px; color: var(--text-secondary); line-height: 1.8; }
+    .why-text p + p { margin-top: 20px; }
+    .why-text strong { color: var(--text-primary); font-weight: 600; }
+    .why-comparison {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .why-comparison-header {
+      padding: 16px 20px; background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .why-comparison-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .why-comparison-row:last-child { border-bottom: none; }
+    .why-comparison-cell {
+      padding: 14px 20px; font-size: 14px;
+      color: var(--text-secondary);
+    }
+    .why-comparison-cell:first-child {
+      font-weight: 600; color: var(--text-primary);
+    }
+    .why-comparison-cell.free {
+      color: var(--accent-cyan); font-weight: 600;
+    }
+    .why-comparison-cell.paid {
+      color: var(--accent-red); font-weight: 500;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       FEATURES
+       ═══════════════════════════════════════════════════════════════ */
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 20px; margin-top: 56px;
+    }
+    .feature-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 32px 28px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative; overflow: hidden;
+    }
+    .feature-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 2px; background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .feature-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-card);
+    }
+    .feature-card:hover::before { opacity: 1; }
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px; font-size: 22px;
+      background: var(--accent-cyan-dim);
+      border: 1px solid rgba(6, 214, 160, 0.15);
+    }
+    .feature-card h3 {
+      font-size: 17px; font-weight: 700; margin-bottom: 10px;
+      letter-spacing: -0.01em;
+    }
+    .feature-card p {
+      font-size: 14px; color: var(--text-secondary); line-height: 1.65;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       CODE SECTION
+       ═══════════════════════════════════════════════════════════════ */
+    .code-layout {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 48px; margin-top: 56px; align-items: start;
+    }
+    .code-block {
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .code-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 20px; border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.015);
+    }
+    .code-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .code-dot.red { background: #ef476f; }
+    .code-dot.amber { background: #ffd166; }
+    .code-dot.green { background: #06d6a0; }
+    .code-filename {
+      margin-left: 8px; font-size: 12px; color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .code-body {
+      padding: 20px 24px; font-family: var(--font-mono);
+      font-size: 13.5px; line-height: 1.8; overflow-x: auto;
+    }
+    .code-body .kw { color: var(--accent-purple); }
+    .code-body .fn { color: var(--accent-blue); }
+    .code-body .str { color: var(--accent-cyan); }
+    .code-body .num { color: var(--accent-amber); }
+    .code-body .cm { color: var(--text-muted); font-style: italic; }
+    .code-body .op { color: var(--text-secondary); }
+
+    .code-points { list-style: none; padding: 0; }
+    .code-points li {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 16px 0; border-bottom: 1px solid var(--border);
+    }
+    .code-points li:last-child { border-bottom: none; }
+    .code-point-icon {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: var(--accent-cyan-dim);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0; margin-top: 2px;
+    }
+    .code-point-text h4 {
+      font-size: 15px; font-weight: 600; margin-bottom: 4px;
+    }
+    .code-point-text p {
+      font-size: 14px; color: var(--text-secondary); line-height: 1.6;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       ARCHITECTURE SECTION
+       ═══════════════════════════════════════════════════════════════ */
+    .arch-row {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 20px; margin-top: 56px;
+    }
+    .arch-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 32px 28px;
+      text-align: center;
+    }
+    .arch-emoji { font-size: 40px; margin-bottom: 16px; }
+    .arch-card h3 {
+      font-size: 17px; font-weight: 700; margin-bottom: 8px;
+    }
+    .arch-card .bound {
+      font-family: var(--font-mono); font-size: 24px; font-weight: 800;
+      color: var(--accent-cyan); margin: 12px 0;
+    }
+    .arch-card p {
+      font-size: 14px; color: var(--text-secondary); line-height: 1.6;
+    }
+    .arch-card .citation {
+      font-size: 12px; color: var(--text-muted);
+      margin-top: 12px; font-style: italic;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       SDK SECTION
+       ═══════════════════════════════════════════════════════════════ */
+    .sdk-grid {
+      display: flex; flex-wrap: wrap; gap: 16px;
+      justify-content: center; margin-top: 40px;
+    }
+    .sdk-pill {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 22px; border-radius: 100px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      font-size: 15px; font-weight: 600; color: var(--text-primary);
+      transition: all 0.25s;
+    }
+    .sdk-pill:hover {
+      border-color: var(--accent-cyan); transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .sdk-pill .sdk-icon { font-size: 20px; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       CTA SECTION
+       ═══════════════════════════════════════════════════════════════ */
+    .cta-section {
+      text-align: center; padding: 120px 0;
+      position: relative; overflow: hidden;
+    }
+    .cta-glow {
+      position: absolute; bottom: -150px; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 400px;
+      background: radial-gradient(ellipse, rgba(6, 214, 160, 0.06) 0%, transparent 70%);
+    }
+    .cta-section .container { position: relative; z-index: 1; }
+    .cta-price {
+      display: inline-block; padding: 8px 20px; border-radius: 100px;
+      background: rgba(6, 214, 160, 0.08);
+      border: 1px solid rgba(6, 214, 160, 0.2);
+      color: var(--accent-cyan); font-size: 15px; font-weight: 700;
+      margin-bottom: 28px; font-family: var(--font-mono);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════════════════════════ */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 48px 0; text-align: center;
+    }
+    .footer-links {
+      display: flex; gap: 32px; justify-content: center;
+      margin-bottom: 24px; flex-wrap: wrap;
+    }
+    .footer-links a { color: var(--text-muted); font-size: 14px; font-weight: 500; }
+    .footer-links a:hover { color: var(--text-primary); }
+    .footer-copy { font-size: 13px; color: var(--text-muted); }
+
+    /* ═══════════════════════════════════════════════════════════════
+       ANIMATIONS
+       ═══════════════════════════════════════════════════════════════ */
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate { opacity: 0; animation: fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .delay-1 { animation-delay: 0.1s; }
+    .delay-2 { animation-delay: 0.2s; }
+    .delay-3 { animation-delay: 0.3s; }
+    .delay-4 { animation-delay: 0.4s; }
+    .delay-5 { animation-delay: 0.5s; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       RESPONSIVE
+       ═══════════════════════════════════════════════════════════════ */
+    @media (max-width: 900px) {
+      .nav-links { display: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .why-grid { grid-template-columns: 1fr; }
+      .code-layout { grid-template-columns: 1fr; }
+      .arch-row { grid-template-columns: 1fr; }
+      .hero-actions { flex-direction: column; align-items: center; }
+    }
+    @media (max-width: 600px) {
+      .section { padding: 80px 0; }
+      .metrics-bar { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       NAVBAR
+       ═══════════════════════════════════════════════════════════════ -->
+  <nav class="navbar" id="navbar">
+    <div class="container">
+      <a class="nav-brand" href="#">
+        <img src="logo.png" alt="SketchLog logo" />
+        SketchLog
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#why">Why SketchLog</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="docs/" target="_blank">Docs ↗</a>
+      </div>
+      <div class="nav-cta">
+        <a class="nav-github" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.09.682-.217.682-.482 0-.237-.009-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
+          Star on GitHub
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       HERO
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="hero">
+    <div class="hero-bg">
+      <div class="hero-grid"></div>
+      <div class="hero-glow"></div>
+      <div class="hero-glow-2"></div>
+    </div>
+    <div class="container">
+      <div class="hero-content">
+        <div class="badge animate delay-1">
+          <span class="badge-dot"></span>
+          Open Source · MIT Licensed
+        </div>
+        <h1 class="hero-title animate delay-2">
+          Observability in<br /><span class="highlight">constant memory.</span>
+        </h1>
+        <p class="hero-subtitle animate delay-3">
+          SketchLog compresses telemetry streams into bounded, mergeable summaries.
+          Your p99, cardinality, and event frequencies — in 84 KB.
+        </p>
+        <div class="hero-actions animate delay-4">
+          <a class="btn btn-primary" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.09.682-.217.682-.482 0-.237-.009-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
+            Get Started
+          </a>
+          <a class="btn btn-ghost" href="docs/" target="_blank">
+            Read the Docs →
+          </a>
+          <a class="btn btn-ghost" href="https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ" target="_blank">
+            Join Slack
+          </a>
+        </div>
+        <div class="hero-install animate delay-5" onclick="navigator.clipboard.writeText('pip install sketchlog')">
+          <span class="prompt">$</span>
+          <span class="cmd">pip install sketchlog</span>
+          <span class="copy-hint">Click to copy</span>
+        </div>
+
+        <div class="metrics-bar animate delay-5">
+          <div class="metric-item">
+            <div class="metric-value cyan">&lt;130 KiB</div>
+            <div class="metric-label">Per-Stream Memory</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value blue">≤1%</div>
+            <div class="metric-label">DDSketch Error</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value amber">250K+</div>
+            <div class="metric-label">Events/sec Floor</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-value purple">256</div>
+            <div class="metric-label">Tests Passing</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       WHY SKETCHLOG
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="section section-alt" id="why">
+    <div class="container">
+      <div class="section-label">Why SketchLog</div>
+      <h2 class="section-title">Stop paying to store telemetry<br />you never query.</h2>
+      <div class="why-grid">
+        <div class="why-text">
+          <p>
+            Your service handles millions of requests a day. Datadog charges per host, per million events,
+            per custom metric. New Relic bills per GB ingested. You're shipping gigabytes of raw data to
+            someone else's cloud, and <strong>99% of the time you just want your p99 latency</strong>.
+          </p>
+          <p>
+            That question doesn't need a petabyte data warehouse. It needs <strong>84 kilobytes</strong>.
+            SketchLog uses probabilistic data structures with <strong>published mathematical guarantees</strong>
+            to give you the same operational signals in constant, bounded memory.
+          </p>
+          <p>
+            No vendor lock-in. No telemetry phone-home. No "contact sales for pricing."
+            <strong>Free. Forever. MIT licensed.</strong>
+          </p>
+        </div>
+        <div class="why-comparison">
+          <div class="why-comparison-header">Annual cost at scale (10M events/day)</div>
+          <div class="why-comparison-row">
+            <div class="why-comparison-cell">Tool</div>
+            <div class="why-comparison-cell">Pricing</div>
+            <div class="why-comparison-cell">Bounded?</div>
+          </div>
+          <div class="why-comparison-row">
+            <div class="why-comparison-cell">Datadog</div>
+            <div class="why-comparison-cell paid">$50K+/yr</div>
+            <div class="why-comparison-cell paid">No</div>
+          </div>
+          <div class="why-comparison-row">
+            <div class="why-comparison-cell">New Relic</div>
+            <div class="why-comparison-cell paid">$25K+/yr</div>
+            <div class="why-comparison-cell paid">No</div>
+          </div>
+          <div class="why-comparison-row">
+            <div class="why-comparison-cell">Honeycomb</div>
+            <div class="why-comparison-cell paid">$15K+/yr</div>
+            <div class="why-comparison-cell paid">No</div>
+          </div>
+          <div class="why-comparison-row">
+            <div class="why-comparison-cell">Prometheus</div>
+            <div class="why-comparison-cell free">Free</div>
+            <div class="why-comparison-cell paid">Fixed buckets</div>
+          </div>
+          <div class="why-comparison-row">
+            <div class="why-comparison-cell">SketchLog</div>
+            <div class="why-comparison-cell free">Free forever</div>
+            <div class="why-comparison-cell free">✓ Proven</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       ARCHITECTURE
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="section" id="architecture">
+    <div class="container">
+      <div style="text-align: center;">
+        <div class="section-label">Three Algorithms. One Object.</div>
+        <h2 class="section-title">Mathematically guaranteed<br />error bounds.</h2>
+        <p class="section-subtitle" style="margin: 0 auto;">
+          Every sketch in SketchLog has published, peer-reviewed accuracy guarantees.
+          These aren't benchmarks — they're theorems.
+        </p>
+      </div>
+      <div class="arch-row">
+        <div class="arch-card">
+          <div class="arch-emoji">📊</div>
+          <h3>DDSketch</h3>
+          <div class="bound">≤1% relative error</div>
+          <p>Latency percentiles — p50, p95, p99, p999. Adapts automatically to any distribution. No bucket tuning.</p>
+          <div class="citation">Masson, Rim, Lee — VLDB 2019</div>
+        </div>
+        <div class="arch-card">
+          <div class="arch-emoji">🔢</div>
+          <h3>HyperLogLog</h3>
+          <div class="bound">~3.25% std error</div>
+          <p>Unique counts — users, sessions, IPs. 1 KB of registers tracks billions of unique items.</p>
+          <div class="citation">Flajolet, Fusy, Gandouet, Meunier — 2007</div>
+        </div>
+        <div class="arch-card">
+          <div class="arch-emoji">⚡</div>
+          <h3>Count-Min Sketch</h3>
+          <div class="bound">99.3% confidence</div>
+          <p>Event frequencies — error codes, cache misses, endpoint hits. Upper-bound estimates with tunable confidence.</p>
+          <div class="citation">Cormode & Muthukrishnan — J. Algorithms 2005</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FEATURES
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="section section-alt" id="features">
+    <div class="container">
+      <div style="text-align: center;">
+        <div class="section-label">10x Features</div>
+        <h2 class="section-title">Not a weekend project.<br />Production infrastructure.</h2>
+        <p class="section-subtitle" style="margin: 0 auto;">
+          Everything below ships today. Tested, documented, and verified.
+        </p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🔍</div>
+          <h3>Anomaly Detection</h3>
+          <p>Kolmogorov-Smirnov distance between two distributions. Detect drift in real time without a statistics degree.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🗃️</div>
+          <h3>Streaming SQL</h3>
+          <p>Query live sketches with SQL. <code>SELECT p99(latency) FROM "prod/api"</code> — no raw data needed.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h3>Smart SLO Engine</h3>
+          <p>Derive latency targets from historical data. Compute burn rates. Alert before your error budget is gone.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Sketch Mesh</h3>
+          <p>Distributed gossip protocol. Merge sketches across nodes. Eventually consistent with tombstone protection.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📈</div>
+          <h3>Sketch Diffing</h3>
+          <p>Compare two distributions visually. KS statistic, Wasserstein distance, CDF plots, ASCII charts.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🏢</div>
+          <h3>Multi-Tenancy</h3>
+          <p>Namespace isolation with HMAC-scoped tokens. Per-namespace memory quotas. Full authorization enforcement.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📺</div>
+          <h3>React Dashboard</h3>
+          <p>Live WebSocket-streamed components. QuantileHeatmap, CDFCurve, CardinalitySparkline — plug and play.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧩</div>
+          <h3>WebAssembly</h3>
+          <p>Run sketches in the browser. Merge client telemetry to the server with precision-safe 64-bit counters.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🐧</div>
+          <h3>eBPF Collector</h3>
+          <p>Linux kernel-level TCP timing. Zero instrumentation. Attach kprobes and stream bounded metrics to the server.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       QUICKSTART
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="section" id="quickstart">
+    <div class="container">
+      <div class="section-label">Quickstart</div>
+      <h2 class="section-title">Three lines to your first sketch.</h2>
+      <div class="code-layout">
+        <div>
+          <div class="code-block">
+            <div class="code-header">
+              <div class="code-dot red"></div>
+              <div class="code-dot amber"></div>
+              <div class="code-dot green"></div>
+              <span class="code-filename">app.py</span>
+            </div>
+            <div class="code-body">
+<span class="kw">from</span> sketchlog <span class="kw">import</span> StreamLog
+
+<span class="cm"># One object. Three sketches. Bounded memory.</span>
+log = <span class="fn">StreamLog</span>()
+
+<span class="cm"># Stream latency events</span>
+log.<span class="fn">add_batch</span>([<span class="num">12.5</span>, <span class="num">18.3</span>, <span class="num">22.1</span>, <span class="num">45.0</span>, <span class="num">120.7</span>])
+
+<span class="cm"># Track unique users</span>
+log.<span class="fn">add_unique</span>(<span class="str">"user_42"</span>)
+
+<span class="cm"># Count error events</span>
+log.<span class="fn">add_event</span>(<span class="str">"HTTP_500"</span>, <span class="num">3</span>)
+
+<span class="cm"># Query instantly</span>
+<span class="fn">print</span>(log.<span class="fn">p99</span>())           <span class="cm"># ≤1% error</span>
+<span class="fn">print</span>(log.<span class="fn">unique_count</span>())   <span class="cm"># ~3% error</span>
+<span class="fn">print</span>(log.<span class="fn">memory_kb</span>())      <span class="cm"># ~84 KB</span>
+            </div>
+          </div>
+          <div class="code-block" style="margin-top: 20px;">
+            <div class="code-header">
+              <div class="code-dot red"></div>
+              <div class="code-dot amber"></div>
+              <div class="code-dot green"></div>
+              <span class="code-filename">docker</span>
+            </div>
+            <div class="code-body">
+<span class="cm"># 61 MB image. Starts in 2 seconds.</span>
+<span class="op">$</span> docker run <span class="op">-p</span> <span class="num">8000</span>:<span class="num">8000</span> ghcr.io/sbalavignesh123/sketchlog
+
+<span class="cm"># Ingest events</span>
+<span class="op">$</span> curl <span class="op">-X</span> POST localhost:<span class="num">8000</span>/v1/namespaces/default/streams/api/events \
+  <span class="op">-H</span> <span class="str">"Content-Type: application/json"</span> \
+  <span class="op">-d</span> <span class="str">'{"latencies": [42.5, 88.1, 12.3]}'</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <ul class="code-points">
+            <li>
+              <div class="code-point-icon">⚡</div>
+              <div class="code-point-text">
+                <h4>Zero configuration</h4>
+                <p>No bucket boundaries to tune. No sampling rates to configure. DDSketch adapts to any distribution automatically.</p>
+              </div>
+            </li>
+            <li>
+              <div class="code-point-icon">🔒</div>
+              <div class="code-point-text">
+                <h4>Crash-safe persistence</h4>
+                <p>Atomic writes with fsync + rename. Your checkpoint is never corrupted, even on power loss. Windows retry logic included.</p>
+              </div>
+            </li>
+            <li>
+              <div class="code-point-icon">🔗</div>
+              <div class="code-point-text">
+                <h4>Distributed merge</h4>
+                <p>Every sketch operation is a commutative monoid. Merge across nodes, time windows, or shards — the math guarantees correctness.</p>
+              </div>
+            </li>
+            <li>
+              <div class="code-point-icon">🛡️</div>
+              <div class="code-point-text">
+                <h4>Security-first</h4>
+                <p>HMAC auth, namespace-scoped tokens, streaming body limits, overflow-checked arithmetic, input validation at every boundary.</p>
+              </div>
+            </li>
+            <li>
+              <div class="code-point-icon">🔌</div>
+              <div class="code-point-text">
+                <h4>Integrates with everything</h4>
+                <p>OpenTelemetry, Prometheus, Grafana, FastAPI. One-line middleware. Pre-built dashboard JSON. Scrape endpoint out of the box.</p>
+              </div>
+            </li>
+            <li>
+              <div class="code-point-icon">🧪</div>
+              <div class="code-point-text">
+                <h4>Actually tested</h4>
+                <p>256 tests. Property-based with Hypothesis. Stress tests. Soak tests. Failure injection. Adversarial inputs. CI-enforced benchmark gates.</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SDK SECTION
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="section section-alt">
+    <div class="container" style="text-align: center;">
+      <div class="section-label">Runs Everywhere</div>
+      <h2 class="section-title">One engine. Every runtime.</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">
+        Native performance where it matters. Portable runtimes where it doesn't.
+      </p>
+      <div class="sdk-grid">
+        <div class="sdk-pill"><span class="sdk-icon">🐍</span> Python</div>
+        <div class="sdk-pill"><span class="sdk-icon">📘</span> TypeScript</div>
+        <div class="sdk-pill"><span class="sdk-icon">🔵</span> Go</div>
+        <div class="sdk-pill"><span class="sdk-icon">⚙️</span> C++</div>
+        <div class="sdk-pill"><span class="sdk-icon">🌐</span> WebAssembly</div>
+        <div class="sdk-pill"><span class="sdk-icon">🐧</span> eBPF</div>
+        <div class="sdk-pill"><span class="sdk-icon">🐳</span> Docker</div>
+        <div class="sdk-pill"><span class="sdk-icon">☸️</span> Helm</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       CTA
+       ═══════════════════════════════════════════════════════════════ -->
+  <section class="cta-section">
+    <div class="cta-glow"></div>
+    <div class="container">
+      <div class="cta-price">$0 / forever — MIT License</div>
+      <h2 class="section-title">Ready to try it?</h2>
+      <p class="section-subtitle" style="margin: 0 auto 40px; text-align: center;">
+        SketchLog is a production-minded beta. Install it, break it, and tell us what's missing.
+      </p>
+      <div class="hero-actions" style="margin-bottom: 0;">
+        <a class="btn btn-primary" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank">
+          ⭐ Star on GitHub
+        </a>
+        <a class="btn btn-ghost" href="https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ" target="_blank">
+          💬 Join the Community
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════════════════════════ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank">GitHub</a>
+        <a href="docs/" target="_blank">Documentation</a>
+        <a href="https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ" target="_blank">Slack</a>
+        <a href="https://github.com/SBALAVIGNESH123/sketchlog/blob/main/CONTRIBUTING.md" target="_blank">Contributing</a>
+        <a href="https://github.com/SBALAVIGNESH123/sketchlog/blob/main/SECURITY.md" target="_blank">Security</a>
+        <a href="https://github.com/SBALAVIGNESH123/sketchlog/blob/main/CHANGELOG.md" target="_blank">Changelog</a>
+      </div>
+      <p class="footer-copy">
+        Built by <a href="https://github.com/SBALAVIGNESH123" target="_blank">Bala Vignesh S</a> · MIT License · © 2026
+      </p>
+    </div>
+  </footer>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SCRIPTS
+       ═══════════════════════════════════════════════════════════════ -->
+  <script>
+    // Navbar scroll effect
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+      navbar.classList.toggle('scrolled', window.scrollY > 40);
+    });
+
+    // Intersection Observer for scroll animations
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -60px 0px' }
+    );
+
+    // Observe all feature cards, arch cards, etc.
+    document.querySelectorAll('.feature-card, .arch-card, .metric-item, .sdk-pill, .code-block, .code-points li').forEach(el => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(20px)';
+      el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+      observer.observe(el);
+    });
+
+    // Override the observer callback to apply styles directly
+    const styleObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry, i) => {
+          if (entry.isIntersecting) {
+            setTimeout(() => {
+              entry.target.style.opacity = '1';
+              entry.target.style.transform = 'translateY(0)';
+            }, i * 80);
+            styleObserver.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.05, rootMargin: '0px 0px -40px 0px' }
+    );
+
+    document.querySelectorAll('.feature-card, .arch-card, .sdk-pill').forEach(el => {
+      styleObserver.observe(el);
+    });
+
+    // Copy install command
+    document.querySelector('.hero-install')?.addEventListener('click', function() {
+      const hint = this.querySelector('.copy-hint');
+      hint.textContent = 'Copied!';
+      hint.style.color = '#06d6a0';
+      setTimeout(() => {
+        hint.textContent = 'Click to copy';
+        hint.style.color = '';
+      }, 2000);
+    });
+  </script>
+</body>
+</html>
