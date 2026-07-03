@@ -23,6 +23,8 @@ npm run typecheck
 npm run build
 ```
 
-Configure the data source with a SketchLog endpoint such as `http://localhost:8000`.
+Configure the data source with a SketchLog endpoint such as `http://localhost:8000` and a default namespace such as `default`.
 
-If the SketchLog server uses `SKETCHLOG_AUTH_TOKEN`, the current frontend-only plugin can send that token from `jsonData.authToken`. Use that only in trusted self-hosted Grafana deployments. A future backend plugin can move token handling into Grafana's encrypted secure JSON storage and proxy requests server-side.
+## Authentication model
+
+This is a frontend-only Grafana data source. It does not store or send SketchLog auth tokens, because frontend plugin configuration is visible to the browser. For authenticated SketchLog deployments, put Grafana behind a trusted reverse proxy that injects credentials server-side, or use the existing Prometheus dashboard path. A future backend data source can add Grafana secure JSON storage and proxy requests server-side.

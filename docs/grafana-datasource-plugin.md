@@ -36,9 +36,18 @@ All non-SQL queries support namespaces. If no namespace is supplied, the configu
 2. Add a new data source with type `SketchLog`.
 3. Set the SketchLog endpoint, for example `http://localhost:8000`.
 4. Set the default namespace, usually `default`.
-5. If your SketchLog server uses `SKETCHLOG_AUTH_TOKEN`, configure the token field.
 
-The first version is a frontend-only plugin. Token support is intended for trusted self-hosted Grafana deployments. A future backend plugin can proxy requests through Grafana and store tokens in Grafana secure JSON storage.
+## Authentication model
+
+This first version is a frontend-only plugin and intentionally does not store or send SketchLog auth tokens. Grafana frontend plugin configuration is visible to the browser, so storing tokens there would leak credentials.
+
+For authenticated SketchLog deployments, use one of these patterns:
+
+- expose a local unauthenticated SketchLog endpoint only inside a trusted Grafana network;
+- put Grafana behind a reverse proxy that injects SketchLog credentials server-side;
+- use the existing Prometheus exporter and dashboard JSON path for protected production deployments.
+
+A future backend data source can add Grafana secure JSON storage and server-side proxying for protected token handling.
 
 ## Example queries
 
@@ -63,5 +72,4 @@ A sample dashboard is included at:
 plugins/grafana-sketchlog-datasource/dashboards/sketchlog-direct-overview.json
 ```
 
-It demonstrates direct p99 latency, unique user count, and event count panels using the SketchLog data source instead of Prometheus.
-
+It demonstrates direct p99 latency, unique user count, and event count panels using the SketchLog data source instead of Prometheus. The sample dashboard leaves the namespace unset so it follows the data source's configured default namespace.

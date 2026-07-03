@@ -10,7 +10,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
       "id": 1,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true },
-      "targets": [ { "functionName": "p99", "namespace": "default", "refId": "A", "stream": "api.latency" } ],
+      "targets": [ { "functionName": "p99", "refId": "A", "stream": "api.latency" } ],
       "title": "p99 latency",
       "type": "gauge"
     },
@@ -20,7 +20,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
       "id": 2,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true },
-      "targets": [ { "functionName": "unique_count", "namespace": "default", "refId": "A", "stream": "api.latency" } ],
+      "targets": [ { "functionName": "unique_count", "refId": "A", "stream": "api.latency" } ],
       "title": "Unique users",
       "type": "stat"
     },
@@ -30,7 +30,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
       "id": 3,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true },
-      "targets": [ { "eventName": "error", "functionName": "event_count", "namespace": "default", "refId": "A", "stream": "api.latency" } ],
+      "targets": [ { "eventName": "error", "functionName": "event_count", "refId": "A", "stream": "api.latency" } ],
       "title": "Error events",
       "type": "stat"
     }

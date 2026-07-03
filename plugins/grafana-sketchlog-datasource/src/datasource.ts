@@ -48,22 +48,25 @@ interface SketchLogSQLResponse {
 export class SketchLogDataSource extends DataSourceApi<SketchLogQuery, SketchLogDataSourceOptions> {
   private readonly endpoint: string;
   private readonly defaultNamespace: string;
-  private readonly authToken?: string;
 
   constructor(instanceSettings: DataSourceInstanceSettings<SketchLogDataSourceOptions>) {
     super(instanceSettings);
     this.endpoint = (instanceSettings.jsonData.endpoint || instanceSettings.url || '').replace(/\/$/, '');
     this.defaultNamespace = instanceSettings.jsonData.defaultNamespace || 'default';
-    this.authToken = instanceSettings.jsonData.authToken;
   }
 
   async query(options: DataQueryRequest<SketchLogQuery>): Promise<DataQueryResponse> {
-    const frames = await Promise.all(
-      options.targets
-        .filter((target) => !target.hide)
-        .map((target) => this.runQuery(target))
-    );
-    return { data: frames };
+    const visibleTargets = options.targets.filter((target) => !target.hide);
+    const settled = await Promise.allSettled(visibleTargets.map((target) => this.runQuery(target)));
+    const data = settled.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      }
+      const target = visibleTargets[index];
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      return this.errorFrame(target?.refId || `error_${index + 1}`, message);
+    });
+    return { data };
   }
 
   async testDatasource(): Promise<TestDataSourceResponse> {
@@ -113,7 +116,6 @@ export class SketchLogDataSource extends DataSourceApi<SketchLogQuery, SketchLog
     );
     return this.singleValueFrame(refId, `${functionName}(${namespace}/${stream})`, response[functionName]);
   }
-
 
   private async queryPercentileViaSQL(
     functionName: 'p95',
@@ -193,6 +195,16 @@ export class SketchLogDataSource extends DataSourceApi<SketchLogQuery, SketchLog
     });
   }
 
+  private errorFrame(refId: string, message: string): DataFrame {
+    return new MutableDataFrame({
+      refId,
+      fields: [
+        { name: 'time', type: FieldType.time, values: [Date.now()] },
+        { name: 'error', type: FieldType.string, values: [message] },
+      ],
+    });
+  }
+
   private requireStream(target: SketchLogQuery): string {
     if (!target.stream) {
       throw new Error('SketchLog query requires a stream name');
@@ -208,15 +220,14 @@ export class SketchLogDataSource extends DataSourceApi<SketchLogQuery, SketchLog
     if (options?.body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
-    if (this.authToken) {
-      headers['X-SketchLog-Auth-Token'] = this.authToken;
-    }
-    const response = await getBackendSrv().fetch<T>({
-      url: `${this.endpoint}${path}`,
-      method: options?.method || 'GET',
-      headers,
-      data: options?.body,
-    }).toPromise();
+    const response = await getBackendSrv()
+      .fetch<T>({
+        url: `${this.endpoint}${path}`,
+        method: options?.method || 'GET',
+        headers,
+        data: options?.body,
+      })
+      .toPromise();
     if (!response?.data) {
       throw new Error('SketchLog returned an empty response');
     }

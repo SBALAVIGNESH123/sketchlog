@@ -6,17 +6,17 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "grafana-toolkit plugin:build",
-    "test": "tsc --noEmit"
+    "test": "npm run typecheck"
   },
   "dependencies": {
-    "@grafana/data": "^11.0.0",
-    "@grafana/runtime": "^11.0.0",
-    "@grafana/ui": "^11.0.0",
+    "@grafana/data": "^10.1.0",
+    "@grafana/runtime": "^10.1.0",
+    "@grafana/ui": "^10.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@grafana/toolkit": "^11.0.0",
+    "@grafana/toolkit": "^10.1.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "typescript": "^5.4.0"

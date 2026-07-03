@@ -16,9 +16,4 @@ export interface SketchLogQuery extends DataQuery {
 export interface SketchLogDataSourceOptions extends DataSourceJsonData {
   endpoint?: string;
   defaultNamespace?: string;
-  authToken?: string;
-}
-
-export interface SketchLogSecureJsonData {
-  authToken?: string;
 }
