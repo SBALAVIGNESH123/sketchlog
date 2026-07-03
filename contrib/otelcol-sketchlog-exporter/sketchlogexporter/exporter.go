@@ -9,12 +9,15 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"path"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -28,10 +31,12 @@ type eventBatch struct {
 }
 
 type sketchLogExporter struct {
-	cfg       Config
-	client    *http.Client
-	logger    *zap.Logger
-	metricMap map[string]MetricMapping
+	cfg            Config
+	client         *http.Client
+	logger         *zap.Logger
+	metricMap      map[string]MetricMapping
+	cumulativeMu   sync.Mutex
+	cumulativeSums map[string]float64
 }
 
 func newSketchLogExporter(cfg component.Config, set exporter.Settings) (*sketchLogExporter, error) {
@@ -54,10 +59,11 @@ func newSketchLogExporter(cfg component.Config, set exporter.Settings) (*sketchL
 		logger = zap.NewNop()
 	}
 	return &sketchLogExporter{
-		cfg:       *scfg,
-		client:    &http.Client{Timeout: scfg.Timeout},
-		logger:    logger,
-		metricMap: metricMap,
+		cfg:            *scfg,
+		client:         &http.Client{Timeout: scfg.Timeout},
+		logger:         logger,
+		metricMap:      metricMap,
+		cumulativeSums: map[string]float64{},
 	}, nil
 }
 
@@ -74,14 +80,14 @@ func (e *sketchLogExporter) consumeMetrics(ctx context.Context, md pmetric.Metri
 				if !ok {
 					continue
 				}
-				collectMetric(metric, mapping, batchFor(batches, mapping.Stream))
+				e.collectMetric(metric, mapping, batchFor(batches, mapping.Stream))
 			}
 		}
 	}
 	return e.flushBatches(ctx, batches)
 }
 
-func collectMetric(metric pmetric.Metric, mapping MetricMapping, batch *eventBatch) {
+func (e *sketchLogExporter) collectMetric(metric pmetric.Metric, mapping MetricMapping, batch *eventBatch) {
 	scale := mapping.Scale
 	if scale == 0 {
 		scale = 1
@@ -110,41 +116,179 @@ func collectMetric(metric pmetric.Metric, mapping MetricMapping, batch *eventBat
 	case pmetric.MetricTypeGauge:
 		dps := metric.Gauge().DataPoints()
 		for i := 0; i < dps.Len(); i++ {
-			addNumber(numberValue(dps.At(i)))
+			if v, ok := numberValue(dps.At(i)); ok {
+				addNumber(v)
+			}
 		}
 	case pmetric.MetricTypeSum:
-		dps := metric.Sum().DataPoints()
+		sum := metric.Sum()
+		dps := sum.DataPoints()
 		for i := 0; i < dps.Len(); i++ {
-			addNumber(numberValue(dps.At(i)))
+			dp := dps.At(i)
+			v, ok := numberValue(dp)
+			if !ok {
+				continue
+			}
+			switch sum.AggregationTemporality() {
+			case pmetric.AggregationTemporalityCumulative:
+				if delta, emit := e.cumulativeDelta(metric.Name(), dp.Attributes(), v); emit {
+					addNumber(delta)
+				}
+			case pmetric.AggregationTemporalityDelta:
+				addNumber(v)
+			default:
+				// Unspecified sum temporality has no safe delta semantics. Skip it
+				// rather than risk double-counting cumulative counters.
+				continue
+			}
 		}
 	case pmetric.MetricTypeHistogram:
 		dps := metric.Histogram().DataPoints()
 		for i := 0; i < dps.Len(); i++ {
-			dp := dps.At(i)
-			if dp.Count() == 0 {
-				continue
-			}
-			addNumber(dp.Sum() / float64(dp.Count()))
+			expandHistogram(dps.At(i), e.cfg.MaxBatchItems, addNumber)
 		}
 	case pmetric.MetricTypeSummary:
 		dps := metric.Summary().DataPoints()
 		for i := 0; i < dps.Len(); i++ {
-			qvs := dps.At(i).QuantileValues()
-			for q := 0; q < qvs.Len(); q++ {
-				if qvs.At(q).Quantile() >= 0.95 {
-					addNumber(qvs.At(q).Value())
-					break
-				}
+			if v, ok := summaryQuantile(dps.At(i), 0.95); ok {
+				addNumber(v)
 			}
 		}
 	}
 }
 
-func numberValue(dp pmetric.NumberDataPoint) float64 {
-	if dp.ValueType() == pmetric.NumberDataPointValueTypeInt {
-		return float64(dp.IntValue())
+func numberValue(dp pmetric.NumberDataPoint) (float64, bool) {
+	switch dp.ValueType() {
+	case pmetric.NumberDataPointValueTypeInt:
+		return float64(dp.IntValue()), true
+	case pmetric.NumberDataPointValueTypeDouble:
+		return dp.DoubleValue(), true
+	default:
+		return 0, false
 	}
-	return dp.DoubleValue()
+}
+
+func (e *sketchLogExporter) cumulativeDelta(metricName string, attrs pcommon.Map, current float64) (float64, bool) {
+	key := timeseriesKey(metricName, attrs)
+	e.cumulativeMu.Lock()
+	defer e.cumulativeMu.Unlock()
+	previous, seen := e.cumulativeSums[key]
+	e.cumulativeSums[key] = current
+	if !seen {
+		// The first cumulative datapoint has no known baseline. Treat it as
+		// state initialization, not an event delta, to avoid replaying a full
+		// process lifetime counter into SketchLog.
+		return 0, false
+	}
+	if current < previous {
+		// Counter reset: emit the current value as the first value after reset.
+		return current, current > 0
+	}
+	delta := current - previous
+	return delta, delta > 0
+}
+
+func timeseriesKey(metricName string, attrs pcommon.Map) string {
+	parts := make([]string, 0, attrs.Len()+1)
+	parts = append(parts, metricName)
+	attrs.Range(func(k string, v pcommon.Value) bool {
+		parts = append(parts, k+"="+v.AsString())
+		return true
+	})
+	sort.Strings(parts[1:])
+	return strings.Join(parts, "|")
+}
+
+func expandHistogram(dp pmetric.HistogramDataPoint, maxSamples int, addNumber func(float64)) {
+	count := dp.Count()
+	if count == 0 {
+		return
+	}
+	if maxSamples <= 0 {
+		maxSamples = 1000
+	}
+	bucketCounts := dp.BucketCounts()
+	bounds := dp.ExplicitBounds()
+	if bucketCounts.Len() == 0 {
+		if dp.HasSum() {
+			addNumber(dp.Sum() / float64(count))
+		}
+		return
+	}
+	if count <= uint64(maxSamples) {
+		for i := 0; i < bucketCounts.Len(); i++ {
+			emitHistogramBucket(i, bucketCounts.At(i), bounds, addNumber)
+		}
+		return
+	}
+	// Histograms can contain very large cumulative counts. Preserve shape with a
+	// bounded deterministic down-sample instead of appending one synthetic sample
+	// per raw observation, which could otherwise exhaust collector memory.
+	emitted := 0
+	for i := 0; i < bucketCounts.Len(); i++ {
+		c := bucketCounts.At(i)
+		if c == 0 {
+			continue
+		}
+		samples := int(math.Round(float64(c) / float64(count) * float64(maxSamples)))
+		if samples == 0 {
+			samples = 1
+		}
+		if emitted+samples > maxSamples {
+			samples = maxSamples - emitted
+		}
+		if samples <= 0 {
+			return
+		}
+		emitHistogramBucket(i, uint64(samples), bounds, addNumber)
+		emitted += samples
+	}
+}
+
+func emitHistogramBucket(bucket int, count uint64, bounds pcommon.Float64Slice, addNumber func(float64)) {
+	if count == 0 {
+		return
+	}
+	representative, ok := histogramRepresentative(bucket, bounds)
+	if !ok {
+		return
+	}
+	for j := uint64(0); j < count; j++ {
+		addNumber(representative)
+	}
+}
+
+func histogramRepresentative(bucket int, bounds pcommon.Float64Slice) (float64, bool) {
+	boundCount := bounds.Len()
+	switch {
+	case boundCount == 0:
+		return 0, false
+	case bucket == 0:
+		return bounds.At(0) / 2, true
+	case bucket < boundCount:
+		return (bounds.At(bucket-1) + bounds.At(bucket)) / 2, true
+	case bucket == boundCount:
+		return bounds.At(boundCount - 1), true
+	default:
+		return 0, false
+	}
+}
+
+func summaryQuantile(dp pmetric.SummaryDataPoint, threshold float64) (float64, bool) {
+	qvs := dp.QuantileValues()
+	bestQuantile := math.Inf(1)
+	bestValue := 0.0
+	found := false
+	for i := 0; i < qvs.Len(); i++ {
+		qv := qvs.At(i)
+		q := qv.Quantile()
+		if q >= threshold && q < bestQuantile {
+			bestQuantile = q
+			bestValue = qv.Value()
+			found = true
+		}
+	}
+	return bestValue, found
 }
 
 func (e *sketchLogExporter) consumeTraces(ctx context.Context, td ptrace.Traces) error {
@@ -247,7 +391,11 @@ func (e *sketchLogExporter) postBatch(ctx context.Context, stream string, batch 
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return fmt.Errorf("sketchlog returned HTTP %d for stream %q: %s", resp.StatusCode, stream, strings.TrimSpace(string(responseBody)))
+			err := fmt.Errorf("sketchlog returned HTTP %d for stream %q: %s", resp.StatusCode, stream, strings.TrimSpace(string(responseBody)))
+			if isPermanentHTTPStatus(resp.StatusCode) {
+				return consumererror.NewPermanent(err)
+			}
+			return err
 		}
 	}
 	return nil
@@ -298,14 +446,47 @@ func splitBatch(batch *eventBatch, maxItems int) []*eventBatch {
 }
 
 func (e *sketchLogExporter) streamURL(stream string) (string, error) {
+	if err := validateStreamPath(stream); err != nil {
+		return "", err
+	}
 	u, err := url.Parse(e.cfg.Endpoint)
 	if err != nil {
 		return "", err
 	}
+	base := strings.TrimRight(u.EscapedPath(), "/")
+	if base == "" {
+		base = ""
+	}
 	ns := url.PathEscape(e.cfg.Namespace)
-	escapedStream := strings.ReplaceAll(url.PathEscape(stream), "%2F", "/")
-	u.Path = path.Join(strings.TrimRight(u.Path, "/"), "v1", "namespaces", ns, "streams", escapedStream, "events")
+	escapedStream := escapeStreamPath(stream)
+	u.Path = ""
+	u.RawPath = base + "/v1/namespaces/" + ns + "/streams/" + escapedStream + "/events"
+	u.Path, _ = url.PathUnescape(u.RawPath)
 	return u.String(), nil
+}
+
+func validateStreamPath(stream string) error {
+	if stream == "" || strings.HasPrefix(stream, "/") || strings.HasSuffix(stream, "/") {
+		return fmt.Errorf("invalid stream path %q", stream)
+	}
+	for _, segment := range strings.Split(stream, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("invalid stream path segment %q in %q", segment, stream)
+		}
+	}
+	return nil
+}
+
+func escapeStreamPath(stream string) string {
+	segments := strings.Split(stream, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/")
+}
+
+func isPermanentHTTPStatus(status int) bool {
+	return status >= 400 && status < 500 && status != http.StatusTooManyRequests && status != http.StatusRequestTimeout
 }
 
 func safeName(s string) string {

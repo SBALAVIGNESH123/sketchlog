@@ -20,8 +20,9 @@ def test_collector_module_files_exist():
 
 def test_exporter_uses_sketchlog_ingestion_api():
     source = (MODULE / "sketchlogexporter" / "exporter.go").read_text(encoding="utf-8")
-    assert '"v1", "namespaces"' in source
-    assert '"streams", escapedStream, "events"' in source
+    assert '"/v1/namespaces/"' in source
+    assert 'escapeStreamPath(stream)' in source
+    assert 'validateStreamPath(stream)' in source
     assert 'X-SketchLog-Auth-Token' in source
     assert 'splitBatch' in source
 
