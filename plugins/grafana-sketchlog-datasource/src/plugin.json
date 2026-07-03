@@ -1,0 +1,36 @@
+{
+  "type": "datasource",
+  "name": "SketchLog",
+  "id": "sketchlog-datasource",
+  "info": {
+    "description": "Query SketchLog streams directly from Grafana panels.",
+    "author": {
+      "name": "SketchLog"
+    },
+    "keywords": ["sketchlog", "observability", "sketches", "percentiles", "streaming"],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "GitHub",
+        "url": "https://github.com/SBALAVIGNESH123/sketchlog"
+      },
+      {
+        "name": "Documentation",
+        "url": "https://github.com/SBALAVIGNESH123/sketchlog/blob/main/docs/grafana-datasource-plugin.md"
+      }
+    ],
+    "screenshots": [],
+    "version": "0.1.0",
+    "updated": "2026-07-03"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=10.4.0",
+    "plugins": []
+  },
+  "metrics": true,
+  "annotations": false,
+  "backend": false
+}

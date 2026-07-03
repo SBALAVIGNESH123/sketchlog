@@ -1,0 +1,10 @@
+{
+  "extends": "@grafana/toolkit/src/config/tsconfig.plugin.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "strict": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": ["src/**/*"]
+}
