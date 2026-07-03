@@ -1,0 +1,36 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+exporters:
+  sketchlog:
+    endpoint: http://sketchlog:8000
+    namespace: production
+    auth_token: ${env:SKETCHLOG_AUTH_TOKEN}
+    timeout: 10s
+    max_batch_items: 1000
+    metrics:
+      - name: http.server.duration
+        stream: api.latency
+        kind: latency
+        scale: 1000
+      - name: app.errors
+        stream: app.events
+        kind: event
+        event_name: error
+    span_duration_stream: traces.duration
+    log_event_stream: logs.events
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [sketchlog]
+    traces:
+      receivers: [otlp]
+      exporters: [sketchlog]
+    logs:
+      receivers: [otlp]
+      exporters: [sketchlog]
