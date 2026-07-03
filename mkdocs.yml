@@ -63,6 +63,7 @@ nav:
       - Client SDKs: sdks.md
       - Integrations: integrations.md
       - Grafana Dashboard: grafana.md
+      - Grafana Data Source Plugin: grafana-datasource-plugin.md
       - Standalone Server: server.md
   - Operations:
       - Runbooks: runbooks.md

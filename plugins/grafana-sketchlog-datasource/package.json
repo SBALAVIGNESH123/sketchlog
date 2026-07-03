@@ -1,0 +1,24 @@
+{
+  "name": "@sketchlog/grafana-datasource",
+  "version": "0.1.0",
+  "description": "Grafana data source plugin for querying SketchLog streams directly.",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "grafana-toolkit plugin:build",
+    "test": "npm run typecheck"
+  },
+  "dependencies": {
+    "@grafana/data": "^10.1.0",
+    "@grafana/runtime": "^10.1.0",
+    "@grafana/ui": "^10.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@grafana/toolkit": "^10.1.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.4.0"
+  }
+}

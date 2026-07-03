@@ -1,0 +1,48 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "datasource": { "type": "sketchlog-datasource", "uid": "${DS_SKETCHLOG}" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [ { "functionName": "p99", "refId": "A", "stream": "api.latency" } ],
+      "title": "p99 latency",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "sketchlog-datasource", "uid": "${DS_SKETCHLOG}" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [ { "functionName": "unique_count", "refId": "A", "stream": "api.latency" } ],
+      "title": "Unique users",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "sketchlog-datasource", "uid": "${DS_SKETCHLOG}" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [ { "eventName": "error", "functionName": "event_count", "refId": "A", "stream": "api.latency" } ],
+      "title": "Error events",
+      "type": "stat"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["sketchlog"],
+  "templating": { "list": [ { "current": {}, "hide": 0, "includeAll": false, "label": "SketchLog", "multi": false, "name": "DS_SKETCHLOG", "options": [], "query": "sketchlog-datasource", "refresh": 1, "regex": "", "type": "datasource" } ] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timezone": "browser",
+  "title": "SketchLog Direct Query Overview",
+  "uid": "sketchlog-direct-overview",
+  "version": 1,
+  "weekStart": ""
+}
