@@ -1,6 +1,182 @@
 {
   "components": {
     "schemas": {
+      "CanaryAnalysisRequest": {
+        "properties": {
+          "baseline_stream_id": {
+            "title": "Baseline Stream Id",
+            "type": "string"
+          },
+          "budget_percent": {
+            "default": 0.005,
+            "title": "Budget Percent",
+            "type": "number"
+          },
+          "error_event_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Event Name"
+          },
+          "min_latency_count": {
+            "default": 1,
+            "title": "Min Latency Count",
+            "type": "integer"
+          },
+          "rollback_anomaly_score": {
+            "default": 0.45,
+            "title": "Rollback Anomaly Score",
+            "type": "number"
+          },
+          "rollback_error_rate_increase_percent": {
+            "default": 100.0,
+            "title": "Rollback Error Rate Increase Percent",
+            "type": "number"
+          },
+          "rollback_ks_statistic": {
+            "default": 0.3,
+            "title": "Rollback Ks Statistic",
+            "type": "number"
+          },
+          "rollback_p99_shift_percent": {
+            "default": 35.0,
+            "title": "Rollback P99 Shift Percent",
+            "type": "number"
+          },
+          "rollback_slo_burn_rate": {
+            "default": 4.0,
+            "title": "Rollback Slo Burn Rate",
+            "type": "number"
+          },
+          "rollback_wasserstein_ratio": {
+            "default": 0.6,
+            "title": "Rollback Wasserstein Ratio",
+            "type": "number"
+          },
+          "target_percentile": {
+            "default": 0.995,
+            "title": "Target Percentile",
+            "type": "number"
+          },
+          "warning_anomaly_score": {
+            "default": 0.2,
+            "title": "Warning Anomaly Score",
+            "type": "number"
+          },
+          "warning_error_rate_increase_percent": {
+            "default": 25.0,
+            "title": "Warning Error Rate Increase Percent",
+            "type": "number"
+          },
+          "warning_ks_statistic": {
+            "default": 0.12,
+            "title": "Warning Ks Statistic",
+            "type": "number"
+          },
+          "warning_p99_shift_percent": {
+            "default": 10.0,
+            "title": "Warning P99 Shift Percent",
+            "type": "number"
+          },
+          "warning_slo_burn_rate": {
+            "default": 1.0,
+            "title": "Warning Slo Burn Rate",
+            "type": "number"
+          },
+          "warning_wasserstein_ratio": {
+            "default": 0.2,
+            "title": "Warning Wasserstein Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "baseline_stream_id"
+        ],
+        "title": "CanaryAnalysisRequest",
+        "type": "object"
+      },
+      "CanaryAnalysisResponse": {
+        "properties": {
+          "anomaly": {
+            "additionalProperties": true,
+            "title": "Anomaly",
+            "type": "object"
+          },
+          "baseline_stream_id": {
+            "title": "Baseline Stream Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "distribution": {
+            "additionalProperties": true,
+            "title": "Distribution",
+            "type": "object"
+          },
+          "events": {
+            "additionalProperties": true,
+            "title": "Events",
+            "type": "object"
+          },
+          "latency": {
+            "additionalProperties": true,
+            "title": "Latency",
+            "type": "object"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "slo": {
+            "additionalProperties": true,
+            "title": "Slo",
+            "type": "object"
+          },
+          "stream_id": {
+            "title": "Stream Id",
+            "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": true,
+            "title": "Thresholds",
+            "type": "object"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stream_id",
+          "baseline_stream_id",
+          "namespace",
+          "verdict",
+          "confidence",
+          "reasons",
+          "latency",
+          "distribution",
+          "slo",
+          "anomaly",
+          "events",
+          "thresholds"
+        ],
+        "title": "CanaryAnalysisResponse",
+        "type": "object"
+      },
       "EventBatch": {
         "properties": {
           "events": {
@@ -519,6 +695,64 @@
           }
         },
         "summary": "Detect Anomaly"
+      }
+    },
+    "/v1/namespaces/{namespace}/streams/{stream_id}/canary/analyze": {
+      "post": {
+        "operationId": "analyze_canary_v1_namespaces__namespace__streams__stream_id__canary_analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanaryAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanaryAnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Canary"
       }
     },
     "/v1/namespaces/{namespace}/streams/{stream_id}/diff": {
@@ -1112,6 +1346,65 @@
           }
         },
         "summary": "Detect Anomaly"
+      }
+    },
+    "/v1/streams/{stream_id}/canary/analyze": {
+      "post": {
+        "operationId": "analyze_canary_v1_streams__stream_id__canary_analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stream_id",
+            "required": true,
+            "schema": {
+              "title": "Stream Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Namespace",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanaryAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanaryAnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Canary"
       }
     },
     "/v1/streams/{stream_id}/diff": {

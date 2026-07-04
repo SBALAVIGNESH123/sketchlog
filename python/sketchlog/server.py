@@ -24,6 +24,7 @@ from sketchlog.alerts import AlertEngine
 from sketchlog.cluster import ClusterManager, MAX_MESH_PAYLOAD_BYTES
 from sketchlog.slo import SmartSLOEngine
 from sketchlog.diff import SketchDiff
+from sketchlog.canary import CanaryAnalysisConfig, CanaryAnalyzer, CanaryThresholds
 from sketchlog.sql import SQLParser, execute_stream_query
 from prometheus_client import CollectorRegistry
 
@@ -668,6 +669,64 @@ class SLOResponse(BaseModel):
     is_alerting: bool
 
 
+class CanaryAnalysisRequest(BaseModel):
+    baseline_stream_id: str
+    error_event_name: Optional[str] = None
+    target_percentile: float = 0.995
+    budget_percent: float = 0.005
+    min_latency_count: int = 1
+    warning_p99_shift_percent: float = 10.0
+    rollback_p99_shift_percent: float = 35.0
+    warning_error_rate_increase_percent: float = 25.0
+    rollback_error_rate_increase_percent: float = 100.0
+    warning_slo_burn_rate: float = 1.0
+    rollback_slo_burn_rate: float = 4.0
+    warning_ks_statistic: float = 0.12
+    rollback_ks_statistic: float = 0.30
+    warning_wasserstein_ratio: float = 0.20
+    rollback_wasserstein_ratio: float = 0.60
+    warning_anomaly_score: float = 0.20
+    rollback_anomaly_score: float = 0.45
+
+    @model_validator(mode='after')
+    def validate_canary_thresholds(self) -> 'CanaryAnalysisRequest':
+        if not (0 < self.target_percentile < 1):
+            raise ValueError("target_percentile must be in (0, 1)")
+        if not (0 < self.budget_percent < 1):
+            raise ValueError("budget_percent must be in (0, 1)")
+        if self.min_latency_count < 1:
+            raise ValueError("min_latency_count must be >= 1")
+        pairs = [
+            (self.warning_p99_shift_percent, self.rollback_p99_shift_percent, "p99 shift"),
+            (self.warning_error_rate_increase_percent, self.rollback_error_rate_increase_percent, "error rate"),
+            (self.warning_slo_burn_rate, self.rollback_slo_burn_rate, "SLO burn rate"),
+            (self.warning_ks_statistic, self.rollback_ks_statistic, "KS statistic"),
+            (self.warning_wasserstein_ratio, self.rollback_wasserstein_ratio, "Wasserstein ratio"),
+            (self.warning_anomaly_score, self.rollback_anomaly_score, "anomaly score"),
+        ]
+        for warning, rollback, name in pairs:
+            if warning < 0 or rollback < 0:
+                raise ValueError(f"{name} thresholds must be non-negative")
+            if rollback < warning:
+                raise ValueError(f"{name} rollback threshold must be >= warning threshold")
+        return self
+
+
+class CanaryAnalysisResponse(BaseModel):
+    stream_id: str
+    baseline_stream_id: str
+    namespace: str
+    verdict: str
+    confidence: float
+    reasons: List[str]
+    latency: Dict[str, Any]
+    distribution: Dict[str, Any]
+    slo: Dict[str, Any]
+    anomaly: Dict[str, Any]
+    events: Dict[str, Any]
+    thresholds: Dict[str, Any]
+
+
 class MergeRequest(BaseModel):
     state: Dict[str, Any]
 
@@ -1010,6 +1069,64 @@ async def get_event_count(stream_id: str, name: str, namespace: str = "default")
         event_name=name,
         count=stream.event_count(name)
     )
+
+@app.post("/v1/namespaces/{namespace}/streams/{stream_id:path}/canary/analyze", response_model=CanaryAnalysisResponse)
+@app.post("/v1/streams/{stream_id:path}/canary/analyze", response_model=CanaryAnalysisResponse)
+async def analyze_canary(stream_id: str, req: CanaryAnalysisRequest, namespace: str = "default") -> CanaryAnalysisResponse:
+    candidate_stream = await registry.get(namespace, stream_id)
+    if not candidate_stream:
+        has_candidate = cluster_manager.has_peer_data(namespace, stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        if not has_candidate:
+            raise HTTPException(status_code=404, detail=f"Candidate stream '{stream_id}' not found in namespace '{namespace}'.")
+
+    baseline_stream = await registry.get(namespace, req.baseline_stream_id)
+    if not baseline_stream:
+        has_baseline = cluster_manager.has_peer_data(namespace, req.baseline_stream_id) if (PEERS or ADVERTISED_ADDRESS) else False
+        if not has_baseline:
+            raise HTTPException(status_code=404, detail=f"Baseline stream '{req.baseline_stream_id}' not found in namespace '{namespace}'.")
+
+    if PEERS or ADVERTISED_ADDRESS:
+        candidate = cluster_manager.get_merged_stream(namespace, stream_id, candidate_stream)
+        baseline = cluster_manager.get_merged_stream(namespace, req.baseline_stream_id, baseline_stream)
+    else:
+        assert candidate_stream is not None
+        assert baseline_stream is not None
+        candidate = candidate_stream.get_snapshot()
+        baseline = baseline_stream.get_snapshot()
+
+    thresholds = CanaryThresholds(
+        warning_p99_shift_percent=req.warning_p99_shift_percent,
+        rollback_p99_shift_percent=req.rollback_p99_shift_percent,
+        warning_error_rate_increase_percent=req.warning_error_rate_increase_percent,
+        rollback_error_rate_increase_percent=req.rollback_error_rate_increase_percent,
+        warning_slo_burn_rate=req.warning_slo_burn_rate,
+        rollback_slo_burn_rate=req.rollback_slo_burn_rate,
+        warning_ks_statistic=req.warning_ks_statistic,
+        rollback_ks_statistic=req.rollback_ks_statistic,
+        warning_wasserstein_ratio=req.warning_wasserstein_ratio,
+        rollback_wasserstein_ratio=req.rollback_wasserstein_ratio,
+        warning_anomaly_score=req.warning_anomaly_score,
+        rollback_anomaly_score=req.rollback_anomaly_score,
+    )
+    config = CanaryAnalysisConfig(
+        target_percentile=req.target_percentile,
+        budget_percent=req.budget_percent,
+        min_latency_count=req.min_latency_count,
+        error_event_name=req.error_event_name,
+        thresholds=thresholds,
+    )
+    try:
+        result = CanaryAnalyzer.analyze(baseline, candidate, config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return CanaryAnalysisResponse(
+        stream_id=stream_id,
+        baseline_stream_id=req.baseline_stream_id,
+        namespace=namespace,
+        **result,
+    )
+
 
 @app.post("/v1/namespaces/{namespace}/streams/{stream_id:path}/slo/evaluate", response_model=SLOResponse)
 @app.post("/v1/streams/{stream_id:path}/slo/evaluate", response_model=SLOResponse)
