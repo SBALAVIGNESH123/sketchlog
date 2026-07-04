@@ -68,6 +68,7 @@ nav:
       - Canary Analysis: canary-analysis.md
       - Standalone Server: server.md
   - Operations:
+      - Production Readiness Checker: doctor.md
       - Runbooks: runbooks.md
       - Troubleshooting: troubleshooting.md
       - Release Process: releasing.md
