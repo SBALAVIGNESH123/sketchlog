@@ -16,7 +16,7 @@ import sys
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Pattern, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -92,13 +92,21 @@ class DoctorOptions:
 
 _SECRET_QUERY_KEYS = {"token", "auth", "authorization", "password", "secret", "key", "apikey", "api_key"}
 _BEARER_RE = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+\-/=]+")
-_TOKEN_RE = re.compile(r"(?i)(token=)[^\s&]+")
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(token|auth|authorization|password|secret|key|apikey|api_key)\s*([:=])\s*([^\s&;,]+)"
+)
+_HEALTH_OK_RE = re.compile(r'(?im)("status"\s*:\s*"ok"|^\s*ok\s*$)')
+_READY_RE = re.compile(r'(?im)("status"\s*:\s*"ready"|^\s*ready\s*$)')
+_SKETCHLOG_METRIC_RE = re.compile(r"(?m)^sketchlog[_a-zA-Z0-9:]*")
 
 
-def redact_text(value: str) -> str:
+def redact_text(value: str, extra_secrets: Sequence[str] = ()) -> str:
     """Redact obvious credentials from diagnostic text."""
     value = _BEARER_RE.sub(r"\1<redacted>", value)
-    value = _TOKEN_RE.sub(r"\1<redacted>", value)
+    value = _SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}<redacted>", value)
+    for secret in extra_secrets:
+        if secret:
+            value = value.replace(secret, "<redacted>")
     return value
 
 
@@ -116,14 +124,16 @@ def redact_url(value: str) -> str:
 
 
 def _join_url(endpoint: str, path: str) -> str:
-    base = endpoint.rstrip("/")
-    return f"{base}{path}"
+    parts = urlsplit(endpoint)
+    base_path = parts.path.rstrip("/")
+    suffix = path if path.startswith("/") else f"/{path}"
+    return urlunsplit((parts.scheme, parts.netloc, f"{base_path}{suffix}", "", ""))
 
 
 def _request_text(url: str, *, headers: Mapping[str, str], timeout: float) -> tuple[int, str, str]:
     request = Request(url, headers=dict(headers), method="GET")
     try:
-        with urlopen(request, timeout=timeout) as response:  # noqa: S310 - user-supplied endpoint is the point of this diagnostic tool.
+        with urlopen(request, timeout=timeout) as response:  # nosec B310 - user-supplied endpoint is the point of this diagnostic tool.
             body = response.read(64_000).decode("utf-8", errors="replace")
             return int(response.status), body, response.headers.get("content-type", "")
     except HTTPError as exc:
@@ -146,12 +156,13 @@ def _http_check(
     headers: Mapping[str, str],
     timeout: float,
     success_message: str,
-    content_predicate: Optional[tuple[str, str]] = None,
+    content_predicate: Optional[tuple[Pattern[str], str]] = None,
+    secrets: Sequence[str] = (),
 ) -> Optional[str]:
     try:
         status, body, content_type = _request_text(url, headers=headers, timeout=timeout)
     except ConnectionError as exc:
-        checks.append(DoctorCheck(category, name, CheckStatus.FAIL, f"{name} endpoint is unreachable", str(exc)))
+        checks.append(DoctorCheck(category, name, CheckStatus.FAIL, f"{name} endpoint is unreachable", redact_text(str(exc), secrets)))
         return None
 
     if _status_from_http(status) is CheckStatus.FAIL:
@@ -161,15 +172,15 @@ def _http_check(
                 name,
                 CheckStatus.FAIL,
                 f"{name} endpoint returned HTTP {status}",
-                redact_text(body[:500]),
+                redact_text(body[:500], secrets),
             )
         )
-        return body
+        return None
 
     if content_predicate:
         expected, warning = content_predicate
         haystack = f"{content_type}\n{body}"
-        if expected not in haystack:
+        if expected.search(haystack) is None:
             checks.append(DoctorCheck(category, name, CheckStatus.WARN, warning))
             return body
 
@@ -214,6 +225,9 @@ def run_doctor(options: DoctorOptions) -> DoctorReport:
     headers: Dict[str, str] = {"User-Agent": "sketchlog-doctor/1.0"}
     if options.auth_token:
         headers["X-SketchLog-Auth-Token"] = options.auth_token
+    if options.cluster_token:
+        headers["X-SketchLog-Cluster-Token"] = options.cluster_token
+    redaction_secrets = tuple(secret for secret in (options.auth_token, options.cluster_token) if secret)
 
     if parts.scheme == "https":
         checks.append(DoctorCheck("security", "tls", CheckStatus.PASS, "Endpoint uses HTTPS"))
@@ -236,7 +250,8 @@ def run_doctor(options: DoctorOptions) -> DoctorReport:
         headers=headers,
         timeout=options.timeout_seconds,
         success_message="/health endpoint is reachable",
-        content_predicate=("ok", "/health did not include the expected ok status"),
+        content_predicate=(_HEALTH_OK_RE, "/health did not include the expected ok status"),
+        secrets=redaction_secrets,
     )
     _http_check(
         checks,
@@ -246,7 +261,8 @@ def run_doctor(options: DoctorOptions) -> DoctorReport:
         headers=headers,
         timeout=options.timeout_seconds,
         success_message="/ready endpoint reports readiness",
-        content_predicate=("ready", "/ready did not include the expected ready status"),
+        content_predicate=(_READY_RE, "/ready did not include the expected ready status"),
+        secrets=redaction_secrets,
     )
     metrics_body = _http_check(
         checks,
@@ -256,7 +272,8 @@ def run_doctor(options: DoctorOptions) -> DoctorReport:
         headers=headers,
         timeout=options.timeout_seconds,
         success_message="/metrics endpoint exposes Prometheus text",
-        content_predicate=("sketchlog_", "/metrics is reachable but does not appear to include SketchLog metrics"),
+        content_predicate=(_SKETCHLOG_METRIC_RE, "/metrics is reachable but does not appear to include SketchLog metrics"),
+        secrets=redaction_secrets,
     )
     if metrics_body is not None and "# HELP" in metrics_body and "# TYPE" in metrics_body:
         checks.append(DoctorCheck("observability", "prometheus-format", CheckStatus.PASS, "Prometheus HELP/TYPE metadata found"))
@@ -264,9 +281,11 @@ def run_doctor(options: DoctorOptions) -> DoctorReport:
         checks.append(DoctorCheck("observability", "prometheus-format", CheckStatus.WARN, "Prometheus metadata was not found in /metrics output"))
 
     if options.expect_storage:
-        ready_failures = [check for check in checks if check.name == "ready" and check.status is CheckStatus.FAIL]
-        if ready_failures:
+        ready_checks = [check for check in checks if check.name == "ready"]
+        if not ready_checks or ready_checks[-1].status is CheckStatus.FAIL:
             checks.append(DoctorCheck("storage", "storage-readiness", CheckStatus.FAIL, "Storage readiness could not be confirmed because /ready failed"))
+        elif ready_checks[-1].status is CheckStatus.WARN:
+            checks.append(DoctorCheck("storage", "storage-readiness", CheckStatus.WARN, "Storage readiness could not be fully confirmed because /ready returned a warning"))
         else:
             checks.append(DoctorCheck("storage", "storage-readiness", CheckStatus.PASS, "Storage expected and /ready passed"))
     else:
@@ -429,7 +448,10 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument("--grafana-dashboard", type=Path, help="Optional Grafana dashboard/plugin config path")
     parser.add_argument("--retention-policy", type=Path, help="Optional retention policy path")
     parser.add_argument("--backup-policy", type=Path, help="Optional backup policy path")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.timeout <= 0:
+        parser.error("--timeout must be greater than 0")
+    return args
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

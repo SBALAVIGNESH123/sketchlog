@@ -1,12 +1,12 @@
 # Production Readiness Checker
 
-`sketchlog doctor` audits a running SketchLog deployment and reports whether it is safe enough for production use.
+`sketchlog-doctor` audits a running SketchLog deployment and reports whether it is safe enough for production use.
 
 This is different from `/health` and `/ready`:
 
 - `/health` confirms the process is alive.
 - `/ready` confirms the server can accept traffic.
-- `sketchlog doctor` checks the wider deployment posture: server endpoints, Prometheus metrics, TLS, auth, storage readiness, namespace quotas, mesh settings, and optional integration configuration files.
+- `sketchlog-doctor` checks the wider deployment posture: server endpoints, Prometheus metrics, TLS, auth, storage readiness, namespace quotas, mesh settings, and optional integration configuration files.
 
 ## Basic usage
 
@@ -29,7 +29,7 @@ PASS  observability/metrics             /metrics endpoint exposes Prometheus tex
 PASS  observability/prometheus-format   Prometheus HELP/TYPE metadata found
 WARN  storage/storage-readiness         Durable storage was not explicitly verified; pass --expect-storage for production DB checks
 
-Result: warn (5 pass, 4 warn, 0 fail)
+Result: warn (5 pass, 3 warn, 0 fail)
 ```
 
 ## JSON output
@@ -40,7 +40,7 @@ Use JSON output for CI/CD and automated environment checks:
 sketchlog-doctor --endpoint https://sketchlog.example.com --format json
 ```
 
-The JSON report includes a summary, a redacted endpoint, and a structured list of checks:
+The JSON report includes a summary, a redacted endpoint, and a structured list of checks. The example below is abbreviated; real output includes all checks counted in the summary:
 
 ```json
 {

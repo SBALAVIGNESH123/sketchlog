@@ -51,7 +51,7 @@ def test_doctor_failure_when_required_endpoint_is_down(monkeypatch: pytest.Monke
 
     monkeypatch.setattr("sketchlog.doctor._request_text", failing_request)
 
-    report = run_doctor(DoctorOptions(endpoint="https://sketchlog.example.com", auth_token="secret", expect_auth=True, expect_tls=True))
+    report = run_doctor(DoctorOptions(endpoint="https://sketchlog.example.com", auth_token="super-secret", expect_auth=True, expect_tls=True))
 
     assert report.summary.status is CheckStatus.FAIL
     assert any(check.name == "health" and check.status is CheckStatus.FAIL for check in report.checks)
@@ -134,3 +134,69 @@ def test_redact_url_removes_credentials_and_secret_query_values() -> None:
     assert "abc" not in safe
     assert "xyz" not in safe
     assert "region=iad" in safe
+
+
+
+def test_doctor_rejects_query_fragments_when_building_probe_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def healthy_request(url: str, *, headers: Mapping[str, str], timeout: float) -> tuple[int, str, str]:
+        seen.append(url)
+        return _healthy_request(url, headers=headers, timeout=timeout)
+
+    monkeypatch.setattr("sketchlog.doctor._request_text", healthy_request)
+    run_doctor(DoctorOptions(endpoint="https://sketchlog.example.com/base?token=secret#frag", auth_token="super-secret"))
+
+    assert "https://sketchlog.example.com/base/health" in seen
+    assert all("token=secret" not in url and "#frag" not in url for url in seen)
+
+
+def test_doctor_skips_follow_up_metrics_format_after_http_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_metrics(url: str, *, headers: Mapping[str, str], timeout: float) -> tuple[int, str, str]:
+        if url.endswith("/metrics"):
+            return 503, "sketchlog_api_key=super-secret", "text/plain"
+        return _healthy_request(url, headers=headers, timeout=timeout)
+
+    monkeypatch.setattr("sketchlog.doctor._request_text", failing_metrics)
+    report = run_doctor(DoctorOptions(endpoint="https://sketchlog.example.com", auth_token="super-secret"))
+
+    assert any(check.name == "metrics" and check.status is CheckStatus.FAIL for check in report.checks)
+    assert not any(check.name == "prometheus-format" for check in report.checks)
+    rendered = format_text(report)
+    assert "super-secret" not in rendered
+    assert "api_key=<redacted>" in rendered
+
+
+def test_doctor_does_not_accept_loose_health_ready_substrings(monkeypatch: pytest.MonkeyPatch) -> None:
+    def misleading_request(url: str, *, headers: Mapping[str, str], timeout: float) -> tuple[int, str, str]:
+        if url.endswith("/health"):
+            return 200, '{"status":"not_ok"}', "application/json"
+        if url.endswith("/ready"):
+            return 200, "not ready", "text/plain"
+        return _healthy_request(url, headers=headers, timeout=timeout)
+
+    monkeypatch.setattr("sketchlog.doctor._request_text", misleading_request)
+    report = run_doctor(DoctorOptions(endpoint="https://sketchlog.example.com", expect_storage=True))
+
+    assert any(check.name == "health" and check.status is CheckStatus.WARN for check in report.checks)
+    assert any(check.name == "ready" and check.status is CheckStatus.WARN for check in report.checks)
+    assert any(check.name == "storage-readiness" and check.status is CheckStatus.WARN for check in report.checks)
+
+
+def test_doctor_sends_cluster_token_on_probes(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed_headers: list[Mapping[str, str]] = []
+
+    def header_request(url: str, *, headers: Mapping[str, str], timeout: float) -> tuple[int, str, str]:
+        observed_headers.append(dict(headers))
+        return _healthy_request(url, headers=headers, timeout=timeout)
+
+    monkeypatch.setattr("sketchlog.doctor._request_text", header_request)
+    run_doctor(DoctorOptions(endpoint="https://sketchlog.example.com", cluster_token="cluster-secret", mesh_enabled=True))
+
+    assert observed_headers
+    assert all(headers.get("X-SketchLog-Cluster-Token") == "cluster-secret" for headers in observed_headers)
+
+
+def test_doctor_cli_rejects_non_positive_timeout() -> None:
+    with pytest.raises(SystemExit):
+        main(["--endpoint", "https://sketchlog.example.com", "--timeout", "0"])
