@@ -65,6 +65,7 @@ nav:
       - Grafana Dashboard: grafana.md
       - Grafana Data Source Plugin: grafana-datasource-plugin.md
       - OpenTelemetry Collector: otel-collector.md
+      - Canary Analysis: canary-analysis.md
       - Standalone Server: server.md
   - Operations:
       - Runbooks: runbooks.md
