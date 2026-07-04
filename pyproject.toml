@@ -37,6 +37,8 @@ Issues = "https://github.com/SBALAVIGNESH123/sketchlog/issues"
 [project.scripts]
 sketchlog-server = "sketchlog.server:main"
 sketchlog-collector = "sketchlog.ebpf.collector:main"
+sketchlog-doctor = "sketchlog.doctor:main"
+sketchlog-production-check = "sketchlog.doctor:main"
 
 [project.optional-dependencies]
 docs = [
