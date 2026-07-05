@@ -6,7 +6,17 @@ from typing import Dict
 
 import pytest
 
-from sketchlog.agent import AgentConfigError, SketchLogAgent, load_config, parse_prometheus_text
+from sketchlog.agent import AgentConfig, AgentConfigError, PrometheusTarget, ServerConfig, SketchLogAgent, StreamMapping, load_config, parse_prometheus_text
+
+def load_config_from_dict(raw: Dict[str, object]) -> AgentConfig:
+    server = raw["server"]
+    prometheus = raw["prometheus"]
+    return AgentConfig(
+        server=ServerConfig(**server),
+        prometheus_targets=[PrometheusTarget(**target) for target in prometheus["targets"]],
+        mappings=[StreamMapping.from_dict(item) for item in raw["mappings"]],
+        interval_seconds=float(raw.get("interval_seconds", 15.0)),
+    )
 
 
 def test_parse_prometheus_text_with_labels_and_non_finite_skip() -> None:
@@ -124,3 +134,118 @@ def test_auth_token_env_is_preferred(tmp_path: Path, monkeypatch: pytest.MonkeyP
     )
     cfg = load_config(str(config_path))
     assert cfg.server.resolved_auth_token() == "from-env"
+
+
+
+def test_parse_prometheus_labels_preserves_utf8_and_unescapes_only_prometheus_sequences() -> None:
+    samples = parse_prometheus_text('metric{city="Montréal",quote="a\\b\\nc\\\"d"} 1\n')
+
+    assert samples[0].labels["city"] == "Montréal"
+    assert samples[0].labels["quote"] == 'a\\b\nc"d'
+
+
+def test_config_validation_rejects_non_finite_interval_and_malformed_entries(tmp_path: Path) -> None:
+    config_path = tmp_path / "agent.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "server": {"endpoint": "http://localhost:8000"},
+                "prometheus": {"targets": [{"name": "app", "url": "http://app/metrics"}]},
+                "mappings": [{"metric": "x", "kind": "latency", "stream": "x.latency"}],
+                "interval_seconds": float("nan"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(AgentConfigError, match="interval_seconds"):
+        load_config(str(config_path))
+
+    config_path.write_text(
+        json.dumps(
+            {
+                "server": {"endpoint": "http://localhost:8000"},
+                "prometheus": {"targets": ["not-an-object"]},
+                "mappings": [{"metric": "x", "kind": "latency", "stream": "x.latency"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(AgentConfigError, match="prometheus.targets"):
+        load_config(str(config_path))
+
+    config_path.write_text(
+        json.dumps(
+            {
+                "server": {"endpoint": "http://localhost:8000"},
+                "prometheus": {"targets": [{"name": "app", "url": "http://app/metrics"}]},
+                "mappings": ["not-an-object"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(AgentConfigError, match="mappings"):
+        load_config(str(config_path))
+
+
+def test_counter_delta_state_is_isolated_per_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path = tmp_path / "agent.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "server": {"endpoint": "http://localhost:8000"},
+                "prometheus": {
+                    "targets": [
+                        {"name": "app-a", "url": "http://app-a/metrics"},
+                        {"name": "app-b", "url": "http://app-b/metrics"},
+                    ]
+                },
+                "mappings": [{"metric": "requests_total", "kind": "event", "stream": "api.events", "event_name": "requests"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    agent = SketchLogAgent(load_config(str(config_path)))
+    scrapes = {
+        "app-a": ["requests_total 10\n", "requests_total 15\n"],
+        "app-b": ["requests_total 100\n", "requests_total 107\n"],
+    }
+    sent: list[tuple[str, Dict[str, object]]] = []
+
+    def fake_scrape(target: object) -> str:
+        return scrapes[target.name].pop(0)
+
+    monkeypatch.setattr(agent, "_scrape_target", fake_scrape)
+    monkeypatch.setattr(agent, "_send_batch", lambda stream, batch: sent.append((stream, batch.as_payload())))
+
+    first = agent.run_once()
+    second = agent.run_once()
+
+    assert first.forwarded_items == 0
+    assert second.forwarded_items == 1
+    assert sent == [("api.events", {"latencies": [], "uniques": [], "events": {"requests": 12}})]
+
+
+def test_run_forever_continues_after_transient_cycle_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = load_config_from_dict(
+        {
+            "server": {"endpoint": "http://localhost:8000"},
+            "prometheus": {"targets": [{"name": "app", "url": "http://app/metrics"}]},
+            "mappings": [{"metric": "x", "kind": "latency", "stream": "x.latency"}],
+            "interval_seconds": 0.01,
+        }
+    )
+    agent = SketchLogAgent(config)
+    calls = {"count": 0}
+
+    def fake_run_once() -> object:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise OSError("temporary failure")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(agent, "run_once", fake_run_once)
+    monkeypatch.setattr("sketchlog.agent.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(KeyboardInterrupt):
+        agent.run_forever()
+    assert calls["count"] == 2

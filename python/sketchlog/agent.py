@@ -41,8 +41,8 @@ class ServerConfig:
             raise AgentConfigError("server.endpoint must be an http(s) URL")
         if not self.namespace or len(self.namespace) > 255 or "/" in self.namespace or self.namespace in {".", ".."}:
             raise AgentConfigError("server.namespace must be one safe path segment")
-        if self.timeout_seconds <= 0:
-            raise AgentConfigError("server.timeout_seconds must be positive")
+        if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
+            raise AgentConfigError("server.timeout_seconds must be positive and finite")
 
     def resolved_auth_token(self) -> Optional[str]:
         if self.auth_token_env:
@@ -64,8 +64,8 @@ class PrometheusTarget:
             raise AgentConfigError("prometheus target name must not be empty")
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise AgentConfigError(f"prometheus target {self.name!r} url must be http(s)")
-        if self.timeout_seconds <= 0:
-            raise AgentConfigError(f"prometheus target {self.name!r} timeout_seconds must be positive")
+        if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
+            raise AgentConfigError(f"prometheus target {self.name!r} timeout_seconds must be positive and finite")
 
 
 @dataclass(frozen=True)
@@ -120,8 +120,8 @@ class AgentConfig:
     max_batch_items: int = 1000
 
     def __post_init__(self) -> None:
-        if self.interval_seconds <= 0:
-            raise AgentConfigError("interval_seconds must be positive")
+        if not math.isfinite(self.interval_seconds) or self.interval_seconds <= 0:
+            raise AgentConfigError("interval_seconds must be positive and finite")
         if self.max_batch_items < 1:
             raise AgentConfigError("max_batch_items must be >= 1")
         if not self.prometheus_targets:
@@ -178,6 +178,24 @@ def load_config(path: str) -> AgentConfig:
         raise AgentConfigError("prometheus.targets must be a list")
     if not isinstance(mappings_raw, list):
         raise AgentConfigError("mappings must be a list")
+    prometheus_targets: List[PrometheusTarget] = []
+    for index, item in enumerate(targets_raw):
+        if not isinstance(item, dict):
+            raise AgentConfigError(f"prometheus.targets[{index}] must be an object")
+        prometheus_targets.append(
+            PrometheusTarget(
+                str(item.get("name", "")),
+                str(item.get("url", "")),
+                float(item.get("timeout_seconds", 3.0)),
+            )
+        )
+
+    mappings: List[StreamMapping] = []
+    for index, item in enumerate(mappings_raw):
+        if not isinstance(item, dict):
+            raise AgentConfigError(f"mappings[{index}] must be an object")
+        mappings.append(StreamMapping.from_dict(item))
+
     return AgentConfig(
         server=ServerConfig(
             endpoint=str(server_raw.get("endpoint", "")),
@@ -186,8 +204,8 @@ def load_config(path: str) -> AgentConfig:
             auth_token_env=str(server_raw["auth_token_env"]) if "auth_token_env" in server_raw else None,
             timeout_seconds=float(server_raw.get("timeout_seconds", 3.0)),
         ),
-        prometheus_targets=[PrometheusTarget(str(item.get("name", "")), str(item.get("url", "")), float(item.get("timeout_seconds", 3.0))) for item in targets_raw if isinstance(item, dict)],
-        mappings=[StreamMapping.from_dict(item) for item in mappings_raw if isinstance(item, dict)],
+        prometheus_targets=prometheus_targets,
+        mappings=mappings,
         interval_seconds=float(raw.get("interval_seconds", 15.0)),
         max_batch_items=int(raw.get("max_batch_items", 1000)),
     )
@@ -221,8 +239,29 @@ def _parse_float(value: str) -> Optional[float]:
 def _parse_labels(raw: str) -> Dict[str, str]:
     labels: Dict[str, str] = {}
     for match in _LABEL_RE.finditer(raw):
-        labels[match.group(1)] = bytes(match.group(2), "utf-8").decode("unicode_escape")
+        labels[match.group(1)] = _unescape_label_value(match.group(2))
     return labels
+
+
+def _unescape_label_value(value: str) -> str:
+    result: List[str] = []
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char != "\\" or index + 1 >= len(value):
+            result.append(char)
+            index += 1
+            continue
+        escaped = value[index + 1]
+        if escaped == "n":
+            result.append("\n")
+        elif escaped in {"\\", '"'}:
+            result.append(escaped)
+        else:
+            result.append("\\")
+            result.append(escaped)
+        index += 2
+    return "".join(result)
 
 
 class SketchLogAgent:
@@ -230,7 +269,7 @@ class SketchLogAgent:
 
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
-        self._last_counter_values: Dict[Tuple[str, Tuple[Tuple[str, str], ...], str], float] = {}
+        self._last_counter_values: Dict[Tuple[str, str, int, str, Tuple[Tuple[str, str], ...], str, str], float] = {}
 
     def run_once(self) -> AgentRunStats:
         batches: Dict[str, EventBatch] = {}
@@ -242,11 +281,11 @@ class SketchLogAgent:
             scraped += 1
             for sample in parse_prometheus_text(text):
                 any_match = False
-                for mapping in self.config.mappings:
+                for mapping_index, mapping in enumerate(self.config.mappings):
                     if not _mapping_matches(mapping, sample):
                         continue
                     any_match = True
-                    if self._apply_mapping(mapping, sample, batches):
+                    if self._apply_mapping(target, mapping_index, mapping, sample, batches):
                         matched += 1
                     else:
                         skipped += 1
@@ -257,8 +296,12 @@ class SketchLogAgent:
 
     def run_forever(self) -> None:
         while True:
-            stats = self.run_once()
-            print(json.dumps(stats.__dict__, sort_keys=True), flush=True)
+            try:
+                stats = self.run_once()
+            except (OSError, RuntimeError, urllib.error.URLError) as exc:
+                print(json.dumps({"error": str(exc), "status": "error"}, sort_keys=True), file=sys.stderr, flush=True)
+            else:
+                print(json.dumps(stats.__dict__, sort_keys=True), flush=True)
             time.sleep(self.config.interval_seconds)
 
     def _scrape_target(self, target: PrometheusTarget) -> str:
@@ -267,7 +310,7 @@ class SketchLogAgent:
             body: bytes = response.read()
             return body.decode("utf-8", errors="replace")
 
-    def _apply_mapping(self, mapping: StreamMapping, sample: PrometheusSample, batches: Dict[str, EventBatch]) -> bool:
+    def _apply_mapping(self, target: PrometheusTarget, mapping_index: int, mapping: StreamMapping, sample: PrometheusSample, batches: Dict[str, EventBatch]) -> bool:
         value = sample.value * mapping.value_scale
         if not math.isfinite(value):
             return False
@@ -280,13 +323,13 @@ class SketchLogAgent:
         if mapping.kind is MappingKind.UNIQUE:
             batch.uniques.append(str(int(value)) if value.is_integer() else str(value))
             return True
-        return self._apply_event_mapping(mapping, sample, batch, value)
+        return self._apply_event_mapping(target, mapping_index, mapping, sample, batch, value)
 
-    def _apply_event_mapping(self, mapping: StreamMapping, sample: PrometheusSample, batch: EventBatch, value: float) -> bool:
+    def _apply_event_mapping(self, target: PrometheusTarget, mapping_index: int, mapping: StreamMapping, sample: PrometheusSample, batch: EventBatch, value: float) -> bool:
         if value < 0 or mapping.event_name is None:
             return False
         if mapping.counter_mode == "delta":
-            key = (mapping.metric, tuple(sorted(sample.labels.items())), mapping.stream)
+            key = (target.name, target.url, mapping_index, mapping.metric, tuple(sorted(sample.labels.items())), mapping.stream, mapping.event_name or "")
             previous = self._last_counter_values.get(key)
             self._last_counter_values[key] = value
             if previous is None:
