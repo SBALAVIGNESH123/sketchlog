@@ -13,7 +13,7 @@ The agent is different from the eBPF universal collector. Use the eBPF collector
   "server": {
     "endpoint": "http://localhost:8000",
     "namespace": "production",
-    "auth_token_env": "SKETCHLOG_AUTH_TOKEN",
+    "auth_token_env": "SKETCHLOG_AGENT_TOKEN",
     "timeout_seconds": 3
   },
   "interval_seconds": 15,
