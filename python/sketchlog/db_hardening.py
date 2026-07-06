@@ -334,7 +334,7 @@ def _build_engine(sa: Any, url: str, config: DbConfig) -> Any:
 
 def _require_sqlalchemy() -> Any:
     try:
-        import sqlalchemy  # type: ignore[import]
+        import sqlalchemy
         return sqlalchemy
     except ImportError as exc:
         raise ImportError(
@@ -344,16 +344,23 @@ def _require_sqlalchemy() -> Any:
 
 
 def _redact_db_url(url: str) -> str:
-    """Return a URL safe for logs (password replaced with ``<redacted>``)."""
+    """Return a URL safe for logs (password replaced with ``<redacted>``).
+
+    If the URL contains no password (no ``@`` in the authority component),
+    the original string is returned unchanged to avoid urlsplit/urlunsplit
+    round-trip issues with opaque URLs such as ``sqlite:///path``.
+    """
     try:
         parts = urlsplit(url)
         netloc = parts.netloc
-        if "@" in netloc:
-            userinfo, host = netloc.rsplit("@", 1)
-            user = userinfo.split(":", 1)[0]
-            netloc = f"{user}:<redacted>@{host}"
+        if "@" not in netloc:
+            # No credentials present — return original string unchanged.
+            return url
+        userinfo, host = netloc.rsplit("@", 1)
+        user = userinfo.split(":", 1)[0]
+        redacted_netloc = f"{user}:<redacted>@{host}"
         return urlunsplit(
-            (parts.scheme, netloc, parts.path, parts.query, parts.fragment)
+            (parts.scheme, redacted_netloc, parts.path, parts.query, parts.fragment)
         )
     except Exception:
         return "<url-redacted>"
