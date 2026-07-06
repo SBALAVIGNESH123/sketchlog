@@ -166,7 +166,7 @@ class CostEstimateResult:
         """Return savings as a percentage, rounded to ``_PCT_DECIMALS``."""
         return round(self.savings_fraction * 100.0, _PCT_DECIMALS)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serialisable representation of the full result."""
         return {
             "inputs": {
