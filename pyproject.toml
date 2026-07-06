@@ -40,6 +40,9 @@ sketchlog-collector = "sketchlog.ebpf.collector:main"
 sketchlog-doctor = "sketchlog.doctor:main"
 sketchlog-production-check = "sketchlog.doctor:main"
 sketchlog-agent = "sketchlog.agent:main"
+sketchlog-cost-estimate = "sketchlog.cost_estimate:main"
+sketchlog-bench-lab = "sketchlog.bench_lab:main"
+sketchlog-db-check = "sketchlog.db_hardening:main"
 
 [project.optional-dependencies]
 docs = [
@@ -54,7 +57,9 @@ test = [
     "httpx2>=2,<3",
     "hypothesis",
     "greenlet",
-    "pytest-cov"
+    "pytest-cov",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "aiosqlite"
 ]
 dev = [
     "pytest",
@@ -67,7 +72,9 @@ dev = [
     "httpx",
     "httpx2>=2,<3",
     "hypothesis",
-    "types-psutil"
+    "types-psutil",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "aiosqlite"
 ]
 opentelemetry = [
     "opentelemetry-api",
@@ -93,8 +100,6 @@ where = ["python"]
 [tool.setuptools.package-data]
 sketchlog = ["py.typed", "ebpf/bpf_code.c"]
 
-
-
 [tool.mypy]
 strict = true
 
@@ -104,5 +109,3 @@ module = [
     "opentelemetry.*"
 ]
 ignore_missing_imports = true
-sketchlog-cost-estimate = "sketchlog.cost_estimate:main"
-sketchlog-bench-lab = "sketchlog.bench_lab:main"
