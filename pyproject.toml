@@ -39,6 +39,7 @@ sketchlog-server = "sketchlog.server:main"
 sketchlog-collector = "sketchlog.ebpf.collector:main"
 sketchlog-doctor = "sketchlog.doctor:main"
 sketchlog-production-check = "sketchlog.doctor:main"
+sketchlog-agent = "sketchlog.agent:main"
 
 [project.optional-dependencies]
 docs = [
