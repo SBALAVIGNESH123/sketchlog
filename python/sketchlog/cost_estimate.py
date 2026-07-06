@@ -7,7 +7,7 @@ Estimates the storage and memory difference between retaining every raw
 telemetry event versus retaining only SketchLog summaries (DDSketch-style
 quantile sketches for latency streams; counter aggregates for event streams).
 
-All calculations are purely local — no server connection is required.
+All calculations are purely local -- no server connection is required.
 """
 
 from __future__ import annotations
@@ -64,7 +64,8 @@ class CostEstimateConfig:
         Smaller values produce more accurate but larger sketches.
         Must be a finite float strictly between 0 and 1.
     stream_count:
-        Number of SketchLog streams across all namespaces.
+        Number of SketchLog streams per namespace.
+        Total streams across all namespaces = stream_count * namespace_count.
     namespace_count:
         Number of SketchLog namespaces.
     """
@@ -94,13 +95,17 @@ class CostEstimateConfig:
         elif self.retention_days < 1:
             errors.append("retention_days must be a positive integer (>= 1)")
 
+        # sketch_accuracy: reject bool first, then check numeric type, then range.
+        # Avoids an unreachable except clause that pyright/mypy flag as dead code.
         if isinstance(self.sketch_accuracy, bool):
             errors.append("sketch_accuracy must be a float, not bool")
+        elif not isinstance(self.sketch_accuracy, (int, float)):  # type: ignore[arg-type]
+            errors.append(
+                "sketch_accuracy must be a float; "
+                f"got {type(self.sketch_accuracy).__name__}"
+            )
         else:
-            try:
-                _acc = float(self.sketch_accuracy)
-            except (TypeError, ValueError):
-                _acc = float("nan")
+            _acc = float(self.sketch_accuracy)
             if not math.isfinite(_acc) or not (0.0 < _acc < 1.0):
                 errors.append(
                     "sketch_accuracy must be a finite float strictly in (0, 1); "
@@ -142,9 +147,9 @@ class CostEstimateResult:
     # SketchLog totals
     sketch_total_bytes: int
 
-    # Derived savings
+    # Derived savings; negative means SketchLog uses more storage than raw
     savings_bytes: int
-    savings_fraction: float  # 0.0–1.0
+    savings_fraction: float  # negative if sketch > raw
 
     # Per-stream breakdown
     latency_stream_count: int
@@ -188,7 +193,7 @@ class CostEstimateResult:
             },
             "savings": {
                 "bytes": self.savings_bytes,
-                "human": _fmt_bytes(self.savings_bytes),
+                "human": _fmt_bytes(abs(self.savings_bytes)),
                 "percent": self.savings_percent(),
                 "fraction": round(self.savings_fraction, 8),
             },
@@ -201,9 +206,9 @@ class CostEstimateResult:
         ctr_pct = 100 - lat_pct
         lines: list[str] = [
             "",
-            "╔══════════════════════════════════════════════════╗",
-            "║      SketchLog Cost Savings Estimate             ║",
-            "╚══════════════════════════════════════════════════╝",
+            "\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557",
+            "\u2551      SketchLog Cost Savings Estimate             \u2551",
+            "\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d",
             "",
             "  Inputs",
             f"    Events per day      : {self.config.events_per_day:>15,}",
@@ -211,13 +216,13 @@ class CostEstimateResult:
             f"    Retention           : {self.config.retention_days:>12,} days",
             f"    Sketch accuracy     : {self.config.sketch_accuracy:>15.6g}"
             "  (relative error)",
-            f"    Streams             : {self.config.stream_count:>15,}",
+            f"    Streams (per ns)    : {self.config.stream_count:>15,}",
             f"    Namespaces          : {self.config.namespace_count:>15,}",
             "",
             "  Storage comparison",
             f"    Raw telemetry total : {_fmt_bytes(self.raw_total_bytes):>15}",
             f"    SketchLog total     : {_fmt_bytes(self.sketch_total_bytes):>15}",
-            f"    Savings             : {_fmt_bytes(self.savings_bytes):>15}"
+            f"    Savings             : {_fmt_bytes(abs(self.savings_bytes)):>15}"
             f"  ({self.savings_percent():.2f} %)",
             "",
             "  Sketch model details",
@@ -249,18 +254,19 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     -----
     **Raw telemetry**::
 
-        raw_total = events_per_day \u00d7 avg_event_bytes \u00d7 retention_days
+        raw_total = events_per_day x avg_event_bytes x retention_days
 
     **SketchLog latency/quantile streams**
 
-    A DDSketch with relative accuracy \u03b5 requires approximately \u2308\u202f2\u202f/\u202f\u03b5\u202f\u2309 buckets.
-    Each bucket occupies ``_BYTES_PER_SKETCH_BUCKET`` bytes plus
-    ``_SKETCH_FIXED_OVERHEAD_BYTES`` of fixed per-sketch metadata.
-    Hourly windows are maintained, so ``_HOURLY_WINDOWS_PER_DAY`` sketches
-    are written per stream per day::
+    A DDSketch with relative accuracy epsilon requires approximately
+    ceil(2 / epsilon) buckets.  Each bucket occupies
+    ``_BYTES_PER_SKETCH_BUCKET`` bytes plus ``_SKETCH_FIXED_OVERHEAD_BYTES``
+    of fixed per-sketch metadata.  Hourly windows are maintained, so
+    ``_HOURLY_WINDOWS_PER_DAY`` sketches are written per stream per day::
 
         sketch_bytes_per_stream_per_day =
-            (\u2308\u202f2\u202f/\u202f\u03b5\u202f\u2309 \u00d7 bytes_per_bucket + fixed_overhead) \u00d7 hourly_windows
+            (ceil(2/epsilon) x bytes_per_bucket + fixed_overhead)
+            x hourly_windows
 
     **SketchLog event/counter streams**
 
@@ -270,9 +276,20 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     **Total sketch size**::
 
         sketch_total =
-            (latency_streams \u00d7 latency_bytes_per_stream_per_day
-             + counter_streams \u00d7 _COUNTER_STREAM_BYTES_PER_DAY)
-            \u00d7 namespace_count \u00d7 retention_days
+            (latency_streams x latency_bytes_per_stream_per_day
+             + counter_streams x _COUNTER_STREAM_BYTES_PER_DAY)
+            x namespace_count x retention_days
+
+    where ``latency_streams`` and ``counter_streams`` are per-namespace counts
+    derived from ``stream_count``.
+
+    **Savings**::
+
+        savings = raw_total - sketch_total
+
+    A negative value means SketchLog uses *more* storage than raw for this
+    configuration (only possible at very low event volumes or very high
+    stream/namespace counts).
 
     Parameters
     ----------
@@ -301,6 +318,7 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
         sketch_bytes_per_sketch * _HOURLY_WINDOWS_PER_DAY
     )
 
+    # stream_count is per-namespace; derive latency/counter split per namespace
     latency_streams: int = max(1, round(config.stream_count * _LATENCY_STREAM_FRACTION))
     counter_streams: int = max(0, config.stream_count - latency_streams)
 
@@ -314,23 +332,26 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     )
 
     # --- savings -------------------------------------------------------------
-    savings: int = max(0, raw_total - sketch_total)
+    # Not clamped: a negative value correctly signals that SketchLog uses more
+    # storage than raw for this configuration (e.g. very low event volume with
+    # many streams).
+    savings: int = raw_total - sketch_total
     savings_fraction: float = savings / raw_total if raw_total > 0 else 0.0
 
     caveats: tuple[str, ...] = (
         "All figures are estimates. Actual savings depend on your workload, "
         "event shape, and cardinality.",
-        "Raw telemetry compression (e.g. gzip \u223c3\u20135\u00d7) is NOT applied to the raw "
+        "Raw telemetry compression (e.g. gzip ~3-5x) is NOT applied to the raw "
         "figure. Divide the raw total by your compression ratio for a fairer "
         "comparison.",
         f"The model assumes {int(_LATENCY_STREAM_FRACTION * 100)} % latency/quantile streams "
         f"and {int((1.0 - _LATENCY_STREAM_FRACTION) * 100)} % event/counter streams. "
         "Adjust --streams if your split differs significantly.",
-        "Sketch bucket counts follow \u2308\u202f2\u202f/\u202f\u03b5\u202f\u2309 (DDSketch worst-case range ratio). "
+        "Sketch bucket counts follow ceil(2/epsilon) (DDSketch worst-case range ratio). "
         "Your actual sketch implementation may differ.",
         "Memory (hot-path) savings will differ from storage (cold-path) savings; "
         "this calculator estimates storage.",
-        "Sketch accuracy (\u03b5) is the relative error guarantee on any quantile query "
+        "Sketch accuracy (epsilon) is the relative error guarantee on any quantile query "
         "(e.g. 0.01 = at most 1 % relative error at p50, p95, p99, etc.).",
     )
 
@@ -353,7 +374,7 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
 # ---------------------------------------------------------------------------
 
 def _fmt_bytes(n: int) -> str:
-    """Return a human-readable IEC byte count (B, KiB, MiB, …)."""
+    """Return a human-readable IEC byte count (B, KiB, MiB, ...)."""
     value = float(n)
     for unit in ("B", "KiB", "MiB", "GiB", "TiB", "PiB"):
         if abs(value) < 1024.0:
@@ -372,10 +393,10 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Estimate storage and memory savings from using SketchLog\n"
             "instead of retaining every raw telemetry event.\n\n"
-            "All calculations are offline — no server connection is required."
+            "All calculations are offline -- no server connection is required."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog="""\
 examples:
   sketchlog-cost-estimate --events-per-day 1000000 --avg-event-bytes 512 \\
       --retention-days 30 --sketch-accuracy 0.01 --streams 50 --namespaces 5
@@ -422,7 +443,7 @@ examples:
         type=int,
         required=True,
         metavar="N",
-        help="Number of SketchLog streams across all namespaces.",
+        help="Number of SketchLog streams per namespace.",
     )
     parser.add_argument(
         "--namespaces",

@@ -29,7 +29,7 @@ sketchlog-cost-estimate --help
 
 ## Usage
 
-```
+```text
 sketchlog-cost-estimate \
   --events-per-day     N        \
   --avg-event-bytes    BYTES    \
@@ -48,7 +48,7 @@ sketchlog-cost-estimate \
 | `--avg-event-bytes` | int | ✅ | Mean byte size of one raw event (e.g. a JSON log line) |
 | `--retention-days` | int | ✅ | How many days of data must be retained |
 | `--sketch-accuracy` | float | ✅ | Relative error guarantee ε, strictly between 0 and 1 (e.g. `0.01` = 1 %) |
-| `--streams` | int | ✅ | Number of SketchLog streams across all namespaces |
+| `--streams` | int | ✅ | Number of SketchLog streams **per namespace** |
 | `--namespaces` | int | ✅ | Number of SketchLog namespaces |
 | `--json` | flag | ❌ | Emit machine-readable JSON instead of the human-readable report |
 
@@ -68,7 +68,7 @@ sketchlog-cost-estimate \
   --namespaces 2
 ```
 
-```
+```text
 ╔══════════════════════════════════════════════════╗
 ║      SketchLog Cost Savings Estimate             ║
 ╚══════════════════════════════════════════════════╝
@@ -78,19 +78,19 @@ sketchlog-cost-estimate \
     Avg event size      :      256.00 B
     Retention           :          30 days
     Sketch accuracy     :            0.01  (relative error)
-    Streams             :              20
+    Streams (per ns)    :              20
     Namespaces          :               2
 
   Storage comparison
     Raw telemetry total :        3.58 GiB
-    SketchLog total     :       19.27 MiB
-    Savings             :        3.56 GiB  (99.47 %)
+    SketchLog total     :       54.87 MiB
+    Savings             :        3.52 GiB  (98.50 %)
 
   Sketch model details
     Latency streams     :              12  (60 % of total)
     Counter streams     :               8  (40 % of total)
     Buckets / stream    :             200
-    Bytes / lat. stream :       75.00 KiB  per day
+    Bytes / lat. stream :       78.00 KiB  per day
     ...
 ```
 
@@ -122,20 +122,20 @@ sketchlog-cost-estimate \
     "human": "858.31 GiB"
   },
   "sketchlog_summary": {
-    "total_bytes": 138240000,
-    "human": "131.84 MiB",
+    "total_bytes": 16925184000,
+    "human": "15.76 GiB",
     "latency_streams": 120,
     "counter_streams": 80,
     "sketch_buckets_per_stream": 400,
-    "sketch_bytes_per_latency_stream_per_day": 153728
+    "sketch_bytes_per_latency_stream_per_day": 156672
   },
   "savings": {
-    "bytes": 921461760000,
-    "human": "858.18 GiB",
-    "percent": 99.98,
-    "fraction": 0.99985
+    "bytes": 904674816000,
+    "human": "842.55 GiB",
+    "percent": 98.16,
+    "fraction": 0.98163194
   },
-  "caveats": [...]
+  "caveats": ["..."]
 }
 ```
 
@@ -147,7 +147,7 @@ sketchlog-cost-estimate \
 |---|---|
 | **Raw telemetry total** | `events_per_day × avg_event_bytes × retention_days`. This is the uncompressed baseline. |
 | **SketchLog total** | Estimated bytes for all sketches + counter aggregates over the retention window. |
-| **Savings** | `raw − sketch`. Expressed in bytes, IEC units, and as a percentage of raw. |
+| **Savings** | `raw − sketch`. Expressed in bytes, IEC units, and as a percentage of raw. A negative value means SketchLog uses more storage than raw (only possible at very low event volumes). |
 | **Sketch buckets / stream** | Derived from `⌈ 2 / ε ⌉` (DDSketch worst-case bucket count). |
 | **Bytes / latency stream** | `(buckets × 16 + 128) × 24` — hourly sketches, 16 B/bucket, 128 B fixed overhead. |
 
@@ -158,6 +158,9 @@ streams**.  Counter streams store only running totals (≈ 64 B/stream/day),
 which is why they contribute minimally to the SketchLog total.  If your
 workload has a very different split, the savings figure will still be in the
 right order of magnitude.
+
+`--streams` is a **per-namespace** count.  Total streams =
+`streams × namespaces`.
 
 ### Sketch accuracy (ε)
 
@@ -187,6 +190,9 @@ Production deployments typically use `0.01` or `0.005`.
    only in the Python API, not the CLI (follow-up work).
 6. **No network calls.**  The calculator is fully offline and has no side
    effects.
+7. **Negative savings.**  If SketchLog storage exceeds raw storage (very low
+   event volume with many streams/namespaces), the savings value will be
+   negative.  The tool reports this correctly rather than clamping to zero.
 
 ---
 
@@ -200,7 +206,7 @@ config = CostEstimateConfig(
     avg_event_bytes=512,
     retention_days=30,
     sketch_accuracy=0.01,
-    stream_count=50,
+    stream_count=50,     # per namespace
     namespace_count=5,
 )
 result = estimate(config)

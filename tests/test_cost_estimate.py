@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import json
 import math
-import sys
-from io import StringIO
 from typing import Any
 
 import pytest
@@ -98,6 +96,11 @@ class TestCostEstimateConfigValidation:
         with pytest.raises(ValueError, match="sketch_accuracy"):
             _config(sketch_accuracy=True)  # type: ignore[arg-type]
 
+    def test_sketch_accuracy_string_raises(self) -> None:
+        """A numeric string must be rejected; caller must pass a real float."""
+        with pytest.raises(ValueError, match="sketch_accuracy"):
+            _config(sketch_accuracy="0.01")  # type: ignore[arg-type]
+
     def test_sketch_accuracy_boundaries_valid(self) -> None:
         # just inside the valid range
         _config(sketch_accuracy=1e-9)
@@ -146,19 +149,29 @@ class TestEstimateComputation:
         result = estimate(cfg)
         assert result.raw_total_bytes == 1_000 * 100 * 10
 
-    def test_savings_nonnegative(self) -> None:
-        """For any valid config, savings should be >= 0."""
+    def test_savings_positive_for_typical_config(self) -> None:
+        """For a typical high-event-volume config, savings should be > 0."""
         result = estimate(_config())
-        assert result.savings_bytes >= 0
-        assert result.savings_fraction >= 0.0
+        assert result.savings_bytes > 0
+        assert result.savings_fraction > 0.0
 
-    def test_savings_fraction_in_unit_interval(self) -> None:
-        result = estimate(_config())
-        assert 0.0 <= result.savings_fraction <= 1.0
+    def test_savings_can_be_negative(self) -> None:
+        """Very low event volume with many streams/namespaces makes sketch > raw."""
+        cfg = _config(
+            events_per_day=1,
+            avg_event_bytes=1,
+            retention_days=1,
+            stream_count=100,
+            namespace_count=10,
+        )
+        result = estimate(cfg)
+        assert result.savings_bytes < 0
+        assert result.savings_fraction < 0.0
 
     def test_savings_bytes_consistent_with_raw_and_sketch(self) -> None:
         result = estimate(_config())
-        expected = max(0, result.raw_total_bytes - result.sketch_total_bytes)
+        # savings is raw minus sketch -- NOT clamped to zero
+        expected = result.raw_total_bytes - result.sketch_total_bytes
         assert result.savings_bytes == expected
 
     def test_sketch_buckets_match_model(self) -> None:
@@ -176,7 +189,7 @@ class TestEstimateComputation:
         assert result.sketch_buckets_per_stream >= 1
 
     def test_latency_stream_count_partition(self) -> None:
-        """latency + counter == total stream count."""
+        """latency + counter == stream_count (per namespace)."""
         result = estimate(_config(stream_count=50))
         assert result.latency_stream_count + result.counter_stream_count == 50
 
@@ -196,7 +209,7 @@ class TestEstimateComputation:
         assert result.sketch_bytes_per_latency_stream_per_day == expected
 
     def test_high_accuracy_produces_larger_sketch(self) -> None:
-        """Lower epsilon → more buckets → larger sketch."""
+        """Lower epsilon -> more buckets -> larger sketch."""
         r_coarse = estimate(_config(sketch_accuracy=0.1))
         r_fine = estimate(_config(sketch_accuracy=0.001))
         assert r_fine.sketch_buckets_per_stream > r_coarse.sketch_buckets_per_stream
@@ -226,7 +239,7 @@ class TestEstimateComputation:
 
     def test_result_is_frozen(self) -> None:
         result = estimate(_config())
-        with pytest.raises((dataclasses_frozen_error := AttributeError, TypeError)):
+        with pytest.raises((AttributeError, TypeError)):
             result.savings_bytes = 0  # type: ignore[misc]
 
     @pytest.mark.parametrize("events_per_day,avg_bytes,retention", [
@@ -248,7 +261,7 @@ class TestEstimateComputation:
         assert result.sketch_total_bytes >= 0
 
     def test_very_small_accuracy_large_sketch(self) -> None:
-        """Tiny epsilon → huge bucket count; sanity-check no overflow."""
+        """Tiny epsilon -> huge bucket count; sanity-check no overflow."""
         cfg = _config(sketch_accuracy=1e-6)
         result = estimate(cfg)
         assert result.sketch_buckets_per_stream == math.ceil(2.0 / 1e-6)
@@ -264,7 +277,9 @@ class TestToDictSchema:
     def test_top_level_keys(self) -> None:
         result = estimate(_config())
         d = result.to_dict()
-        assert set(d.keys()) == {"inputs", "raw_telemetry", "sketchlog_summary", "savings", "caveats"}
+        assert set(d.keys()) == {
+            "inputs", "raw_telemetry", "sketchlog_summary", "savings", "caveats"
+        }
 
     def test_inputs_keys(self) -> None:
         result = estimate(_config())
@@ -285,12 +300,18 @@ class TestToDictSchema:
         raw = json.dumps(result.to_dict())
         assert isinstance(raw, str)
         parsed = json.loads(raw)
-        assert parsed["savings"]["percent"] >= 0.0
+        assert parsed["savings"]["percent"] >= -100.0  # can be negative if sketch > raw
 
     def test_savings_percent_matches_fraction(self) -> None:
+        """percent should be round(fraction * 100, 2) within floating-point tolerance.
+
+        fraction is rounded to 8 decimal places; percent to 2.  The maximum
+        representable rounding difference is half a unit at 2 dp (0.005).
+        A tolerance of 0.01 gives headroom for float representation noise.
+        """
         result = estimate(_config())
         d = result.to_dict()
-        assert abs(d["savings"]["fraction"] * 100.0 - d["savings"]["percent"]) < 1e-3
+        assert abs(d["savings"]["fraction"] * 100.0 - d["savings"]["percent"]) < 0.01
 
     def test_caveats_is_list_of_strings(self) -> None:
         result = estimate(_config())
@@ -385,12 +406,11 @@ class TestCLI:
         out = capsys.readouterr().out
         parsed = json.loads(out)
         assert "savings" in parsed
-        assert parsed["savings"]["percent"] >= 0.0
 
     def test_json_output_no_text_header(self, capsys: pytest.CaptureFixture) -> None:
         main([*self._VALID_ARGS, "--json"])
         out = capsys.readouterr().out
-        # Pure JSON — should not start with the banner line
+        # Pure JSON -- should not start with the banner line
         assert out.strip().startswith("{")
 
     def test_invalid_accuracy_returns_2(self, capsys: pytest.CaptureFixture) -> None:
