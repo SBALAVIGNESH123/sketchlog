@@ -475,4 +475,7 @@ class TestCLI:
             assert rc == 0
             with open(out) as f:
                 d = json.load(f)
-            assert "result" in d
+            # export-baseline writes bench-format, not regression-result format
+            assert "p99_ms" in d
+            assert "p95_ms" in d
+            assert "event_rate_hz" in d

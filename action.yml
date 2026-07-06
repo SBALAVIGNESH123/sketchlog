@@ -142,23 +142,38 @@ runs:
 
     - name: Set outputs
       if: always()
+      env:
+        SKETCHLOG_OUTPUT_FILE: ${{ inputs.output-file }}
+        SKETCHLOG_SUMMARY_FILE: ${{ inputs.summary-file }}
       shell: bash
       run: |
         python -c "
-        import json, os, sys
-        path = '${{ inputs.output-file }}'
-        try:
-            with open(path) as f:
-                d = json.load(f)
-            r = d.get('result', 'FAIL')
-            print(f'result={r}')
-            print(f'p95-regression-pct={d.get(\"p95_regression_pct\", 0.0)}')
-            print(f'p99-regression-pct={d.get(\"p99_regression_pct\", 0.0)}')
-            print(f'event-rate-regression-pct={d.get(\"event_rate_regression_pct\", 0.0)}')
-            print(f'slo-burn-ratio={d.get(\"slo_burn_ratio\", 1.0)}')
-            print(f'summary-path={os.path.abspath(\"${{ inputs.summary-file }}\")}')
-            print(f'output-path={os.path.abspath(path)}')
-        except Exception as e:
-            print(f'result=FAIL')
-            sys.exit(0)
-        " >> \$GITHUB_OUTPUT
+import json, os, sys
+path = os.environ.get('SKETCHLOG_OUTPUT_FILE', 'regression-result.json')
+summary = os.environ.get('SKETCHLOG_SUMMARY_FILE', 'regression-summary.md')
+try:
+    with open(path) as f:
+        d = json.load(f)
+    r = d.get('result', 'FAIL')
+    lines = [
+        f'result={r}',
+        f'p95-regression-pct={d.get("p95_regression_pct", 0.0)}',
+        f'p99-regression-pct={d.get("p99_regression_pct", 0.0)}',
+        f'event-rate-regression-pct={d.get("event_rate_regression_pct", 0.0)}',
+        f'slo-burn-ratio={d.get("slo_burn_ratio", 1.0)}',
+        f'summary-path={os.path.abspath(summary)}',
+        f'output-path={os.path.abspath(path)}',
+    ]
+    gho = os.environ.get('GITHUB_OUTPUT', '')
+    if gho:
+        with open(gho, 'a') as gh:
+            gh.write('\n'.join(lines) + '\n')
+    else:
+        print('\n'.join(lines))
+except Exception as e:
+    gho = os.environ.get('GITHUB_OUTPUT', '')
+    if gho:
+        with open(gho, 'a') as gh:
+            gh.write('result=FAIL\n')
+    sys.exit(0)
+" 
