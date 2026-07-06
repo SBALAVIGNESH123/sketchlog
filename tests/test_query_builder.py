@@ -488,8 +488,7 @@ class TestCLI:
         assert "curl" in out
 
     def test_api_request_json(self, capsys):
-        main(["--format", "json", "api-request", _SIMPLE_SQL,
-              "--server-url", "https://localhost:8080"])
+        main(["api-request", _SIMPLE_SQL, "--server-url", "https://localhost:8080", "--output", "json"])
         out = capsys.readouterr().out
         data = json.loads(out)
         assert data["method"] == "POST"

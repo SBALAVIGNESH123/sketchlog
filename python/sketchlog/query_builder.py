@@ -460,7 +460,7 @@ def build_api_request(
     base = server_url.rstrip("/")
     url = f"{base}/api/v1/namespaces/{urllib.parse.quote(namespace, safe='')}/query"
     headers: Dict[str, str] = {"Content-Type": "application/json"}
-    resolved_token = token or os.environ.get("SKETCHLOG_TOKEN", "")
+    resolved_token = os.environ.get("SKETCHLOG_TOKEN", "") or token
     if resolved_token:
         headers["Authorization"] = f"Bearer {resolved_token}"
     body = {
@@ -747,7 +747,7 @@ def main(argv: Optional[List[str]] = None) -> None:  # noqa: C901
         sql = _read_sql(args.sql)
         result = validate_query(sql)
         _print_validation(result, fmt)
-        sys.exit(0 if result.valid else 1)
+        if not result.valid: sys.exit(1)
 
     elif args.command == "explain":
         sql = _read_sql(args.sql)
