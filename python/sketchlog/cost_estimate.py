@@ -17,7 +17,7 @@ import dataclasses
 import json
 import math
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
 # Model constants (documented so tests and users can audit them)
