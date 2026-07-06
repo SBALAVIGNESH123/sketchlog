@@ -73,6 +73,7 @@ nav:
   - Operations:
       - Production Readiness Checker: doctor.md
       - Production Database Hardening: db-hardening.md
+      - Alert Management Center: alert-manager.md
       - Runbooks: runbooks.md
       - Troubleshooting: troubleshooting.md
       - Release Process: releasing.md
