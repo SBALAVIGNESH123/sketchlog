@@ -312,6 +312,8 @@ class NamespaceAdminConfig:
 # ---------------------------------------------------------------------------
 
 def _parse_stream_summary(raw: Dict[str, Any]) -> Optional[StreamSummary]:
+    if not isinstance(raw, dict):
+        return None
     try:
         return StreamSummary(
             name=str(raw.get("name", "")),
@@ -325,6 +327,8 @@ def _parse_stream_summary(raw: Dict[str, Any]) -> Optional[StreamSummary]:
 
 
 def _parse_token_info(raw: Dict[str, Any]) -> Optional[TokenInfo]:
+    if not isinstance(raw, dict):
+        return None
     try:
         return TokenInfo(
             token_id=str(raw.get("token_id", "")),
@@ -387,6 +391,10 @@ def _parse_namespace(raw: Any) -> Optional[NamespaceInfo]:
 
 
 def _parse_namespace_response(raw: Dict[str, Any]) -> List[NamespaceInfo]:
+    if not isinstance(raw, dict):
+        raise RuntimeError(
+            f"Expected JSON object from API, got {type(raw).__name__}"
+        )
     entries = raw.get("namespaces", [])
     if not isinstance(entries, list):
         entries = []
