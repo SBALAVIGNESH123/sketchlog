@@ -57,7 +57,9 @@ test = [
     "httpx2>=2,<3",
     "hypothesis",
     "greenlet",
-    "pytest-cov"
+    "pytest-cov",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "aiosqlite"
 ]
 dev = [
     "pytest",
@@ -70,7 +72,9 @@ dev = [
     "httpx",
     "httpx2>=2,<3",
     "hypothesis",
-    "types-psutil"
+    "types-psutil",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "aiosqlite"
 ]
 opentelemetry = [
     "opentelemetry-api",

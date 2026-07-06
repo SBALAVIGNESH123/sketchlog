@@ -318,6 +318,9 @@ def _build_engine(sa: Any, url: str, config: DbConfig) -> Any:
     connect_args: Dict[str, Any] = {}
     if _is_postgres(url):
         connect_args["connect_timeout"] = config.connect_timeout
+    elif "mysql" in url:
+        # mysqlconnector uses connection_timeout
+        connect_args["connection_timeout"] = config.connect_timeout
     return sa.create_engine(
         sync,
         pool_size=config.pool_size,
@@ -505,13 +508,13 @@ def check_db_health(config: DbConfig) -> DbHealthResult:
 
     # 2. Reachability --------------------------------------------------------
     latency_ms: Optional[float] = None
+    engine: Any = None
     try:
         engine = _build_engine(sa, config.url, config)
         t0 = time.perf_counter()
         with engine.connect() as conn:
             conn.execute(sa.text("SELECT 1"))
         latency_ms = round((time.perf_counter() - t0) * 1_000, 2)
-        engine.dispose()
 
         checks.append({
             "name": "reachability",
@@ -551,6 +554,9 @@ def check_db_health(config: DbConfig) -> DbHealthResult:
             message="Database is not reachable — cannot continue health check",
             checks=checks,
         )
+    finally:
+        if engine is not None:
+            engine.dispose()
 
     # 3. Schema version ------------------------------------------------------
     sv = check_schema_version(config)

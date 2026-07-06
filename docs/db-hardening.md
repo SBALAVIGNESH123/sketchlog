@@ -10,9 +10,22 @@ backup / restore, health checks, and a Docker Compose reference.
 
 ## Quick start
 
+Install the server extras, then add the sync driver for your backend:
+
 ```bash
+# Required for all backends
 pip install 'sketchlog[server]'
 
+# PostgreSQL sync driver (used by the health check only)
+pip install psycopg2-binary
+
+# MySQL / MariaDB sync driver (used by the health check only)
+pip install mysql-connector-python
+```
+
+Then run:
+
+```bash
 sketchlog-db-check \
   --db-url postgresql+asyncpg://user:pass@localhost/sketchlog \
   --format text
@@ -37,12 +50,12 @@ Latency: 3.21 ms
 
 ## Supported databases
 
-| Backend | Async driver | Sync driver (health check) | Notes |
-|---|---|---|---|
-| PostgreSQL 14+ | `asyncpg` | `psycopg2` | Recommended for production |
-| PostgreSQL 14+ | `psycopg` (v3) | `psycopg2` | Alternative async driver |
-| MySQL 8 / MariaDB 10.6+ | `aiomysql` | `mysqlconnector` | Set `pool_recycle ≤ 3600` |
-| SQLite | `aiosqlite` | built-in | Development / CI only |
+| Backend | Async driver | Sync driver (health check) | Extra install | Notes |
+|---|---|---|---|---|
+| PostgreSQL 14+ | `asyncpg` | `psycopg2` | `pip install psycopg2-binary` | Recommended for production |
+| PostgreSQL 14+ | `psycopg` (v3) | `psycopg2` | `pip install psycopg2-binary` | Alternative async driver |
+| MySQL 8 / MariaDB 10.6+ | `aiomysql` | `mysqlconnector` | `pip install mysql-connector-python` | Set `pool_recycle ≤ 3600` |
+| SQLite | `aiosqlite` | built-in | included in `sketchlog[server]` | Development / CI only |
 
 ---
 
