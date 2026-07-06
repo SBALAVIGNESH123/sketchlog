@@ -1,4 +1,4 @@
-﻿"""sketchlog.ci_regression — CI performance regression check engine.
+"""sketchlog.ci_regression — CI performance regression check engine.
 
 Compares baseline vs candidate benchmark results and fails when configured
 thresholds are exceeded.  Used by the sketchlog-regression-check CLI and the
