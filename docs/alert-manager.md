@@ -18,7 +18,7 @@ layer on top of SketchLog's existing alerting engine.
 ## Quick start
 
 ```bash
-pip install 'sketchlog[server]'
+pip install sketchlog
 sketchlog-alert-manager --format json
 ```
 

@@ -201,6 +201,8 @@ class Route:
             errors.append("channels must be a non-empty list")
         if self.match_severity and self.match_severity not in _SEVERITIES:
             errors.append(f"match_severity must be one of {_SEVERITIES}; got {self.match_severity!r}")
+        if not isinstance(self.match_labels, dict):
+            errors.append("match_labels must be a dict")
         if errors:
             raise ValueError("Route validation errors: " + "; ".join(errors))
 
@@ -242,8 +244,8 @@ class ChannelConfig:
             errors.append("name must be a non-empty string")
         if self.adapter not in _ADAPTERS:
             errors.append(f"adapter must be one of {_ADAPTERS}; got {self.adapter!r}")
-        if not isinstance(self.url, str) or not self.url.startswith(("http://", "https://")):
-            errors.append("url must start with http:// or https://")
+        if not isinstance(self.url, str) or not self.url.startswith("https://"):
+            errors.append("url must start with https:// (cleartext http:// is not allowed for delivery endpoints)")
         if not isinstance(self.timeout_s, int) or self.timeout_s < 1:
             errors.append("timeout_s must be a positive integer")
         if errors:
@@ -339,24 +341,33 @@ def _build_pagerduty_payload(alert: Alert, routing_key: str) -> Dict[str, Any]:
 
 
 def _build_opsgenie_payload(
-    alert: Alert, api_key: str
-) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    alert: Alert, api_key: str, base_url: str
+) -> Tuple[Dict[str, Any], Dict[str, str], str]:
+    """Return (payload, headers, url).
+
+    Resolved alerts are sent to the Opsgenie close endpoint
+    ``{base_url}/{alias}/close?identifierType=alias`` so the original alert
+    is properly closed rather than creating a new one.
+    """
     headers = {"Authorization": f"GenieKey {api_key}"}
     if alert.status == AlertStatus.RESOLVED.value:
-        payload: Dict[str, Any] = {"source": "sketchlog-alert-manager",
-                                    "note": "Resolved by SketchLog"}
-    else:
-        payload = {
-            "message": alert.name,
-            "alias": alert.alert_id,
-            "description": alert.annotations.get("description", ""),
+        close_url = base_url.rstrip("/") + f"/{alert.alert_id}/close?identifierType=alias"
+        payload: Dict[str, Any] = {
             "source": "sketchlog-alert-manager",
-            "priority": {"critical": "P1", "warning": "P3",
-                         "info": "P5"}.get(alert.severity, "P3"),
-            "tags": [f"{k}:{v}" for k, v in alert.labels.items()],
-            "details": alert.annotations,
+            "note": "Resolved by SketchLog",
         }
-    return payload, headers
+        return payload, headers, close_url
+    payload = {
+        "message": alert.name,
+        "alias": alert.alert_id,
+        "description": alert.annotations.get("description", ""),
+        "source": "sketchlog-alert-manager",
+        "priority": {"critical": "P1", "warning": "P3",
+                     "info": "P5"}.get(alert.severity, "P3"),
+        "tags": [f"{k}:{v}" for k, v in alert.labels.items()],
+        "details": alert.annotations,
+    }
+    return payload, headers, base_url
 
 
 def _build_webhook_payload(alert: Alert) -> Dict[str, Any]:
@@ -366,6 +377,7 @@ def _build_webhook_payload(alert: Alert) -> Dict[str, Any]:
 def _deliver_to_channel(alert: Alert, cfg: ChannelConfig) -> None:
     token = cfg.resolved_token()
     headers: Dict[str, str] = {}
+    url = cfg.url
     if cfg.adapter == "slack":
         payload = _build_slack_payload(alert)
     elif cfg.adapter == "discord":
@@ -373,13 +385,13 @@ def _deliver_to_channel(alert: Alert, cfg: ChannelConfig) -> None:
     elif cfg.adapter == "pagerduty":
         payload = _build_pagerduty_payload(alert, token)
     elif cfg.adapter == "opsgenie":
-        payload, extra = _build_opsgenie_payload(alert, token)
+        payload, extra, url = _build_opsgenie_payload(alert, token, cfg.url)
         headers.update(extra)
     else:
         payload = _build_webhook_payload(alert)
         if token:
             headers["Authorization"] = f"Bearer {token}"
-    _http_post(cfg.url, payload, headers, cfg.timeout_s)
+    _http_post(url, payload, headers, cfg.timeout_s)
 
 
 # ── DeliveryEngine ────────────────────────────────────────────────────────────
@@ -497,12 +509,23 @@ class AlertStore:
         os.replace(tmp, self._persist_path)
 
     def _load(self, path: str) -> None:
-        with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (json.JSONDecodeError, ValueError, OSError):
+            # Empty or corrupt persist file — start with clean state.
+            return
         for d in data.get("active", []):
-            a = Alert(**d); self._active[a.alert_id] = a
+            try:
+                a = Alert(**d)
+                self._active[a.alert_id] = a
+            except (TypeError, ValueError):
+                pass
         for d in data.get("history", []):
-            self._history.append(Alert(**d))
+            try:
+                self._history.append(Alert(**d))
+            except (TypeError, ValueError):
+                pass
 
 
 # ── SilenceManager ────────────────────────────────────────────────────────────
@@ -659,7 +682,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:  # noqa: C901
     try:
         channels = [ChannelConfig(**c) for c in cfg.get("channels", [])]
         routes   = [Route(**r) for r in cfg.get("routes", [])]
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(2)
 
@@ -677,7 +700,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:  # noqa: C901
         for ad in raw:
             try:
                 am.ingest(Alert(**ad))
-            except ValueError as exc:
+            except (ValueError, TypeError) as exc:
                 print(f"WARN: skipping: {exc}", file=sys.stderr)
 
     if args.add_silence:

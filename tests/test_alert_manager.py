@@ -96,6 +96,9 @@ class TestRouteValidation:
     def test_any(self) -> None:
         r = Route(channels=["d"])
         for s in ("critical","warning","info"): assert r.matches(_a(severity=s))
+    def test_bad_match_labels(self) -> None:
+        with pytest.raises(ValueError, match="match_labels"):
+            Route(channels=["ops"], match_labels="not-a-dict")  # type: ignore
 
 
 class TestChannelConfig:
@@ -104,6 +107,8 @@ class TestChannelConfig:
         with pytest.raises(ValueError, match="adapter"): _c(adapter="email")
     def test_bad_url(self) -> None:
         with pytest.raises(ValueError, match="url"): _c(url="ftp://x")
+    def test_http_url_rejected(self) -> None:
+        with pytest.raises(ValueError, match="url"): _c(url="http://example.com/hook")
     def test_bad_timeout(self) -> None:
         with pytest.raises(ValueError, match="timeout_s"): _c(timeout_s=0)
     def test_token_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -165,6 +170,16 @@ class TestAlertStore:
         s = AlertStore(); a = _a(); s.upsert(a)
         assert s.get_active(a.alert_id) == a
         assert s.get_active("x") is None
+    def test_corrupt_persist(self, tmp_path: Any) -> None:
+        bad = tmp_path / "corrupt.json"
+        bad.write_text("not json at all", encoding="utf-8")
+        s = AlertStore(persist_path=str(bad))  # must not raise
+        assert s.list_active() == []
+    def test_empty_persist(self, tmp_path: Any) -> None:
+        empty = tmp_path / "empty.json"
+        empty.write_text("", encoding="utf-8")
+        s = AlertStore(persist_path=str(empty))  # must not raise
+        assert s.list_active() == []
 
 
 class TestSilenceManager:
@@ -281,6 +296,19 @@ class TestCLI:
         cfg.write_text('{"channels":[{"name":1,"adapter":"bad","url":"ftp://x"}]}')
         with pytest.raises(SystemExit) as e: main(["--config",str(cfg)])
         assert e.value.code == 2
+    def test_cfg_type_error(self, tmp_path: Any) -> None:
+        # channels is a string, not a list — triggers TypeError
+        cfg = tmp_path/"t.json"
+        cfg.write_text('{"channels": "not-a-list"}')
+        with pytest.raises(SystemExit) as e: main(["--config",str(cfg)])
+        assert e.value.code == 2
+    def test_ingest_type_error(self, tmp_path: Any, capsys: pytest.CaptureFixture[str]) -> None:
+        # a non-dict entry in ingest file triggers TypeError — should be skipped, not crash
+        af = tmp_path/"t.json"
+        af.write_text(json.dumps(["not-a-dict"]))
+        main(["--ingest", str(af), "--format", "json"])  # must not raise
+        out = json.loads(capsys.readouterr().out)
+        assert out["active_alerts"] == []
     def test_ingest(self, tmp_path: Any, capsys: pytest.CaptureFixture[str]) -> None:
         af = tmp_path/"a.json"
         af.write_text(json.dumps([{"name":"A","namespace":"ns","stream":"s","severity":"info"}]))
