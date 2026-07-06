@@ -232,17 +232,23 @@ class TestDeliveryEngine:
         def flaky(*_a: Any, **_k: Any) -> None:
             n["v"] += 1
             if n["v"] < 3: raise RuntimeError("transient")
+        alert = _a()  # create before patching time
         with patch("sketchlog.alert_manager._http_post", side_effect=flaky):
             with patch("sketchlog.alert_manager.time") as mt:
-                mt.perf_counter = time.perf_counter; mt.sleep = lambda _: None
-                rec = eng.deliver(_a(), [c.name])[0]
+                mt.perf_counter = time.perf_counter
+                mt.sleep = lambda _: None
+                mt.time = time.time
+                rec = eng.deliver(alert, [c.name])[0]
         assert rec.status == DeliveryStatus.SENT.value and rec.attempts == 3
     def test_all_fail(self) -> None:
         c = _c(); eng = DeliveryEngine(channels={c.name: c})
+        alert = _a()  # create before patching time
         with patch("sketchlog.alert_manager._http_post", side_effect=RuntimeError("down")):
             with patch("sketchlog.alert_manager.time") as mt:
-                mt.perf_counter = time.perf_counter; mt.sleep = lambda _: None
-                assert eng.deliver(_a(), [c.name])[0].status == DeliveryStatus.FAILED.value
+                mt.perf_counter = time.perf_counter
+                mt.sleep = lambda _: None
+                mt.time = time.time
+                assert eng.deliver(alert, [c.name])[0].status == DeliveryStatus.FAILED.value
     def test_skip_resolved(self) -> None:
         c = _c(send_resolved=False); eng = DeliveryEngine(channels={c.name: c})
         assert eng.deliver(_a(status="resolved"), [c.name])[0].status == DeliveryStatus.SKIPPED.value
