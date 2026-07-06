@@ -19,7 +19,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 GOSSIP_CONVERGENCE_WARN_S: float = 10.0   # warn if gossip convergence > this
 SNAPSHOT_STALE_WARN_S: float = 30.0       # warn if snapshot older than this
-PARTITION_DEAD_FRACTION: float = 0.5      # warn partition if dead ≥ this fraction
+PARTITION_DEAD_FRACTION: float = 0.5      # warn partition if dead >= this fraction
 _DEFAULT_TIMEOUT_S: int = 10
 
 # ---------------------------------------------------------------------------
@@ -64,10 +64,6 @@ class PeerInfo:
     stream_count: int           # number of streams this peer hosts
     sketch_count: int           # total sketch objects on this peer
     anti_entropy_rate: float    # anti-entropy syncs per second (rolling)
-
-    _VALID_STATES: dataclasses.InitVar[None] = dataclasses.field(
-        default=None, init=False, repr=False, compare=False
-    )
 
     def __post_init__(self) -> None:
         errors: List[str] = []
@@ -279,6 +275,39 @@ class MeshVisualizerConfig:
 
 
 # ---------------------------------------------------------------------------
+# URL helpers
+# ---------------------------------------------------------------------------
+
+
+def _redact_url(url: str) -> str:
+    """Redact userinfo (password) from a URL for safe error messages."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.password:
+            host = parsed.hostname or ""
+            port_part = f":{parsed.port}" if parsed.port else ""
+            return urllib.parse.urlunparse(
+                parsed._replace(netloc=f"{host}{port_part}")
+            )
+    except Exception:
+        pass
+    return url
+
+
+def _parse_bool_field(val: object) -> bool:
+    """Parse a boolean field from an API response correctly.
+
+    Handles native booleans, integers, and avoids the pitfall where
+    bool("false") == True because any non-empty string is truthy.
+    """
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.lower() == "true"
+    return bool(val)
+
+
+# ---------------------------------------------------------------------------
 # Fetch from live server
 # ---------------------------------------------------------------------------
 
@@ -296,7 +325,9 @@ def _fetch_mesh_status(config: MeshVisualizerConfig) -> MeshStatus:
             raw: Dict[str, Any] = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read(300).decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code} from {url}: {body}") from exc
+        raise RuntimeError(
+            f"HTTP {exc.code} from {_redact_url(url)}: {body}"
+        ) from exc
     return _parse_mesh_response(raw)
 
 
@@ -308,7 +339,11 @@ def _fetch_mesh_status(config: MeshVisualizerConfig) -> MeshStatus:
 def _parse_mesh_response(raw: Dict[str, Any]) -> MeshStatus:
     """Parse a raw API response dict into a typed MeshStatus."""
     peers: List[PeerInfo] = []
-    for p in raw.get("peers", []):
+    # Normalise non-list peers payload (e.g. null/None from some servers)
+    raw_peers = raw.get("peers", [])
+    if not isinstance(raw_peers, list):
+        raw_peers = []
+    for p in raw_peers:
         if not isinstance(p, dict):
             continue
         try:
@@ -332,7 +367,8 @@ def _parse_mesh_response(raw: Dict[str, Any]) -> MeshStatus:
         self_address=str(raw.get("self_address", "unknown")),
         peers=peers,
         gossip_convergence_s=float(raw.get("gossip_convergence_s", 0.0)),
-        partition_detected=bool(raw.get("partition_detected", False)),
+        # Use explicit bool parsing — bool("false") == True is a pitfall
+        partition_detected=_parse_bool_field(raw.get("partition_detected", False)),
         checked_at=float(raw.get("checked_at", time.time())),
     )
 
@@ -342,15 +378,15 @@ def _parse_mesh_response(raw: Dict[str, Any]) -> MeshStatus:
 # ---------------------------------------------------------------------------
 
 _STATE_ICON: Dict[str, str] = {
-    NodeState.ACTIVE.value:  "✓",
+    NodeState.ACTIVE.value:  "v",
     NodeState.SUSPECT.value: "?",
-    NodeState.DEAD.value:    "✗",
+    NodeState.DEAD.value:    "x",
 }
 
 _STATUS_LABEL: Dict[str, str] = {
-    MeshCheckStatus.PASS.value: "PASS ✓",
-    MeshCheckStatus.WARN.value: "WARN ⚠",
-    MeshCheckStatus.FAIL.value: "FAIL ✗",
+    MeshCheckStatus.PASS.value: "PASS",
+    MeshCheckStatus.WARN.value: "WARN",
+    MeshCheckStatus.FAIL.value: "FAIL",
 }
 
 
@@ -366,33 +402,33 @@ def render_text(
 
     def banner(text: str) -> str:
         pad = W - len(text) - 4
-        return "║  " + text + " " * pad + "  ║"
+        return "||  " + text + " " * pad + "  ||"
 
-    lines.append("╔" + "═" * W + "╗")
-    lines.append(banner("SketchLog — Sketch Mesh Cluster Visualizer"))
-    lines.append("╚" + "═" * W + "╝")
+    lines.append("=" * (W + 2))
+    lines.append(banner("SketchLog -- Sketch Mesh Cluster Visualizer"))
+    lines.append("=" * (W + 2))
     lines.append("")
 
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(status.checked_at))
     lines.append(f"  Self       : {status.self_node_id}  ({status.self_address})")
     lines.append(f"  Checked at : {ts}")
 
-    conv_warn = "  ⚠ slow" if status.gossip_convergence_s > gossip_warn_s else ""
+    conv_warn = "  [slow]" if status.gossip_convergence_s > gossip_warn_s else ""
     lines.append(
         f"  Gossip convergence : {status.gossip_convergence_s:.3f} s{conv_warn}"
     )
 
     if status.partition_detected:
         lines.append("")
-        lines.append("  ██ PARTITION DETECTED ██  cluster may be split — investigate immediately")
+        lines.append("  [!] PARTITION DETECTED  cluster may be split -- investigate immediately")
 
     dead_frac = (
         len(status.dead_peers()) / len(status.peers) if status.peers else 0.0
     )
     if not status.partition_detected and dead_frac >= PARTITION_DEAD_FRACTION:
         lines.append(
-            f"  ⚠ {len(status.dead_peers())} / {len(status.peers)} peers dead"
-            f" ({dead_frac:.0%}) — possible partition"
+            f"  [!] {len(status.dead_peers())} / {len(status.peers)} peers dead"
+            f" ({dead_frac:.0%}) -- possible partition"
         )
 
     lines.append("")
@@ -416,9 +452,9 @@ def render_text(
             f" {'STREAMS':>8} {'SKETCHES':>9} {'AE /s':>8}"
         )
         lines.append(hdr)
-        lines.append("  " + "─" * (W - 2))
+        lines.append("  " + "-" * (W - 2))
         for p in sorted(status.peers, key=lambda x: x.node_id):
-            stale_flag = " ⚠" if p.snapshot_age_s > snapshot_stale_s else "  "
+            stale_flag = " [stale]" if p.snapshot_age_s > snapshot_stale_s else "        "
             icon = _STATE_ICON.get(p.state, "?")
             lines.append(
                 f"  {p.node_id:<24} {p.address:<22} {icon} {p.state:<8}"
