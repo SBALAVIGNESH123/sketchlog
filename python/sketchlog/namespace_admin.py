@@ -34,7 +34,7 @@ _VERSION = "1.0.0"
 _TOKEN_ENV_VAR = "SKETCHLOG_ADMIN_TOKEN"
 _QUOTA_WARN_FRACTION = 0.80
 _STALE_ACTIVITY_S = 3600.0
-_DEMO_SEED = 0xADM1N  # intentional; replaced below
+
 _DEMO_SEED = 0x4D1_AD  # deterministic demo data seed
 
 
