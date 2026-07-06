@@ -404,7 +404,8 @@ def _write_json(result: Union[RegressionResult, Dict[str, Any]], path: str) -> N
     """Write machine-readable JSON results."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(result.to_dict(), fh, indent=2)
+        data = result.to_dict() if isinstance(result, RegressionResult) else result
+        json.dump(data, fh, indent=2)
 
 
 def _write_summary(result: RegressionResult, path: str) -> None:
