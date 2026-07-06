@@ -99,7 +99,7 @@ class CostEstimateConfig:
         # Avoids an unreachable except clause that pyright/mypy flag as dead code.
         if isinstance(self.sketch_accuracy, bool):
             errors.append("sketch_accuracy must be a float, not bool")
-        elif not isinstance(self.sketch_accuracy, (int, float)):  # type: ignore[arg-type]
+        elif not isinstance(self.sketch_accuracy, (int, float)):
             errors.append(
                 "sketch_accuracy must be a float; "
                 f"got {type(self.sketch_accuracy).__name__}"
