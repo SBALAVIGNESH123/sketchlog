@@ -230,8 +230,20 @@ def _load_bench_file(path: str) -> BenchResult:
     if not isinstance(metrics_lq, dict):
         metrics_lq = {}
 
-    p95_ms = _safe_float(metrics_lq.get("p95_rel_err") or raw.get("p95_ms"), 0.0)
-    p99_ms = _safe_float(metrics_lq.get("p99_rel_err") or raw.get("p99_ms"), 0.0)
+    # bench-lab latency_quantile stores query_latency_mean_us / p95/p99 as rel_err keys;
+    # flat bench files store p95_ms / p99_ms directly at root.
+    p95_ms = _safe_float(
+        metrics_lq.get("p95_ms")
+        or metrics_lq.get("p95_latency_ms")
+        or raw.get("p95_ms"),
+        0.0,
+    )
+    p99_ms = _safe_float(
+        metrics_lq.get("p99_ms")
+        or metrics_lq.get("p99_latency_ms")
+        or raw.get("p99_ms"),
+        0.0,
+    )
 
     # Prefer explicit top-level p95_ms / p99_ms if present (from --export-baseline)
     if raw.get("p95_ms") is not None:
@@ -246,8 +258,13 @@ def _load_bench_file(path: str) -> BenchResult:
     metrics_li = li.get("metrics", {})
     if not isinstance(metrics_li, dict):
         metrics_li = {}
+    # bench-lab latency_ingest stores throughput as 'events_per_sec' or 'throughput_per_sec'
     event_rate_hz = _safe_float(
-        metrics_li.get("events_per_sec") or raw.get("event_rate_hz"), 0.0
+        metrics_li.get("events_per_sec")
+        or metrics_li.get("throughput_per_sec")
+        or metrics_li.get("add_throughput_per_sec")
+        or raw.get("event_rate_hz"),
+        0.0,
     )
 
     slo_burn_rate = _safe_float(raw.get("slo_burn_rate"), 1.0)
@@ -489,12 +506,15 @@ def main(argv: Optional[List[str]] = None) -> int:  # noqa: C901
             candidate = _load_bench_file(candidate_file)
         elif args.export_baseline:
             baseline = _generate_demo_bench(seed_offset=0)
+            # Export bench-format so it can be reloaded as a baseline file
             _write_json(
-                RegressionResult(
-                    result=_PASS, p95_regression_pct=0.0, p99_regression_pct=0.0,
-                    event_rate_regression_pct=0.0, slo_burn_ratio=1.0, checks=[],
-                    baseline=baseline, candidate=baseline, config=config,
-                ),
+                {
+                    "p95_ms": baseline.p95_ms,
+                    "p99_ms": baseline.p99_ms,
+                    "event_rate_hz": baseline.event_rate_hz,
+                    "slo_burn_rate": baseline.slo_burn_rate,
+                    "source_file": baseline.source_file,
+                },
                 output_file,
             )
             print(f"Baseline exported to {output_file}", file=sys.stderr)
