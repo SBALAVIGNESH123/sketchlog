@@ -10,10 +10,7 @@ from typing import Any, Dict
 
 import pytest
 
-# Allow import from the session staging area
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-
-from ci_regression import (
+from sketchlog.ci_regression import (
     BenchResult,
     RegressionConfig,
     RegressionResult,

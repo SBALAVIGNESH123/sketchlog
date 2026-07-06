@@ -457,10 +457,10 @@ def main(argv: Optional[List[str]] = None) -> int:  # noqa: C901
     fail_event_rate = _env_float("SKETCHLOG_FAIL_EVENT_RATE", args.fail_event_rate)
     slo_burn = _env_float("SKETCHLOG_SLO_BURN", args.slo_burn)
 
-    baseline_file = os.environ.get("SKETCHLOG_BASELINE_FILE", args.baseline_file).strip()
-    candidate_file = os.environ.get("SKETCHLOG_CANDIDATE_FILE", args.candidate_file).strip()
-    output_file = os.environ.get("SKETCHLOG_OUTPUT_FILE", args.output).strip()
-    summary_file = os.environ.get("SKETCHLOG_SUMMARY_FILE", args.summary).strip()
+    baseline_file = (os.environ.get("SKETCHLOG_BASELINE_FILE") or args.baseline_file).strip()
+    candidate_file = (os.environ.get("SKETCHLOG_CANDIDATE_FILE") or args.candidate_file).strip()
+    output_file = (os.environ.get("SKETCHLOG_OUTPUT_FILE") or args.output).strip()
+    summary_file = (os.environ.get("SKETCHLOG_SUMMARY_FILE") or args.summary).strip()
 
     try:
         config = RegressionConfig(
