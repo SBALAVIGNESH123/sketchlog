@@ -65,6 +65,7 @@ nav:
       - SketchLog Agent: agent.md
       - Cost Savings Calculator: cost-estimate.md
       - Benchmark Lab: bench-lab.md
+      - CI Regression Action: ci-regression.md
       - Grafana Dashboard: grafana.md
       - Grafana Data Source Plugin: grafana-datasource-plugin.md
       - OpenTelemetry Collector: otel-collector.md

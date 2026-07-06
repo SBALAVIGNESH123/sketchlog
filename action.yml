@@ -1,0 +1,179 @@
+name: "SketchLog Regression Check"
+description: >
+  Detect performance regressions in pull requests using SketchLog sketch
+  diffing and canary analysis. Compares baseline vs candidate percentile
+  latency, event rate, and SLO burn rate; fails the job when configured
+  thresholds are exceeded and posts a Markdown summary.
+
+author: "SketchLog"
+
+branding:
+  icon: "activity"
+  color: "blue"
+
+inputs:
+  baseline-file:
+    description: >
+      Path to a JSON file containing baseline benchmark results produced by
+      sketchlog-bench-lab or sketchlog-regression-check --export-baseline.
+      Required unless baseline-ref is set.
+    required: false
+    default: ""
+  candidate-file:
+    description: >
+      Path to a JSON file containing candidate (PR) benchmark results.
+      Required unless candidate-ref is set.
+    required: false
+    default: ""
+  baseline-ref:
+    description: >
+      Git ref (branch/tag/SHA) to check out and run benchmarks against as
+      the baseline. Used when you do not pre-generate a baseline file.
+    required: false
+    default: "main"
+  candidate-ref:
+    description: >
+      Git ref for the candidate run. Defaults to the current HEAD (PR branch).
+    required: false
+    default: "HEAD"
+  fail-on-p95-regression:
+    description: >
+      Percentage threshold for p95 latency regression (e.g. "10" means fail
+      if candidate p95 is more than 10 % higher than baseline p95).
+      Set to "0" to disable.
+    required: false
+    default: "20"
+  fail-on-p99-regression:
+    description: >
+      Percentage threshold for p99 latency regression.
+      Set to "0" to disable.
+    required: false
+    default: "20"
+  fail-on-event-rate-regression:
+    description: >
+      Percentage threshold for event-rate (throughput) regression.
+      Set to "0" to disable.
+    required: false
+    default: "15"
+  slo-burn-threshold:
+    description: >
+      Maximum allowed SLO burn-rate multiplier (e.g. "2.0" means fail if the
+      candidate burns the error budget more than 2× faster than baseline).
+      Set to "0" to disable.
+    required: false
+    default: "2.0"
+  output-file:
+    description: >
+      Path to write machine-readable JSON results. Defaults to
+      sketchlog-regression-results.json in the workspace root.
+    required: false
+    default: "sketchlog-regression-results.json"
+  summary-file:
+    description: >
+      Path to write the Markdown summary. When running inside GitHub Actions
+      the summary is also appended to GITHUB_STEP_SUMMARY automatically.
+    required: false
+    default: "sketchlog-regression-summary.md"
+  python-path:
+    description: >
+      Path to the sketchlog Python package root (PYTHONPATH prefix).
+      Defaults to "python" which matches the repository layout.
+    required: false
+    default: "python"
+
+outputs:
+  result:
+    description: "PASS or FAIL — overall regression check result."
+  p95-regression-pct:
+    description: "Measured p95 regression percentage (positive = regression)."
+  p99-regression-pct:
+    description: "Measured p99 regression percentage (positive = regression)."
+  event-rate-regression-pct:
+    description: "Measured event-rate regression percentage (positive = regression)."
+  slo-burn-ratio:
+    description: "Candidate / baseline SLO burn-rate ratio."
+  summary-path:
+    description: "Absolute path to the written Markdown summary file."
+  output-path:
+    description: "Absolute path to the written JSON results file."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Run SketchLog regression check
+      shell: bash
+      env:
+        SKETCHLOG_BASELINE_FILE: ${{ inputs.baseline-file }}
+        SKETCHLOG_CANDIDATE_FILE: ${{ inputs.candidate-file }}
+        SKETCHLOG_BASELINE_REF: ${{ inputs.baseline-ref }}
+        SKETCHLOG_CANDIDATE_REF: ${{ inputs.candidate-ref }}
+        SKETCHLOG_FAIL_P95: ${{ inputs.fail-on-p95-regression }}
+        SKETCHLOG_FAIL_P99: ${{ inputs.fail-on-p99-regression }}
+        SKETCHLOG_FAIL_EVENT_RATE: ${{ inputs.fail-on-event-rate-regression }}
+        SKETCHLOG_SLO_BURN: ${{ inputs.slo-burn-threshold }}
+        SKETCHLOG_OUTPUT_FILE: ${{ inputs.output-file }}
+        SKETCHLOG_SUMMARY_FILE: ${{ inputs.summary-file }}
+      run: |
+        export PYTHONPATH="${{ inputs.python-path }}:${PYTHONPATH}"
+        python -m sketchlog.ci_regression \
+          --baseline-file  "$SKETCHLOG_BASELINE_FILE" \
+          --candidate-file "$SKETCHLOG_CANDIDATE_FILE" \
+          --baseline-ref   "$SKETCHLOG_BASELINE_REF" \
+          --candidate-ref  "$SKETCHLOG_CANDIDATE_REF" \
+          --fail-p95       "$SKETCHLOG_FAIL_P95" \
+          --fail-p99       "$SKETCHLOG_FAIL_P99" \
+          --fail-event-rate "$SKETCHLOG_FAIL_EVENT_RATE" \
+          --slo-burn       "$SKETCHLOG_SLO_BURN" \
+          --output         "$SKETCHLOG_OUTPUT_FILE" \
+          --summary        "$SKETCHLOG_SUMMARY_FILE"
+
+    - name: Append summary to GitHub step summary
+      if: always()
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.summary-file }}" ]; then
+          cat "${{ inputs.summary-file }}" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Set outputs
+      if: always()
+      env:
+        SKETCHLOG_OUTPUT_FILE: ${{ inputs.output-file }}
+        SKETCHLOG_SUMMARY_FILE: ${{ inputs.summary-file }}
+      shell: bash
+      run: |
+        python -c "
+import json, os, sys
+path = os.environ.get('SKETCHLOG_OUTPUT_FILE', 'regression-result.json')
+summary = os.environ.get('SKETCHLOG_SUMMARY_FILE', 'regression-summary.md')
+try:
+    with open(path) as f:
+        d = json.load(f)
+    r = d.get('result', 'FAIL')
+    lines = [
+        f'result={r}',
+        f'p95-regression-pct={d.get("p95_regression_pct", 0.0)}',
+        f'p99-regression-pct={d.get("p99_regression_pct", 0.0)}',
+        f'event-rate-regression-pct={d.get("event_rate_regression_pct", 0.0)}',
+        f'slo-burn-ratio={d.get("slo_burn_ratio", 1.0)}',
+        f'summary-path={os.path.abspath(summary)}',
+        f'output-path={os.path.abspath(path)}',
+    ]
+    gho = os.environ.get('GITHUB_OUTPUT', '')
+    if gho:
+        with open(gho, 'a') as gh:
+            gh.write('\n'.join(lines) + '\n')
+    else:
+        print('\n'.join(lines))
+except Exception as e:
+    gho = os.environ.get('GITHUB_OUTPUT', '')
+    if gho:
+        with open(gho, 'a') as gh:
+            gh.write('result=FAIL\n')
+    sys.exit(0)
+"

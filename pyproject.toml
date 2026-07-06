@@ -45,6 +45,7 @@ sketchlog-db-check = "sketchlog.db_hardening:main"
 sketchlog-alert-manager = "sketchlog.alert_manager:main"
 sketchlog-mesh-viz = "sketchlog.mesh_visualizer:main"
 sketchlog-namespace-admin = "sketchlog.namespace_admin:main"
+sketchlog-regression-check = "sketchlog.ci_regression:main"
 sketchlog-query-builder = "sketchlog.query_builder:main"
 
 [project.optional-dependencies]
