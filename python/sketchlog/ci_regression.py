@@ -400,7 +400,7 @@ def compare(
 # File writers
 # ---------------------------------------------------------------------------
 
-def _write_json(result: RegressionResult, path: str) -> None:
+def _write_json(result: "Union[RegressionResult, Dict[str, Any]]", path: str) -> None:
     """Write machine-readable JSON results."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
