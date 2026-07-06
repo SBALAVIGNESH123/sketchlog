@@ -322,11 +322,17 @@ def _fetch_mesh_status(config: MeshVisualizerConfig) -> MeshStatus:
     req = urllib.request.Request(url, headers=headers)  # nosec B310
     try:
         with urllib.request.urlopen(req, timeout=config.timeout_s) as resp:  # nosec B310
-            raw: Dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+            raw_bytes = resp.read()
     except urllib.error.HTTPError as exc:
         body = exc.read(300).decode("utf-8", errors="replace")
         raise RuntimeError(
             f"HTTP {exc.code} from {_redact_url(url)}: {body}"
+        ) from exc
+    try:
+        raw: Dict[str, Any] = json.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Invalid response payload from {_redact_url(url)}: {exc}"
         ) from exc
     return _parse_mesh_response(raw)
 

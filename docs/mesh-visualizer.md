@@ -21,24 +21,24 @@ sketchlog-mesh-viz --demo
 A passing run prints a banner like:
 
 ```text
-╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
-║  SketchLog — Sketch Mesh Cluster Visualizer                                                                  ║
-╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+==========================================================================================================
+||  SketchLog -- Sketch Mesh Cluster Visualizer                                                        ||
+==========================================================================================================
 
   Self       : node-000  (10.0.0.1:7946)
   Checked at : 2026-07-06T12:00:00Z
-  Gossip convergence : 2.341 s
+  Gossip convergence : 4.231 s
 
   Peers : 5 active  1 suspect  1 dead  (total 7)
   Cluster totals : 840 streams  7350 sketches  mean AE rate 2.6183/s
 
   NODE ID                  ADDRESS                STATE      GOSSIP(s)    SNAP(s)  STREAMS  SKETCHES     AE /s
-  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-  node-001                 10.0.0.2:7946        ✓ active       1.200        5.000       42      385    1.0000
-  node-002                 10.0.0.3:7946        ✓ active       0.800        4.200       38      310    2.1000
+  --------------------------------------------------------------------------------------------------------
+  node-001                 10.0.0.2:7946          v active       1.200     5.000        42       385   1.0000
+  node-002                 10.0.0.3:7946          v active       0.800     4.200        38       310   2.1000
   ...
 
-  Overall status : PASS ✓
+  Overall status : PASS
 ```
 
 ---
@@ -62,7 +62,7 @@ A passing run prints a banner like:
 | Code | Meaning |
 |---|---|
 | `0` | All peers healthy — `PASS` |
-| `1` | Warning or failure condition detected |
+| `1` | Warning or failure condition detected; also emitted on fetch/HTTP/transport errors |
 | `2` | Bad config / missing required argument |
 
 ---
