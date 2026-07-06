@@ -232,21 +232,22 @@ def _bench_latency_quantile() -> ScenarioResult:
     per_q_errors: Dict[str, float] = {}
     for q in qs:
         est = sketch.quantile(q)
-        idx = max(0, min(n - 1, int(q * n)))
+        idx = max(0, min(n - 1, int(math.ceil(q * n)) - 1))
         exact = sorted_vals[idx]
         rel_err = abs(est - exact) / exact if exact > 0.0 else 0.0
-        label = f"p{int(round(q * 1000))}"
+        label = f"p{q * 100:g}"
         per_q_errors[label] = round(rel_err, 6)
 
     max_err = max(per_q_errors.values()) if per_q_errors else 0.0
     passed = max_err <= 0.02  # 2× alpha guard
+    n_qs = len(qs)  # queries per iteration; divide to get per-query latency
 
     return ScenarioResult(
         name="latency_quantile",
         passed=passed,
         metrics={
-            "query_latency_mean_us": round(mean * 1e6, 3),
-            "query_latency_p95_us": round(p95 * 1e6, 3),
+            "query_latency_mean_us": round(mean / n_qs * 1e6, 3),
+            "query_latency_p95_us": round(p95 / n_qs * 1e6, 3),
             "max_relative_error": round(max_err, 6),
             "per_quantile_errors": per_q_errors,
         },
@@ -287,7 +288,7 @@ def _bench_latency_merge() -> ScenarioResult:
             "mean_s": round(mean, 6),
             "median_s": round(median, 6),
             "p95_s": round(p95, 6),
-            "merges_per_sec": round(_throughput(_MERGE_SHARDS, mean), 1),
+            "merges_per_sec": round(_throughput(1, mean), 1),
         },
         notes=[f"Merge {_MERGE_SHARDS} DDSketch shards into one"],
     )
