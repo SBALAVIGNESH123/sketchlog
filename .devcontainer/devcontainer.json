@@ -1,0 +1,43 @@
+{
+  "name": "SketchLog Dev",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.22" },
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "make dev-install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.mypy-type-checker",
+        "charliermarsh.ruff",
+        "golang.go",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "github.vscode-github-actions",
+        "yzhang.markdown-all-in-one"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["tests"],
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "[go]": { "editor.defaultFormatter": "golang.go" }
+      }
+    }
+  },
+  "forwardPorts": [7700, 9090, 3000],
+  "portsAttributes": {
+    "7700": { "label": "SketchLog server" },
+    "9090": { "label": "Prometheus metrics" },
+    "3000": { "label": "React dashboard" }
+  },
+  "remoteEnv": {
+    "PYTHONPATH": "python",
+    "SKETCHLOG_ENV": "development"
+  }
+}
