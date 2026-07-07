@@ -438,7 +438,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("SketchLog Rate Limit configuration check")
             print(f"  Namespaces : {len(config.quotas)}")
             print(f"  Default    : {config.default_rate_per_second}/s burst={config.default_burst}")
-            for issue in report["issues"]:  # type: ignore[union-attr]
+            _issues_list: List[str] = list(report.get("issues") or [])
+            for issue in _issues_list:
                 print(f"  {issue}")
             print(f"\nResult: {report['result']}")
 

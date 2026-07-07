@@ -380,7 +380,7 @@ class TestCheckRateLimitConfig:
         )
         r = check_rate_limit_config(c)
         assert r["result"] == "WARN"
-        assert any("burst" in i for i in r["issues"])  # type: ignore[union-attr]
+        assert any("burst" in i for i in r["issues"])
 
     def test_json_serializable(self) -> None:
         c = RateLimitConfig()
