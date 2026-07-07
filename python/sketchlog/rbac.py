@@ -15,6 +15,7 @@ with HMAC-SHA256 integrity tag (tamper-evident, SOC2-ready).
 from __future__ import annotations
 
 import hashlib
+import threading
 import hmac
 import json
 import logging
@@ -23,7 +24,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence
+from typing import FrozenSet, Any, Dict, List, Optional, Sequence
 
 __all__ = [
     "Role",
