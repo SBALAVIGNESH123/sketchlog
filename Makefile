@@ -18,14 +18,14 @@ help: ## Show this help message
 # ──────────────────────────────────────────────────────────────────────────────
 .PHONY: dev-install
 dev-install: ## Install all dev dependencies (Python + Node + Go)
-	pip install -e "python/[dev,server]" --quiet
+	pip install -e ".[dev,server]" --quiet
 	cd frontend/react-sketchlog && npm ci --silent
 	cd clients/go && go mod download
 	@echo "✅  Dev install complete — run 'make dev' to start"
 
 .PHONY: install
 install: ## Install SketchLog Python package only
-	pip install -e "python/[server]" --quiet
+	pip install -e ".[server]" --quiet
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Development servers
