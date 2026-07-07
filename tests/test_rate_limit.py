@@ -108,12 +108,22 @@ class TestTokenBucket:
         assert b.consume(3) is True
         assert b.consume(1) is False
 
-    def test_refill_over_time(self):
-        b = _TokenBucket(rate=1000, burst=10)
-        b.consume(10)
-        time.sleep(0.011)  # ~11 tokens refilled
-        assert b.consume(5) is True
+    def test_refill_over_time(self) -> None:
+        """Token bucket refills over time — tested by mocking time.monotonic."""
+        import unittest.mock as mock_mod
+        bucket = _TokenBucket(rate_per_second=10.0, burst=10)
+        # Drain all tokens
+        for _ in range(10):
+            assert bucket.consume(1)
+        assert not bucket.consume(1), "bucket should be empty"
 
+        # Advance time by 1 second via mock — should refill 10 tokens
+        original_monotonic = bucket._last_refill
+        with mock_mod.patch("time.monotonic", return_value=original_monotonic + 1.0):
+            # Force refill by calling _refill directly
+            bucket._refill()
+            assert bucket.available >= 9.0, f"expected >= 9 tokens after 1s refill, got {bucket.available}"
+        assert bucket.consume(1), "should be able to consume after refill"
     def test_available_property(self):
         b = _TokenBucket(rate=100, burst=50)
         b.consume(10)

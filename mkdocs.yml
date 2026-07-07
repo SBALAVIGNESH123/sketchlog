@@ -78,7 +78,7 @@ nav:
       - Production Database Hardening: db-hardening.md
       - Mesh Visualizer: mesh-visualizer.md
       - Namespace Admin: namespace-admin.md
-    - Rate Limiting: rate_limiting.md
+      - Rate Limiting: rate_limiting.md
       - Query Builder: query-builder.md
       - Alert Management Center: alert-manager.md
       - Runbooks: runbooks.md
