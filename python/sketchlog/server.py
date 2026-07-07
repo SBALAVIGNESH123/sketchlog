@@ -1,3 +1,4 @@
+import ssl
 import os
 import json
 import logging
@@ -149,7 +150,7 @@ def _build_tls_context(
     cert_file: str,
     key_file: str,
     ca_file: "str | None" = None,
-) -> "__import__('ssl').SSLContext":
+) -> "ssl.SSLContext":
     """Build a hardened SSLContext using TLSConfig if available, else stdlib fallback."""
     import ssl as _ssl
     try:
@@ -158,7 +159,7 @@ def _build_tls_context(
             cert_file=cert_file,
             key_file=key_file,
             ca_file=ca_file,
-            require_client_cert=ca_file is not None,
+            mtls=ca_file is not None,
         )
         return build_ssl_context(cfg)
     except ImportError:

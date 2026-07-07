@@ -239,10 +239,11 @@ def build_ssl_context(config: TLSConfig) -> ssl.SSLContext:
         ctx.verify_mode = ssl.CERT_NONE
 
     # Security options
-    ctx.options |= ssl.OP_NO_SSLv2  # type: ignore[attr-defined]
-    ctx.options |= ssl.OP_NO_SSLv3  # type: ignore[attr-defined]
-    ctx.options |= ssl.OP_NO_TLSv1  # type: ignore[attr-defined]
-    ctx.options |= ssl.OP_NO_TLSv1_1  # type: ignore[attr-defined]
+    # Disable obsolete protocol versions via getattr for cross-version compat
+    for _opt in ("OP_NO_SSLv2", "OP_NO_SSLv3", "OP_NO_TLSv1", "OP_NO_TLSv1_1"):
+        _val = getattr(ssl, _opt, None)
+        if _val is not None:
+            ctx.options |= _val
     ctx.options |= ssl.OP_SINGLE_DH_USE
     ctx.options |= ssl.OP_SINGLE_ECDH_USE
 
