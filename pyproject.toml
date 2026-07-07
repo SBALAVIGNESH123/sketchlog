@@ -66,7 +66,6 @@ test = [
     "hypothesis",
     "greenlet",
     "pytest-cov",
-    "aiohttp>=3.9",
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite"
 ]
@@ -81,7 +80,6 @@ dev = [
     "httpx",
     "httpx2>=2,<3",
     "hypothesis",
-    "aiohttp>=3.9",
     "types-psutil",
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite"
@@ -92,7 +90,6 @@ opentelemetry = [
     "opentelemetry-exporter-otlp"
 ]
 server = [
-    "aiohttp>=3.9",
     "fastapi>=0.100.0,<1",
     "uvicorn>=0.20.0,<1",
     "wsproto>=1.2.0,<2",
