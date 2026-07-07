@@ -71,7 +71,7 @@ class TokenGrant:
     """Maps a token_id to a role and optional namespace scope."""
     token_id:   str
     role:       Role
-    namespaces: Sequence[str] = field(default_factory=list)   # empty = all
+    namespaces: Sequence[str] = field(default_factory=list)   # empty = admin-only global; non-admin must use ['*'] or explicit list
 
     def __post_init__(self) -> None:
         errors: List[str] = []
@@ -335,7 +335,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     import argparse
     p = argparse.ArgumentParser(
         prog="sketchlog-rbac-check",
-        description="Validate SketchLog RBAC configuration and emit a demo audit event.",
+        description="Validate SketchLog RBAC configuration.",
     )
     p.add_argument("--config",  help="Path to JSON RBAC config file")
     p.add_argument("--format",  choices=["text", "json"], default="text")

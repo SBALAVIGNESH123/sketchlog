@@ -18,7 +18,7 @@ SketchLog RBAC configuration check
   Audit out  : stdout
   HMAC       : enabled
 
-Result: PASS
+Result: WARN  (demo uses a short HMAC key — use 32+ chars in production)
 ```
 
 ## Roles
@@ -106,7 +106,7 @@ config = RBACConfig(
 enforcer = RBACEnforcer(config)
 
 # In your FastAPI middleware or dependency:
-# enforcer.check(token_id, action, namespace, stream)
+# enforcer.check(token_id, Permission.INGEST, namespace, stream)
 ```
 
 > **Note:** Full `server.py` middleware integration is tracked in #250.

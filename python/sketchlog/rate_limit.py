@@ -356,7 +356,9 @@ def check_rate_limit_config(config: RateLimitConfig) -> RateLimitCheckResult:
             if q.burst < q.rate_per_second:
                 issues.append(f"WARN: namespace '{q.namespace}' burst < rate_per_second — burst will be exhausted quickly")
 
-    if config.default_rate_per_second < 1:
+    if config.default_rate_per_second <= 0:
+        issues.append("FAIL: default_rate_per_second must be > 0")
+    elif config.default_rate_per_second < 1:
         issues.append("WARN: default_rate_per_second < 1 — very low global rate")
 
     warns = [i for i in issues if i.startswith("WARN")]
