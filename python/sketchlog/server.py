@@ -145,6 +145,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     cluster_manager.stop()
     alert_engine.stop()
 
+def _build_tls_context(
+    cert_file: str,
+    key_file: str,
+    ca_file: "str | None" = None,
+) -> "__import__('ssl').SSLContext":
+    """Build a hardened SSLContext using TLSConfig if available, else stdlib fallback."""
+    import ssl as _ssl
+    try:
+        from sketchlog.tls_config import TLSConfig, build_ssl_context
+        cfg = TLSConfig(
+            cert_file=cert_file,
+            key_file=key_file,
+            ca_file=ca_file,
+            require_client_cert=ca_file is not None,
+        )
+        return build_ssl_context(cfg)
+    except ImportError:
+        ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_file, key_file)
+        if ca_file:
+            ctx.load_verify_locations(ca_file)
+            ctx.verify_mode = _ssl.CERT_REQUIRED
+        return ctx
+
 app = FastAPI(
     title="SketchLog Server",
     description="Standalone network service for SketchLog event streaming and metrics aggregation.",
@@ -1352,17 +1376,11 @@ def main() -> None:
     if bool(args.tls_cert) != bool(args.tls_key):
         raise ValueError("Both SKETCHLOG_TLS_CERT and SKETCHLOG_TLS_KEY must be provided for TLS, but only one was found.")
     if args.tls_cert and args.tls_key:
-        if _TLS_CONFIG_AVAILABLE:
-            _tls = _TLSConfig(  # type: ignore[misc]
-                cert_file=args.tls_cert,
-                key_file=args.tls_key,
-                ca_file=getattr(args, "tls_ca", None),
-                require_client_cert=getattr(args, "tls_ca", None) is not None,
-            )
-            kwargs["ssl"] = _build_ssl_context(_tls)  # type: ignore[misc]
-        else:
-            kwargs["ssl_certfile"] = args.tls_cert
-            kwargs["ssl_keyfile"] = args.tls_key
+        kwargs["ssl"] = _build_tls_context(
+            cert_file=args.tls_cert,
+            key_file=args.tls_key,
+            ca_file=getattr(args, "tls_ca", None),
+        )
     uvicorn.run(
         "sketchlog.server:app",
         host=args.host,
