@@ -155,7 +155,7 @@ def _parse_cert(path: str, warn_days: int = _EXPIRY_WARN_DAYS) -> CertInfo:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     try:
-        raw = ssl._ssl._test_decode_cert(path)
+        raw = ssl._ssl._test_decode_cert(path)  # type: ignore[attr-defined]
     except Exception as exc:
         raise ValueError(f"Cannot parse certificate {path!r}: {exc}") from exc
 
@@ -239,10 +239,10 @@ def build_ssl_context(config: TLSConfig) -> ssl.SSLContext:
         ctx.verify_mode = ssl.CERT_NONE
 
     # Security options
-    ctx.options |= ssl.OP_NO_SSLv2
-    ctx.options |= ssl.OP_NO_SSLv3
-    ctx.options |= ssl.OP_NO_TLSv1
-    ctx.options |= ssl.OP_NO_TLSv1_1
+    ctx.options |= ssl.OP_NO_SSLv2  # type: ignore[attr-defined]
+    ctx.options |= ssl.OP_NO_SSLv3  # type: ignore[attr-defined]
+    ctx.options |= ssl.OP_NO_TLSv1  # type: ignore[attr-defined]
+    ctx.options |= ssl.OP_NO_TLSv1_1  # type: ignore[attr-defined]
     ctx.options |= ssl.OP_SINGLE_DH_USE
     ctx.options |= ssl.OP_SINGLE_ECDH_USE
 
