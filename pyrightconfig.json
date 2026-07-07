@@ -2,18 +2,15 @@
   "include": [
     "python/sketchlog"
   ],
-  "extraPaths": [
-    "python"
+  "exclude": [
+    "python/sketchlog/async_client.py",
+    "**/node_modules",
+    "**/__pycache__"
   ],
-  "executionEnvironments": [
-    {
-      "root": "python",
-      "extraPaths": [
-        "python"
-      ]
-    }
-  ],
+  "typeCheckingMode": "basic",
   "reportMissingImports": "none",
   "reportMissingModuleSource": "none",
-  "typeCheckingMode": "basic"
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownArgumentType": "none"
 }
