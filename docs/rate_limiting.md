@@ -40,7 +40,7 @@ clock abstraction.
 ## Configuration
 
 ```python
-from sketchlog.rate_limit import RateLimitConfig, NamespaceQuota, RateLimitEnforcer
+from sketchlog.rate_limit import RateLimitConfig, NamespaceQuota, RateLimitEnforcer, LimitResult
 
 config = RateLimitConfig(
     quotas=[
@@ -86,7 +86,7 @@ sketchlog-rate-check --demo --format json
 
 - Token bucket refill is continuous, not discrete — actual throughput may
   vary slightly from `rate_per_second` depending on call frequency.
-- Quota windows are rolling from server start, not calendar-aligned UTC hours/days.
+- Quota counters are in-memory and reset on restart. Windows are based on request timestamps, not calendar-aligned UTC hours/days — a restart clears all counts.
 - Rate limiting state is in-memory — restarts reset all counters.
 - For distributed rate limiting across multiple SketchLog nodes, use an
   external store (Redis, Memcached) as a shared counter backend.

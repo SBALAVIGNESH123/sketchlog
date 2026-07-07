@@ -227,6 +227,12 @@ class _QuotaCounter:
             self._daily_count  += 1
             return None
 
+    def decrement(self) -> None:
+        """Roll back a previously incremented count (used when token bucket denies)."""
+        with self._lock:
+            self._hourly_count = max(0, self._hourly_count - 1)
+            self._daily_count  = max(0, self._daily_count  - 1)
+
 
 # ---------------------------------------------------------------------------
 # RateLimitDecision
@@ -315,7 +321,8 @@ class RateLimitEnforcer:
 
         # Token bucket check
         if not bucket.consume(tokens):
-            # Roll back quota increment since request was rate-limited
+            # Roll back quota increment — request was rate-limited, not served
+            counter.decrement()
             logger.warning("rate_limit rate_limited namespace=%s tokens_req=%d", namespace, tokens)
             return RateLimitDecision(
                 namespace=namespace,
