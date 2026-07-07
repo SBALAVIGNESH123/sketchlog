@@ -8,7 +8,7 @@ import asyncio
 import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
-from python.sketchlog.async_client import (
+from sketchlog.async_client import (
     AsyncClientConfig,
     AsyncSketchLogClient,
     SketchLogAuthError,
