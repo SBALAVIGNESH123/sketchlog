@@ -92,6 +92,7 @@ opentelemetry = [
     "opentelemetry-exporter-otlp"
 ]
 server = [
+    "aiohttp>=3.9",
     "fastapi>=0.100.0,<1",
     "uvicorn>=0.20.0,<1",
     "wsproto>=1.2.0,<2",
