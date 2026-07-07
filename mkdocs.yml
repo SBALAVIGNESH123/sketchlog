@@ -66,6 +66,7 @@ nav:
       - Cost Savings Calculator: cost-estimate.md
       - Benchmark Lab: bench-lab.md
       - Developer Experience: developer-experience.md
+    - TLS & mTLS Hardening: tls-mtls.md
       - CI Regression Action: ci-regression.md
       - Grafana Dashboard: grafana.md
       - Grafana Data Source Plugin: grafana-datasource-plugin.md
