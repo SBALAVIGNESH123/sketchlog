@@ -1,3 +1,4 @@
+import ssl
 import os
 import json
 import logging
@@ -25,6 +26,14 @@ from sketchlog.cluster import ClusterManager, MAX_MESH_PAYLOAD_BYTES
 from sketchlog.slo import SmartSLOEngine
 from sketchlog.diff import SketchDiff
 from sketchlog.canary import CanaryAnalysisConfig, CanaryAnalyzer, CanaryThresholds
+try:
+    from sketchlog.tls_config import TLSConfig as _TLSConfig, build_ssl_context as _build_ssl_context
+    _TLS_CONFIG_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _TLS_CONFIG_AVAILABLE = False
+    _TLSConfig = None  # type: ignore[assignment,misc]
+    _build_ssl_context = None  # type: ignore[assignment]
+
 from sketchlog.sql import SQLParser, execute_stream_query
 from prometheus_client import CollectorRegistry
 
@@ -136,6 +145,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     cluster_manager.stop()
     alert_engine.stop()
+
+def _build_tls_context(
+    cert_file: str,
+    key_file: str,
+    ca_file: "str | None" = None,
+) -> "ssl.SSLContext":
+    """Build a hardened SSLContext using TLSConfig if available, else stdlib fallback."""
+    import ssl as _ssl
+    try:
+        from sketchlog.tls_config import TLSConfig, build_ssl_context
+        cfg = TLSConfig(
+            cert_file=cert_file,
+            key_file=key_file,
+            ca_file=ca_file,
+            mtls=ca_file is not None,
+        )
+        return build_ssl_context(cfg)
+    except ImportError:
+        ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_file, key_file)
+        if ca_file:
+            ctx.load_verify_locations(ca_file)
+            ctx.verify_mode = _ssl.CERT_REQUIRED
+        return ctx
 
 app = FastAPI(
     title="SketchLog Server",
@@ -1344,8 +1377,11 @@ def main() -> None:
     if bool(args.tls_cert) != bool(args.tls_key):
         raise ValueError("Both SKETCHLOG_TLS_CERT and SKETCHLOG_TLS_KEY must be provided for TLS, but only one was found.")
     if args.tls_cert and args.tls_key:
-        kwargs["ssl_certfile"] = args.tls_cert
-        kwargs["ssl_keyfile"] = args.tls_key
+        kwargs["ssl"] = _build_tls_context(
+            cert_file=args.tls_cert,
+            key_file=args.tls_key,
+            ca_file=getattr(args, "tls_ca", None),
+        )
     uvicorn.run(
         "sketchlog.server:app",
         host=args.host,
