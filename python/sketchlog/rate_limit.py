@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, cast, Dict, List, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -405,7 +405,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             print("SketchLog rate-limit configuration check")
             print(f"  Namespaces : {report['namespaces']}")
-            issues_list: List[str] = list(report.get("issues") or [])
+            issues_list: List[str] = cast(List[str], report.get("issues") or [])
             if issues_list:
                 for issue in issues_list:
                     print(f"  {issue}")
