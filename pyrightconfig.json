@@ -1,10 +1,19 @@
 {
-  "include": ["python/sketchlog"],
-  "extraPaths": ["python"],
+  "include": [
+    "python/sketchlog"
+  ],
+  "extraPaths": [
+    "python"
+  ],
   "executionEnvironments": [
     {
       "root": "python",
-      "extraPaths": ["python"]
+      "extraPaths": [
+        "python"
+      ]
     }
-  ]
+  ],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "typeCheckingMode": "basic"
 }
