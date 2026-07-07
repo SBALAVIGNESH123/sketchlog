@@ -12,7 +12,7 @@ import threading
 import time
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,7 @@ class RateLimitDecision:
     daily_used:    int
     ts:            float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["result"] = self.result.value
         return d
@@ -281,7 +281,7 @@ class RateLimitEnforcer:
             daily_used=daily_used + 1,
         )
 
-    def stats(self, namespace: str) -> Dict:
+    def stats(self, namespace: str) -> Dict[str, Any]:
         """Return current usage stats for *namespace*."""
         quota   = self._config.get_quota(namespace)
         bucket  = self._get_bucket(namespace, quota)
@@ -329,7 +329,7 @@ class RateLimitCheckResult:
     quota_count: int
     enabled:     bool
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     def to_json(self) -> str:
@@ -346,7 +346,7 @@ def check_rate_limit_config(config: RateLimitConfig) -> RateLimitCheckResult:
     if not config.quotas:
         issues.append("WARN: no namespace quotas configured — using global defaults")
     else:
-        seen: set = set()
+        seen: Set[str] = set()
         for q in config.quotas:
             if q.namespace in seen:
                 issues.append(f"WARN: duplicate quota for namespace '{q.namespace}'")
