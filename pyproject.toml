@@ -66,6 +66,7 @@ test = [
     "hypothesis",
     "greenlet",
     "pytest-cov",
+    "aiohttp>=3.9",
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite"
 ]
@@ -80,6 +81,7 @@ dev = [
     "httpx",
     "httpx2>=2,<3",
     "hypothesis",
+    "aiohttp>=3.9",
     "types-psutil",
     "sqlalchemy[asyncio]>=2.0.0",
     "aiosqlite"
