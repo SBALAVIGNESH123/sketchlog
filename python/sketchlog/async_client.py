@@ -165,7 +165,7 @@ def _backoff(attempt: int, base: float, cap: float, jitter: bool) -> float:
     delay = min(base * (2 ** attempt), cap)
     if jitter:
         delay = delay * (0.5 + random.random() * 0.5)
-    return delay
+    return float(delay)
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +430,7 @@ class AsyncSketchLogClient:
         dict
             Server response with ingestion confirmation.
         """
-        return await self._request(
+        return dict(await self._request()
             "POST",
             f"/api/v1/ingest/{namespace}/{stream}",
             json_body={"values": list(values)},
@@ -458,7 +458,7 @@ class AsyncSketchLogClient:
         timeout:
             Per-call timeout override in seconds.
         """
-        return await self._request(
+        return dict(await self._request()
             "POST",
             f"/api/v1/event/{namespace}/{stream}",
             json_body={"event": event},
@@ -565,7 +565,7 @@ class AsyncSketchLogClient:
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Query full stream summary (p50, p95, p99, count, cardinality)."""
-        return await self._request(
+        return dict(await self._request()
             "GET",
             f"/api/v1/query/{namespace}/{stream}/summary",
             timeout=timeout,
@@ -600,7 +600,7 @@ class AsyncSketchLogClient:
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Delete a stream and all its data."""
-        return await self._request(
+        return dict(await self._request()
             "DELETE",
             f"/api/v1/namespaces/{namespace}/streams/{stream}",
             timeout=timeout,
@@ -612,11 +612,11 @@ class AsyncSketchLogClient:
 
     async def health(self, *, timeout: Optional[float] = None) -> Dict[str, Any]:
         """Check server health. Returns status, version, uptime."""
-        return await self._request("GET", "/health", timeout=timeout)
+        return dict(await self._request("GET", "/health", timeout=timeout))
 
     async def info(self, *, timeout: Optional[float] = None) -> Dict[str, Any]:
         """Get server info (version, build, config summary)."""
-        return await self._request("GET", "/info", timeout=timeout)
+        return dict(await self._request("GET", "/info", timeout=timeout))
 
     # ------------------------------------------------------------------
     # Public API — Streaming subscription
