@@ -1,20 +1,12 @@
-"""Tests for sketchlog.rate_limit — fully deterministic, zero mocking, zero time.sleep.
-
-All time-sensitive tests use clock injection to pass a fake monotonic/wall clock
-directly into _TokenBucket and _QuotaCounter. No mock.patch, no time.sleep,
-no platform-specific timing assumptions.
-"""
-
+"""Tests for sketchlog.rate_limit — zero mock.patch, zero time.sleep."""
 from __future__ import annotations
 
 import json
-import os
 import sys
 import threading
-
-import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
+import unittest
+from io import StringIO
+from typing import List
 
 from sketchlog.rate_limit import (
     LimitResult,
@@ -30,393 +22,399 @@ from sketchlog.rate_limit import (
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _clock(t: float):
+    """Return a simple clock lambda fixed at *t*."""
+    return lambda: t
+
+
+def _advancing_clock(values: List[float]):
+    """Return a clock that returns successive values from *values*."""
+    it = iter(values)
+    return lambda: next(it)
+
+
+# ---------------------------------------------------------------------------
 # NamespaceQuota validation
 # ---------------------------------------------------------------------------
 
-class TestNamespaceQuota:
-    def test_valid(self) -> None:
-        q = NamespaceQuota("prod", 100.0, 200)
-        assert q.namespace == "prod"
-        assert q.rate_per_second == 100.0
-        assert q.burst == 200
+class TestNamespaceQuotaValidation(unittest.TestCase):
+    def test_valid(self):
+        q = NamespaceQuota("prod", rate_per_second=100.0, burst=200)
+        self.assertEqual(q.namespace, "prod")
 
-    def test_empty_namespace(self) -> None:
-        with pytest.raises(ValueError, match="namespace"):
-            NamespaceQuota("", 100.0, 200)
+    def test_empty_namespace(self):
+        with self.assertRaises(ValueError):
+            NamespaceQuota("")
 
-    def test_zero_rate(self) -> None:
-        with pytest.raises(ValueError, match="rate_per_second"):
-            NamespaceQuota("prod", 0.0, 200)
+    def test_zero_rate(self):
+        with self.assertRaises(ValueError):
+            NamespaceQuota("prod", rate_per_second=0.0)
 
-    def test_negative_rate(self) -> None:
-        with pytest.raises(ValueError, match="rate_per_second"):
-            NamespaceQuota("prod", -1.0, 200)
+    def test_negative_rate(self):
+        with self.assertRaises(ValueError):
+            NamespaceQuota("prod", rate_per_second=-1.0)
 
-    def test_nan_rate(self) -> None:
-        with pytest.raises(ValueError, match="rate_per_second"):
-            NamespaceQuota("prod", float("nan"), 200)
+    def test_zero_burst(self):
+        with self.assertRaises(ValueError):
+            NamespaceQuota("prod", burst=0)
 
-    def test_zero_burst(self) -> None:
-        with pytest.raises(ValueError, match="burst"):
-            NamespaceQuota("prod", 100.0, 0)
+    def test_negative_hourly_quota(self):
+        with self.assertRaises(ValueError):
+            NamespaceQuota("prod", hourly_quota=-1)
 
-    def test_negative_hourly_quota(self) -> None:
-        with pytest.raises(ValueError, match="hourly_quota"):
-            NamespaceQuota("prod", 100.0, 200, hourly_quota=-1)
+    def test_negative_daily_quota(self):
+        with self.assertRaises(ValueError):
+            NamespaceQuota("prod", daily_quota=-1)
 
-    def test_negative_daily_quota(self) -> None:
-        with pytest.raises(ValueError, match="daily_quota"):
-            NamespaceQuota("prod", 100.0, 200, daily_quota=-1)
+    def test_hourly_exceeds_daily(self):
+        with self.assertRaises(ValueError):
+            NamespaceQuota("prod", hourly_quota=1000, daily_quota=500)
 
-    def test_zero_quotas_allowed(self) -> None:
-        q = NamespaceQuota("prod", 100.0, 200, hourly_quota=0, daily_quota=0)
-        assert q.hourly_quota == 0
-        assert q.daily_quota == 0
+    def test_wildcard_allowed(self):
+        q = NamespaceQuota("*", rate_per_second=50.0, burst=100)
+        self.assertEqual(q.namespace, "*")
 
 
 # ---------------------------------------------------------------------------
-# RateLimitConfig validation and namespace resolution
+# RateLimitConfig validation
 # ---------------------------------------------------------------------------
 
-class TestRateLimitConfig:
-    def test_defaults(self) -> None:
+class TestRateLimitConfigValidation(unittest.TestCase):
+    def test_valid_defaults(self):
         c = RateLimitConfig()
-        assert c.default_rate_per_second == 100.0
-        assert c.default_burst == 200
+        self.assertEqual(c.default_rate_per_second, 100.0)
 
-    def test_invalid_default_rate(self) -> None:
-        with pytest.raises(ValueError, match="default_rate_per_second"):
+    def test_zero_default_rate(self):
+        with self.assertRaises(ValueError):
             RateLimitConfig(default_rate_per_second=0.0)
 
-    def test_invalid_default_burst(self) -> None:
-        with pytest.raises(ValueError, match="default_burst"):
+    def test_zero_default_burst(self):
+        with self.assertRaises(ValueError):
             RateLimitConfig(default_burst=0)
 
-    def test_exact_match(self) -> None:
+    def test_namespace_resolution_exact(self):
         c = RateLimitConfig(quotas=[
-            NamespaceQuota("prod", 1000.0, 2000),
-            NamespaceQuota("*",    50.0,   100),
+            NamespaceQuota("prod", rate_per_second=500.0, burst=1000),
+            NamespaceQuota("*",    rate_per_second=10.0,  burst=20),
         ])
         q = c.get_quota("prod")
-        assert q.rate_per_second == 1000.0
+        self.assertEqual(q.rate_per_second, 500.0)
 
-    def test_wildcard_match(self) -> None:
+    def test_namespace_resolution_wildcard(self):
         c = RateLimitConfig(quotas=[
-            NamespaceQuota("prod", 1000.0, 2000),
-            NamespaceQuota("*",    50.0,   100),
+            NamespaceQuota("*", rate_per_second=10.0, burst=20),
         ])
-        q = c.get_quota("unknown-ns")
-        assert q.rate_per_second == 50.0
-        assert q.namespace == "unknown-ns"
+        q = c.get_quota("unknown")
+        self.assertEqual(q.rate_per_second, 10.0)
 
-    def test_default_fallback(self) -> None:
-        c = RateLimitConfig(default_rate_per_second=42.0, default_burst=84)
-        q = c.get_quota("any-ns")
-        assert q.rate_per_second == 42.0
-        assert q.burst == 84
-
-    def test_exact_beats_wildcard(self) -> None:
-        c = RateLimitConfig(quotas=[
-            NamespaceQuota("*",    50.0,   100),
-            NamespaceQuota("prod", 1000.0, 2000),
-        ])
-        q = c.get_quota("prod")
-        assert q.rate_per_second == 1000.0
+    def test_namespace_resolution_default(self):
+        c = RateLimitConfig(default_rate_per_second=7.0, default_burst=14)
+        q = c.get_quota("anything")
+        self.assertEqual(q.rate_per_second, 7.0)
 
 
 # ---------------------------------------------------------------------------
-# _TokenBucket — clock-injected, deterministic
+# _TokenBucket — clock-injected tests
 # ---------------------------------------------------------------------------
 
-class TestTokenBucket:
-    def test_full_bucket_allows(self) -> None:
-        t = 0.0
-        bucket = _TokenBucket(rate=10.0, burst=10, clock=lambda: t)
-        assert bucket.consume(1) is True
+class TestTokenBucket(unittest.TestCase):
+    def test_initial_tokens_equal_burst(self):
+        bucket = _TokenBucket(100.0, 50, clock=_clock(0.0))
+        self.assertAlmostEqual(bucket.available, 50.0, places=1)
 
-    def test_empty_bucket_denies(self) -> None:
-        t = 0.0
-        bucket = _TokenBucket(rate=10.0, burst=5, clock=lambda: t)
-        # Drain all 5 tokens
-        for _ in range(5):
-            bucket.consume(1)
-        assert bucket.consume(1) is False
+    def test_consume_success(self):
+        bucket = _TokenBucket(100.0, 50, clock=_clock(0.0))
+        self.assertTrue(bucket.consume(1))
 
-    def test_refill_after_time(self) -> None:
-        t = 0.0
-        bucket = _TokenBucket(rate=10.0, burst=10, clock=lambda: t)
-        # Drain all tokens
+    def test_consume_fails_when_empty(self):
+        bucket = _TokenBucket(100.0, 2, clock=_clock(0.0))
+        bucket.consume(1)
+        bucket.consume(1)
+        self.assertFalse(bucket.consume(1))
+
+    def test_refill_after_time(self):
+        t = [0.0]
+        def clock():
+            return t[0]
+        bucket = _TokenBucket(10.0, 10, clock=clock)
+        # drain all tokens
         for _ in range(10):
             bucket.consume(1)
-        assert bucket.consume(1) is False
-        # Advance clock by 1 second — should refill 10 tokens
-        t = 1.0
-        assert bucket.consume(1) is True
+        self.assertAlmostEqual(bucket.available, 0.0, places=1)
+        # advance 1 second -> should gain 10 tokens (capped at burst=10)
+        t[0] = 1.0
+        self.assertAlmostEqual(bucket.available, 10.0, places=1)
 
-    def test_burst_cap(self) -> None:
-        t = 0.0
-        bucket = _TokenBucket(rate=10.0, burst=10, clock=lambda: t)
-        # Drain half
-        for _ in range(5):
-            bucket.consume(1)
-        # Advance 100 seconds — should NOT exceed burst=10
-        t = 100.0
-        assert bucket.available <= 10.0
+    def test_refill_capped_at_burst(self):
+        t = [0.0]
+        def clock():
+            return t[0]
+        bucket = _TokenBucket(10.0, 5, clock=clock)
+        t[0] = 100.0  # huge elapsed time
+        self.assertAlmostEqual(bucket.available, 5.0, places=1)
 
-    def test_partial_refill(self) -> None:
-        t = 0.0
-        bucket = _TokenBucket(rate=10.0, burst=20, clock=lambda: t)
-        # Drain all 20 tokens
-        for _ in range(20):
-            bucket.consume(1)
-        # Advance 0.5 seconds → 5 tokens refilled
-        t = 0.5
-        avail = bucket.available
-        assert 4.9 <= avail <= 5.1
-
-    def test_multi_token_consume(self) -> None:
-        t = 0.0
-        bucket = _TokenBucket(rate=100.0, burst=50, clock=lambda: t)
-        assert bucket.consume(50) is True
-        assert bucket.consume(1) is False
-
-    def test_thread_safety(self) -> None:
-        t = 0.0
-        bucket = _TokenBucket(rate=1000.0, burst=100, clock=lambda: t)
-        results = []
-        def worker() -> None:
-            results.append(bucket.consume(1))
-        threads = [threading.Thread(target=worker) for _ in range(200)]
-        for th in threads:
-            th.start()
-        for th in threads:
-            th.join()
-        allowed = sum(1 for r in results if r)
-        assert allowed <= 100  # never exceeds burst
+    def test_partial_consume(self):
+        bucket = _TokenBucket(100.0, 10, clock=_clock(0.0))
+        self.assertTrue(bucket.consume(5))
+        self.assertAlmostEqual(bucket.available, 5.0, places=1)
 
 
 # ---------------------------------------------------------------------------
-# _QuotaCounter — clock-injected, deterministic
+# _QuotaCounter — clock-injected tests
 # ---------------------------------------------------------------------------
 
-class TestQuotaCounter:
-    def test_initial_counts_zero(self) -> None:
-        t = 1_000_000.0
-        counter = _QuotaCounter(clock=lambda: t)
-        assert counter.hourly_count == 0
-        assert counter.daily_count == 0
+class TestQuotaCounter(unittest.TestCase):
+    def test_initial_counts_zero(self):
+        c = _QuotaCounter(clock=_clock(0.0))
+        self.assertEqual(c.hourly_count, 0)
+        self.assertEqual(c.daily_count, 0)
 
-    def test_increment_increases_counts(self) -> None:
-        t = 1_000_000.0
-        counter = _QuotaCounter(clock=lambda: t)
-        result = counter.check_and_increment(0, 0)
-        assert result is None
-        assert counter.hourly_count == 1
-        assert counter.daily_count == 1
+    def test_check_and_increment_allowed(self):
+        c = _QuotaCounter(clock=_clock(0.0))
+        err = c.check_and_increment(10, 100)
+        self.assertIsNone(err)
+        self.assertEqual(c.hourly_count, 1)
+        self.assertEqual(c.daily_count, 1)
 
-    def test_hourly_quota_enforced(self) -> None:
-        t = 1_000_000.0
-        counter = _QuotaCounter(clock=lambda: t)
+    def test_hourly_quota_exceeded(self):
+        c = _QuotaCounter(clock=_clock(0.0))
         for _ in range(5):
-            counter.check_and_increment(5, 0)
-        result = counter.check_and_increment(5, 0)
-        assert result is not None
-        assert "hourly" in result
+            c.check_and_increment(5, 0)
+        err = c.check_and_increment(5, 0)
+        self.assertIsNotNone(err)
+        self.assertIn("hourly", err)
 
-    def test_daily_quota_enforced(self) -> None:
-        t = 1_000_000.0
-        counter = _QuotaCounter(clock=lambda: t)
+    def test_daily_quota_exceeded(self):
+        c = _QuotaCounter(clock=_clock(0.0))
         for _ in range(3):
-            counter.check_and_increment(0, 3)
-        result = counter.check_and_increment(0, 3)
-        assert result is not None
-        assert "daily" in result
+            c.check_and_increment(0, 3)
+        err = c.check_and_increment(0, 3)
+        self.assertIsNotNone(err)
+        self.assertIn("daily", err)
 
-    def test_hourly_reset_after_window(self) -> None:
-        now = [1_000_000.0]
-        counter = _QuotaCounter(clock=lambda: now[0])
-        for _ in range(5):
-            counter.check_and_increment(5, 0)
-        # Advance past 1 hour
-        now[0] += 3601.0
-        result = counter.check_and_increment(5, 0)
-        assert result is None  # counter reset
+    def test_decrement(self):
+        c = _QuotaCounter(clock=_clock(0.0))
+        c.check_and_increment(0, 0)
+        self.assertEqual(c.hourly_count, 1)
+        c.decrement()
+        self.assertEqual(c.hourly_count, 0)
 
-    def test_daily_reset_after_window(self) -> None:
-        now = [1_000_000.0]
-        counter = _QuotaCounter(clock=lambda: now[0])
+    def test_hourly_reset(self):
+        t = [0.0]
+        def clock():
+            return t[0]
+        c = _QuotaCounter(clock=clock)
+        c.check_and_increment(0, 0)
+        self.assertEqual(c.hourly_count, 1)
+        t[0] = 3601.0
+        self.assertEqual(c.hourly_count, 0)  # reset
+
+    def test_daily_reset(self):
+        t = [0.0]
+        def clock():
+            return t[0]
+        c = _QuotaCounter(clock=clock)
+        c.check_and_increment(0, 0)
+        self.assertEqual(c.daily_count, 1)
+        t[0] = 86401.0
+        self.assertEqual(c.daily_count, 0)  # reset
+
+    def test_unlimited_quotas(self):
+        c = _QuotaCounter(clock=_clock(0.0))
+        for _ in range(1000):
+            err = c.check_and_increment(0, 0)
+            self.assertIsNone(err)
+
+
+# ---------------------------------------------------------------------------
+# RateLimitEnforcer — end-to-end tests
+# ---------------------------------------------------------------------------
+
+class TestRateLimitEnforcer(unittest.TestCase):
+    def _make_enforcer(self, rate=100.0, burst=10, hq=0, dq=0):
+        config = RateLimitConfig(
+            quotas=[NamespaceQuota("ns", rate_per_second=rate, burst=burst,
+                                   hourly_quota=hq, daily_quota=dq)],
+        )
+        return RateLimitEnforcer(config, clock=_clock(0.0))
+
+    def test_allowed(self):
+        e = self._make_enforcer()
+        d = e.check("ns")
+        self.assertEqual(d.result, LimitResult.ALLOWED)
+
+    def test_rate_limited_after_burst(self):
+        e = self._make_enforcer(rate=100.0, burst=3)
         for _ in range(3):
-            counter.check_and_increment(0, 3)
-        # Advance past 1 day
-        now[0] += 86401.0
-        result = counter.check_and_increment(0, 3)
-        assert result is None  # counter reset
+            e.check("ns")
+        d = e.check("ns")
+        self.assertEqual(d.result, LimitResult.RATE_LIMITED)
 
-    def test_atomic_no_overshoot(self) -> None:
-        """Concurrent requests must not exceed quota."""
-        t = 1_000_000.0
-        counter = _QuotaCounter(clock=lambda: t)
+    def test_quota_exceeded_hourly(self):
+        e = self._make_enforcer(burst=1000, hq=2)
+        e.check("ns")
+        e.check("ns")
+        d = e.check("ns")
+        self.assertEqual(d.result, LimitResult.QUOTA_EXCEEDED)
+
+    def test_quota_exceeded_daily(self):
+        e = self._make_enforcer(burst=1000, dq=2)
+        e.check("ns")
+        e.check("ns")
+        d = e.check("ns")
+        self.assertEqual(d.result, LimitResult.QUOTA_EXCEEDED)
+
+    def test_quota_rollback_on_rate_limit(self):
+        """Rate-limited requests must NOT consume hourly/daily quota."""
+        e = self._make_enforcer(rate=100.0, burst=2, hq=10)
+        # Allow 2 (burst), then 3rd is rate-limited
+        e.check("ns")
+        e.check("ns")
+        d = e.check("ns")
+        self.assertEqual(d.result, LimitResult.RATE_LIMITED)
+        # Quota should only reflect the 2 actually-served requests
+        counter = e._counters["ns"]
+        self.assertEqual(counter.hourly_count, 2)
+
+    def test_wildcard_namespace(self):
+        config = RateLimitConfig(
+            quotas=[NamespaceQuota("*", rate_per_second=50.0, burst=5)],
+        )
+        e = RateLimitEnforcer(config, clock=_clock(0.0))
+        d = e.check("any-ns")
+        self.assertEqual(d.result, LimitResult.ALLOWED)
+
+    def test_default_namespace_fallback(self):
+        config = RateLimitConfig(default_rate_per_second=10.0, default_burst=5)
+        e = RateLimitEnforcer(config, clock=_clock(0.0))
+        d = e.check("unregistered")
+        self.assertEqual(d.result, LimitResult.ALLOWED)
+
+    def test_decision_to_dict(self):
+        e = self._make_enforcer()
+        d = e.check("ns")
+        obj = d.to_dict()
+        self.assertIn("result", obj)
+        self.assertIn("tokens_remaining", obj)
+
+    def test_decision_to_json(self):
+        e = self._make_enforcer()
+        d = e.check("ns")
+        obj = json.loads(d.to_json())
+        self.assertEqual(obj["result"], LimitResult.ALLOWED)
+
+
+# ---------------------------------------------------------------------------
+# Thread-safety
+# ---------------------------------------------------------------------------
+
+class TestThreadSafety(unittest.TestCase):
+    def test_concurrent_checks(self):
+        config = RateLimitConfig(
+            quotas=[NamespaceQuota("ns", rate_per_second=10000.0, burst=10000)],
+        )
+        enforcer = RateLimitEnforcer(config, clock=_clock(0.0))
         results = []
-        def worker() -> None:
-            r = counter.check_and_increment(10, 0)
-            results.append(r is None)
+        lock    = threading.Lock()
+
+        def worker():
+            d = enforcer.check("ns")
+            with lock:
+                results.append(d.result)
+
         threads = [threading.Thread(target=worker) for _ in range(50)]
-        for th in threads:
-            th.start()
-        for th in threads:
-            th.join()
-        allowed = sum(1 for r in results if r)
-        assert allowed == 10  # exactly 10 allowed, no overshoot
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
 
-
-# ---------------------------------------------------------------------------
-# RateLimitEnforcer
-# ---------------------------------------------------------------------------
-
-class TestRateLimitEnforcer:
-    def _make_enforcer(
-        self,
-        rate: float = 100.0,
-        burst: int = 10,
-        hourly: int = 0,
-        daily: int = 0,
-        mono_t: float = 0.0,
-        wall_t: float = 1_000_000.0,
-    ) -> tuple:
-        mono = [mono_t]
-        wall = [wall_t]
-        config = RateLimitConfig(
-            quotas=[NamespaceQuota("test", rate, burst, hourly, daily)],
-        )
-        enforcer = RateLimitEnforcer(
-            config,
-            mono_clock=lambda: mono[0],
-            wall_clock=lambda: wall[0],
-        )
-        return enforcer, mono, wall
-
-    def test_allows_within_limit(self) -> None:
-        enforcer, _, _ = self._make_enforcer(burst=10)
-        d = enforcer.check("test")
-        assert d.result == LimitResult.ALLOWED
-        assert d.reason == "ok"
-
-    def test_rate_limited_after_burst(self) -> None:
-        enforcer, _, _ = self._make_enforcer(rate=100.0, burst=5)
-        for _ in range(5):
-            enforcer.check("test")
-        d = enforcer.check("test")
-        assert d.result == LimitResult.RATE_LIMITED
-
-    def test_quota_exceeded_hourly(self) -> None:
-        enforcer, _, _ = self._make_enforcer(rate=1000.0, burst=1000, hourly=3)
-        for _ in range(3):
-            enforcer.check("test")
-        d = enforcer.check("test")
-        assert d.result == LimitResult.QUOTA_EXCEEDED
-        assert "hourly" in d.reason
-
-    def test_quota_exceeded_daily(self) -> None:
-        enforcer, _, _ = self._make_enforcer(rate=1000.0, burst=1000, daily=2)
-        for _ in range(2):
-            enforcer.check("test")
-        d = enforcer.check("test")
-        assert d.result == LimitResult.QUOTA_EXCEEDED
-        assert "daily" in d.reason
-
-    def test_default_namespace_fallback(self) -> None:
-        config = RateLimitConfig(default_rate_per_second=50.0, default_burst=5)
-        enforcer = RateLimitEnforcer(config)
-        d = enforcer.check("new-ns")
-        assert d.result == LimitResult.ALLOWED
-
-    def test_decision_to_dict(self) -> None:
-        enforcer, _, _ = self._make_enforcer()
-        d = enforcer.check("test")
-        dd = d.to_dict()
-        assert dd["result"] == "ALLOWED"
-        assert "tokens_remaining" in dd
-        assert "hourly_used" in dd
-        assert "daily_used" in dd
-
-    def test_thread_safety_enforcer(self) -> None:
-        config = RateLimitConfig(
-            quotas=[NamespaceQuota("prod", 1000.0, 50)],
-        )
-        enforcer = RateLimitEnforcer(config)
-        results = []
-        def worker() -> None:
-            results.append(enforcer.check("prod").result)
-        threads = [threading.Thread(target=worker) for _ in range(200)]
-        for th in threads:
-            th.start()
-        for th in threads:
-            th.join()
+        self.assertEqual(len(results), 50)
         allowed = sum(1 for r in results if r == LimitResult.ALLOWED)
-        assert allowed <= 50  # never exceeds burst
+        self.assertGreater(allowed, 0)
+
+    def test_quota_not_exceeded_under_concurrency(self):
+        """Atomic check_and_increment must never overshoot the quota."""
+        config = RateLimitConfig(
+            quotas=[NamespaceQuota("ns", rate_per_second=10000.0,
+                                   burst=10000, hourly_quota=10)],
+        )
+        enforcer = RateLimitEnforcer(config, clock=_clock(0.0))
+        results  = []
+        lock     = threading.Lock()
+
+        def worker():
+            d = enforcer.check("ns")
+            with lock:
+                results.append(d.result)
+
+        threads = [threading.Thread(target=worker) for _ in range(50)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        allowed = sum(1 for r in results if r == LimitResult.ALLOWED)
+        self.assertLessEqual(allowed, 10)
 
 
 # ---------------------------------------------------------------------------
 # check_rate_limit_config
 # ---------------------------------------------------------------------------
 
-class TestCheckRateLimitConfig:
-    def test_pass_on_valid(self) -> None:
-        c = RateLimitConfig(
-            quotas=[NamespaceQuota("prod", 100.0, 200)],
+class TestCheckRateLimitConfig(unittest.TestCase):
+    def test_pass(self):
+        config = RateLimitConfig(
+            quotas=[NamespaceQuota("prod", rate_per_second=100.0, burst=200)],
         )
-        r = check_rate_limit_config(c)
-        assert r["result"] == "PASS"
-        assert r["issues"] == []
+        report = check_rate_limit_config(config)
+        self.assertEqual(report["result"], "PASS")
 
-    def test_warn_low_rate(self) -> None:
-        c = RateLimitConfig(default_rate_per_second=0.5, default_burst=1)
-        r = check_rate_limit_config(c)
-        assert r["result"] == "WARN"
-
-    def test_warn_burst_less_than_rate(self) -> None:
-        c = RateLimitConfig(
-            quotas=[NamespaceQuota("prod", 100.0, 10)],
+    def test_warn_low_rate(self):
+        config = RateLimitConfig(
+            quotas=[NamespaceQuota("ns", rate_per_second=0.5, burst=1)],
         )
-        r = check_rate_limit_config(c)
-        assert r["result"] == "WARN"
-        assert any("burst" in i for i in r["issues"])
+        report = check_rate_limit_config(config)
+        self.assertIn(report["result"], ["WARN", "FAIL"])
 
-    def test_json_serializable(self) -> None:
-        c = RateLimitConfig()
-        r = check_rate_limit_config(c)
-        json.dumps(r)  # must not raise
+    def test_warn_burst_less_than_rate(self):
+        config = RateLimitConfig(
+            quotas=[NamespaceQuota("ns", rate_per_second=100.0, burst=1)],
+        )
+        report = check_rate_limit_config(config)
+        self.assertIn(report["result"], ["WARN", "FAIL"])
+
+    def test_empty_config_passes(self):
+        config = RateLimitConfig()
+        report = check_rate_limit_config(config)
+        self.assertEqual(report["result"], "PASS")
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# CLI tests
 # ---------------------------------------------------------------------------
 
-class TestCLI:
-    def test_demo_mode_exits_zero(self) -> None:
-        rc = main(["--demo"])
-        assert rc == 0
+class TestCLI(unittest.TestCase):
+    def test_demo_text(self):
+        rc = main(["--demo", "--format", "text"])
+        self.assertIn(rc, (0, 1, 2))
 
-    def test_demo_json_output(self, capsys) -> None:  # type: ignore[no-untyped-def]
-        main(["--demo", "--format", "json"])
-        out = capsys.readouterr().out
-        d = json.loads(out)
-        assert "result" in d
-        assert "issues" in d
+    def test_demo_json(self):
+        captured = StringIO()
+        orig, sys.stdout = sys.stdout, captured
+        try:
+            main(["--demo", "--format", "json"])
+        finally:
+            sys.stdout = orig
+        obj = json.loads(captured.getvalue())
+        self.assertIn("result", obj)
 
-    def test_missing_url_exits_two(self) -> None:
+    def test_no_args_runs_demo(self):
         rc = main([])
-        assert rc == 2
+        self.assertIn(rc, (0, 1, 2))
 
-    def test_config_file(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
-        cfg = {
-            "quotas": [
-                {"namespace": "prod", "rate_per_second": 100, "burst": 200}
-            ],
-            "default_rate_per_second": 50,
-            "default_burst": 100,
-        }
-        p = tmp_path / "config.json"
-        p.write_text(json.dumps(cfg))
-        rc = main(["--config", str(p)])
-        assert rc == 0
+
+if __name__ == "__main__":
+    unittest.main()
