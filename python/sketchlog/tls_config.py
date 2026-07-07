@@ -374,7 +374,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--cert", required=True, help="Path to server certificate (PEM)")
     parser.add_argument("--key", required=True, help="Path to private key (PEM)")
-    parser.add_argument("--ca", default=None, help="Path to CA certificate for mTLS (PEM)")
+    parser.add_argument("--tls-ca", default=None, help="Path to CA certificate for mTLS (PEM)")
     parser.add_argument("--mtls", action="store_true", default=False,
                         help="Enable mTLS (require client certificates)")
     parser.add_argument("--min-tls", default="TLSv1.2", choices=["TLSv1.2", "TLSv1.3"],
@@ -389,7 +389,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         config = TLSConfig(
             cert_file=args.cert,
             key_file=args.key,
-            ca_file=args.ca,
+            ca_file=args.tls_ca,
             mtls=args.mtls,
             min_tls_version=args.min_tls,
             expiry_warn_days=args.expiry_warn_days,
