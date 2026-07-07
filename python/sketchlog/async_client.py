@@ -25,7 +25,6 @@ Quick start
         p99 = await c.query_percentile("web", "latency_ms", 0.99)
 """
 
-from __future__ import annotations
 
 import asyncio
 import json
