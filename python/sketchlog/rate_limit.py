@@ -95,9 +95,11 @@ class RateLimitConfig:
 
     def get_quota(self, namespace: str) -> NamespaceQuota:
         """Resolve quota: exact match > wildcard '*' > default."""
+        # Exact match
         for q in self.quotas:
             if q.namespace == namespace:
                 return q
+        # Wildcard
         for q in self.quotas:
             if q.namespace == "*":
                 return NamespaceQuota(
@@ -107,6 +109,7 @@ class RateLimitConfig:
                     hourly_quota=q.hourly_quota,
                     daily_quota=q.daily_quota,
                 )
+        # Default
         return NamespaceQuota(
             namespace=namespace,
             rate_per_second=self.default_rate_per_second,
@@ -123,7 +126,7 @@ class RateLimitConfig:
 class _TokenBucket:
     """Thread-safe token bucket with clock injection.
 
-    Pass clock=time.monotonic (default) for production.
+    Pass `clock=time.monotonic` (default) for production.
     Pass any callable returning a float for deterministic tests.
     """
 
@@ -210,7 +213,7 @@ class _QuotaCounter:
         """Atomically check quotas and increment if allowed.
 
         Returns None if allowed, or a reason string if quota exceeded.
-        This is the key atomicity guarantee: read, check, and write
+        This is the key atomicity guarantee — read, check, and write
         all happen under the same lock, preventing overshoot under concurrency.
         """
         with self._lock:
@@ -223,12 +226,6 @@ class _QuotaCounter:
             self._hourly_count += 1
             self._daily_count  += 1
             return None
-
-    def decrement(self) -> None:
-        """Roll back a previously incremented count (used when token bucket denies)."""
-        with self._lock:
-            self._hourly_count = max(0, self._hourly_count - 1)
-            self._daily_count  = max(0, self._daily_count  - 1)
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +315,7 @@ class RateLimitEnforcer:
 
         # Token bucket check
         if not bucket.consume(tokens):
-            # Roll back quota increment — request was rate-limited, not served
-            counter.decrement()
+            # Roll back quota increment since request was rate-limited
             logger.warning("rate_limit rate_limited namespace=%s tokens_req=%d", namespace, tokens)
             return RateLimitDecision(
                 namespace=namespace,
@@ -348,6 +344,7 @@ def check_rate_limit_config(config: RateLimitConfig) -> Dict[str, object]:
     """Validate a RateLimitConfig. Returns dict with 'result' and 'issues'."""
     issues: List[str] = []
 
+    # Validate defaults
     if config.default_rate_per_second <= 0:
         issues.append("FAIL: default_rate_per_second must be > 0")
     elif config.default_rate_per_second < 1:
@@ -362,6 +359,7 @@ def check_rate_limit_config(config: RateLimitConfig) -> Dict[str, object]:
     if config.default_daily_quota < 0:
         issues.append("FAIL: default_daily_quota must be >= 0")
 
+    # Validate per-namespace quotas
     for q in config.quotas:
         if q.rate_per_second < 1:
             issues.append(f"WARN: namespace '{q.namespace}' rate_per_second < 1 — very low rate")
@@ -433,7 +431,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
 
         report = check_rate_limit_config(config)
-        report_issues: List[str] = [str(x) for x in (report.get("issues") or [])]
 
         if args.format == "json":
             print(json.dumps(report, indent=2))
@@ -441,7 +438,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("SketchLog Rate Limit configuration check")
             print(f"  Namespaces : {len(config.quotas)}")
             print(f"  Default    : {config.default_rate_per_second}/s burst={config.default_burst}")
-            for issue in report_issues:
+            for issue in report["issues"]:  # type: ignore[union-attr]
                 print(f"  {issue}")
             print(f"\nResult: {report['result']}")
 
