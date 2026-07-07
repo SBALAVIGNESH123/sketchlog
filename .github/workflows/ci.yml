@@ -31,7 +31,7 @@ jobs:
 
       - name: Install package
         run: |
-          pip install pytest pytest-asyncio numpy httpx "httpx2>=2,<3" hypothesis "aiohttp>=3.9"
+          pip install pytest pytest-asyncio numpy httpx "httpx2>=2,<3" hypothesis
           pip install .[server]
 
       - name: Verify C++ extension loaded
@@ -77,7 +77,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install mypy pyright httpx types-psutil "aiohttp>=3.9" aiohttp-stubs
+          pip install mypy pyright httpx types-psutil
           pip install .[server]
 
       - name: Run mypy
