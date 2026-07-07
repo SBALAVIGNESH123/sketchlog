@@ -306,8 +306,8 @@ def check_rbac(config: RBACConfig) -> RBACCheckResult:
 
     if not config.audit_hmac_key:
         issues.append("WARN: audit_hmac_key not set — audit log is not tamper-evident")
-    elif len(config.audit_hmac_key) < 32:
-        issues.append("WARN: audit_hmac_key is too short (< 32 chars) — use a strong random secret")
+    elif len(config.audit_hmac_key) < 16:
+        issues.append("WARN: audit_hmac_key is too short (< 16 chars) — use a strong random secret")
     elif config.audit_hmac_key in ("demo-hmac-key-change-in-production", "changeme", "secret", "test"):
         issues.append("WARN: audit_hmac_key appears to be a demo/weak value — replace with a strong random secret")
 

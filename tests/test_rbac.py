@@ -226,7 +226,7 @@ class TestCheckRBAC:
     def test_full_config_passes(self):
         cfg = RBACConfig(
             grants=[TokenGrant("admin", Role.ADMIN, [])],
-            audit_hmac_key="key",
+            audit_hmac_key="a" * 32,  # strong key: 32 chars
             enabled=True,
         )
         r = check_rbac(cfg)
