@@ -55,7 +55,7 @@ class Permission(str, Enum):
     ADMIN  = "admin"
 
 
-_ROLE_PERMISSIONS: Dict[Role, frozenset] = {
+_ROLE_PERMISSIONS: Dict[Role, FrozenSet[Permission]] = {
     Role.ADMIN:      frozenset({Permission.INGEST, Permission.QUERY, Permission.ADMIN}),
     Role.INGEST:     frozenset({Permission.INGEST}),
     Role.READ:       frozenset({Permission.QUERY}),
