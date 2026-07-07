@@ -12,7 +12,7 @@ pip install 'sketchlog[async]'
 
 ```python
 import asyncio
-from sketchlog.async_client import AsyncSketchLogClient
+from sketchlog.async_client import AsyncSketchLogClient, SketchLogRateLimitError
 
 async def main():
     async with AsyncSketchLogClient("http://localhost:7700", token="my-token") as c:
@@ -88,9 +88,12 @@ async with AsyncSketchLogClient(config=config) as c:
 ### Streaming subscription
 
 ```python
-async with client.subscribe_stream("prod", "latency_ms", interval_seconds=1.0) as events:
-    async for summary in events:
-        print(f"p99={summary['p99']:.1f}ms  count={summary['count']}")
+from sketchlog.async_client import AsyncSketchLogClient, SketchLogRateLimitError
+
+async with AsyncSketchLogClient("http://localhost:7700", token="my-token") as client:
+    async with client.subscribe_stream("prod", "latency_ms", interval_seconds=1.0) as events:
+        async for summary in events:
+            print(f"p99={summary['p99']:.1f}ms  count={summary['count']}")
 ```
 
 ## Error handling

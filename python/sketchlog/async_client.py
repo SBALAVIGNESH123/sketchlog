@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 async_client.py — AsyncSketchLogClient
 =======================================
@@ -276,7 +278,7 @@ class AsyncSketchLogClient:
                 return
             connector = aiohttp.TCPConnector(
                 limit=self._cfg.max_connections,
-                limit_per_host=self._cfg.max_keepalive_connections,
+                keepalive_timeout=30.0,
                 ssl=self._cfg.verify_ssl,
             )
             timeout = aiohttp.ClientTimeout(
@@ -655,17 +657,26 @@ class AsyncSketchLogClient:
         """
         async def _generator() -> AsyncIterator[Dict[str, Any]]:
             count = 0
+            consecutive_errors = 0
+            max_consecutive_errors = 10
             while max_events is None or count < max_events:
                 try:
                     summary = await self.query_summary(namespace, stream, timeout=timeout)
                     summary["_ts"] = time.time()
+                    consecutive_errors = 0
                     yield summary
                     count += 1
                     await asyncio.sleep(interval_seconds)
                 except asyncio.CancelledError:
                     return
                 except SketchLogError as exc:
-                    logger.warning("subscribe_stream: error polling %s/%s: %s", namespace, stream, exc)
+                    consecutive_errors += 1
+                    logger.warning(
+                        "subscribe_stream: error polling %s/%s: %s (consecutive=%d/%d)",
+                        namespace, stream, exc, consecutive_errors, max_consecutive_errors,
+                    )
+                    if consecutive_errors >= max_consecutive_errors:
+                        raise
                     await asyncio.sleep(interval_seconds)
 
         yield _generator()
