@@ -87,8 +87,10 @@ class TokenGrant:
             raise ValueError("TokenGrant errors: " + "; ".join(errors))
 
     def allows_namespace(self, namespace: str) -> bool:
+        # Admin tokens with empty namespaces get global access;
+        # non-admin tokens must list explicit namespaces.
         if not self.namespaces:
-            return True
+            return self.role == Role.ADMIN
         return namespace in self.namespaces or _WILDCARD in self.namespaces
 
     def has_permission(self, permission: Permission) -> bool:
@@ -101,6 +103,7 @@ class RBACConfig:
     grants:           List[TokenGrant]
     audit_file:       Optional[str]  = None   # path or None=stdout
     audit_hmac_key:   str            = ""     # empty = no HMAC
+    audit_syslog:     bool           = False  # send audit events to syslog (Unix only)
     enabled:          bool           = True
 
     def __post_init__(self) -> None:
@@ -162,6 +165,15 @@ class AuditLogger:
         self._config  = config
         self._hmac_key = config.audit_hmac_key.encode() if config.audit_hmac_key else b""
         self._file: Optional[Any] = None
+        self._lock = threading.Lock()
+        self._syslog = False
+        if config.audit_syslog:
+            try:
+                import syslog as _syslog  # Unix only
+                self._syslog_mod = _syslog
+                self._syslog = True
+            except ImportError:
+                pass  # Windows — syslog unavailable, fall back to stdout
         if config.audit_file:
             os.makedirs(os.path.dirname(os.path.abspath(config.audit_file)), exist_ok=True)
             self._file = open(config.audit_file, "a", encoding="utf-8")
@@ -194,12 +206,15 @@ class AuditLogger:
             result=result, reason=reason, role=role, hmac_tag=tag,
         )
         line = event.to_json() + "\n"
-        if self._file:
-            self._file.write(line)
-            self._file.flush()
-        else:
-            sys.stdout.write(line)
-            sys.stdout.flush()
+        with self._lock:
+            if self._file:
+                self._file.write(line)
+                self._file.flush()
+            elif self._syslog:
+                self._syslog_mod.syslog(self._syslog_mod.LOG_INFO, line.rstrip())
+            else:
+                sys.stdout.write(line)
+                sys.stdout.flush()
         return event
 
     def close(self) -> None:
@@ -290,6 +305,10 @@ def check_rbac(config: RBACConfig) -> RBACCheckResult:
 
     if not config.audit_hmac_key:
         issues.append("WARN: audit_hmac_key not set — audit log is not tamper-evident")
+    elif len(config.audit_hmac_key) < 32:
+        issues.append("WARN: audit_hmac_key is too short (< 32 chars) — use a strong random secret")
+    elif config.audit_hmac_key in ("demo-hmac-key-change-in-production", "changeme", "secret", "test"):
+        issues.append("WARN: audit_hmac_key appears to be a demo/weak value — replace with a strong random secret")
 
     audit_output = config.audit_file if config.audit_file else "stdout"
 

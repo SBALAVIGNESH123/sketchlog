@@ -2,7 +2,7 @@
 
 SketchLog's role-based access control (RBAC) module enforces per-namespace
 permissions on every API call and records every access decision to a
-tamper-evident, SOC2-ready audit log.
+tamper-evident audit log (designed to support SOC2 audit requirements).
 
 ## Quick start
 
@@ -74,6 +74,7 @@ Each line is a JSON object:
 ## Python API
 
 ```python
+import os
 from sketchlog.rbac import Role, Permission, TokenGrant, RBACConfig, RBACEnforcer
 
 config = RBACConfig(
@@ -92,14 +93,24 @@ if enforcer.check("my-token", Permission.INGEST, "prod", "latency"):
 
 ## Wiring into server.py
 
-Pass `RBACConfig` to `sketchlog.server.create_app()`:
+Pass the `RBACEnforcer` instance into your request middleware or startup hook:
 
 ```python
-from sketchlog.rbac import RBACConfig, TokenGrant, Role
-from sketchlog.server import create_app
+import os
+from sketchlog.rbac import RBACConfig, TokenGrant, Role, RBACEnforcer
 
-app = create_app(rbac_config=RBACConfig(grants=[...], audit_hmac_key="..."))
+config = RBACConfig(
+    grants=[TokenGrant("prod-token", Role.READ_WRITE, ["prod"])],
+    audit_hmac_key=os.environ["SKETCHLOG_HMAC_KEY"],
+)
+enforcer = RBACEnforcer(config)
+
+# In your FastAPI middleware or dependency:
+# enforcer.check(token_id, action, namespace, stream)
 ```
+
+> **Note:** Full `server.py` middleware integration is tracked in #250.
+> The `sketchlog-rbac-check` CLI validates your config independently.
 
 ## CLI reference
 
@@ -110,6 +121,20 @@ app = create_app(rbac_config=RBACConfig(grants=[...], audit_hmac_key="..."))
 | `--demo` | off | Run with built-in demo grants |
 
 Exit codes: `0` = PASS/WARN, `1` = FAIL, `2` = bad config.
+
+## Syslog output (Unix only)
+
+Enable syslog audit output by setting `audit_syslog=True` in `RBACConfig`:
+
+```python
+config = RBACConfig(
+    grants=[...],
+    audit_hmac_key=os.environ["SKETCHLOG_HMAC_KEY"],
+    audit_syslog=True,   # sends LOG_INFO events to syslog (Linux/macOS)
+)
+```
+
+On Windows, `audit_syslog=True` is silently ignored and output falls back to stdout.
 
 ## Caveats
 
