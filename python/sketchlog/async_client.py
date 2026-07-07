@@ -1,3 +1,4 @@
+# mypy: ignore-missing-imports
 from __future__ import annotations
 
 """
