@@ -27,7 +27,7 @@ That's it. No manual pip, npm, or go commands required.
 | Node.js | 18+ |
 | npm | 9+ |
 | Go | 1.21+ |
-| Docker | 20+ (for `make demo`) |
+| Docker | 20+ with Compose v2 plugin (for `make demo`) |
 | Git | 2.40+ |
 
 Run `make env-check` to verify all tools are present.
