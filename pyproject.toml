@@ -45,6 +45,7 @@ sketchlog-db-check = "sketchlog.db_hardening:main"
 sketchlog-tls-check = "sketchlog.tls_config:main"
 sketchlog-rbac-check = "sketchlog.rbac:main"
 sketchlog-rate-check = "sketchlog.rate_limit:main"
+sketchlog-async-check = "sketchlog.async_client:_cli_check"
 sketchlog-alert-manager = "sketchlog.alert_manager:main"
 sketchlog-mesh-viz = "sketchlog.mesh_visualizer:main"
 sketchlog-namespace-admin = "sketchlog.namespace_admin:main"
@@ -52,6 +53,7 @@ sketchlog-regression-check = "sketchlog.ci_regression:main"
 sketchlog-query-builder = "sketchlog.query_builder:main"
 
 [project.optional-dependencies]
+async = ["aiohttp>=3.9"]
 docs = [
     "mkdocs>=1.6,<2",
     "mkdocs-material>=9.5.0,<10",
