@@ -1,9 +1,9 @@
-\"\"\"
+"""
 SketchLog Rate Limiting and Quota Enforcement (Issue #252).
 
 Provides per-namespace token-bucket rate limiting and quota enforcement
 with thread-safe enforcement, configurable burst, and SOC2-ready audit hooks.
-\"\"\"
+"""
 from __future__ import annotations
 
 import json
@@ -39,7 +39,7 @@ class LimitResult(str, Enum):
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class NamespaceQuota:
-    \"\"\"Per-namespace rate and quota configuration.\"\"\"
+    """Per-namespace rate and quota configuration."""
     namespace: str
     rate_per_second: float = _DEFAULT_RATE   # sustained rate (tokens/sec)
     burst: int             = _DEFAULT_BURST  # max burst tokens
@@ -64,7 +64,7 @@ class NamespaceQuota:
 
 @dataclass
 class RateLimitConfig:
-    \"\"\"Global rate limiting configuration.\"\"\"
+    """Global rate limiting configuration."""
     quotas: List[NamespaceQuota] = field(default_factory=list)
     enabled: bool = True
     default_rate_per_second: float = _DEFAULT_RATE
@@ -73,7 +73,7 @@ class RateLimitConfig:
     default_hourly_quota: int      = _DEFAULT_QUOTA
 
     def get_quota(self, namespace: str) -> NamespaceQuota:
-        \"\"\"Return the best-matching quota for namespace (exact > wildcard > default).\"\"\"
+        """Return the best-matching quota for namespace (exact > wildcard > default)."""
         for q in self.quotas:
             if q.namespace == namespace:
                 return q
@@ -93,7 +93,7 @@ class RateLimitConfig:
 # Token bucket (thread-safe)
 # ─────────────────────────────────────────────────────────────────────────────
 class _TokenBucket:
-    \"\"\"Thread-safe token bucket for a single namespace.\"\"\"
+    """Thread-safe token bucket for a single namespace."""
 
     def __init__(self, rate: float, burst: int) -> None:
         self._rate  = rate
@@ -103,7 +103,7 @@ class _TokenBucket:
         self._lock = threading.Lock()
 
     def consume(self, tokens: int = 1) -> bool:
-        \"\"\"Consume *tokens*; return True if allowed, False if rate-limited.\"\"\"
+        """Consume *tokens*; return True if allowed, False if rate-limited."""
         with self._lock:
             self._refill()
             if self._tokens >= tokens:
@@ -131,7 +131,7 @@ class _TokenBucket:
 # Quota counters (thread-safe)
 # ─────────────────────────────────────────────────────────────────────────────
 class _QuotaCounter:
-    \"\"\"Thread-safe rolling-window quota counter (hourly + daily).\"\"\"
+    """Thread-safe rolling-window quota counter (hourly + daily)."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -174,7 +174,7 @@ class _QuotaCounter:
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class RateLimitDecision:
-    \"\"\"Result of a single enforcement check.\"\"\"
+    """Result of a single enforcement check."""
     namespace:     str
     result:        LimitResult
     reason:        str
@@ -196,11 +196,11 @@ class RateLimitDecision:
 # Enforcer
 # ─────────────────────────────────────────────────────────────────────────────
 class RateLimitEnforcer:
-    \"\"\"
+    """
     Central rate-limit enforcer.
 
     Thread-safe.  One instance per process; namespaces are created lazily.
-    \"\"\"
+    """
 
     def __init__(self, config: RateLimitConfig) -> None:
         self._config = config
@@ -211,11 +211,11 @@ class RateLimitEnforcer:
     # ── public API ───────────────────────────────────────────────────────────
 
     def check(self, namespace: str, tokens: int = 1) -> RateLimitDecision:
-        \"\"\"
+        """
         Check and enforce rate limits for *namespace*.
 
         Returns a :class:`RateLimitDecision`; does NOT raise on rejection.
-        \"\"\"
+        """
         if not self._config.enabled:
             return RateLimitDecision(
                 namespace=namespace,
@@ -282,7 +282,7 @@ class RateLimitEnforcer:
         )
 
     def stats(self, namespace: str) -> Dict:
-        \"\"\"Return current usage stats for *namespace*.\"\"\"
+        """Return current usage stats for *namespace*."""
         quota   = self._config.get_quota(namespace)
         bucket  = self._get_bucket(namespace, quota)
         counter = self._get_counter(namespace)
@@ -298,7 +298,7 @@ class RateLimitEnforcer:
         }
 
     def reset(self, namespace: str) -> None:
-        \"\"\"Reset token bucket and counters for *namespace* (e.g. after quota increase).\"\"\"
+        """Reset token bucket and counters for *namespace* (e.g. after quota increase)."""
         quota = self._config.get_quota(namespace)
         with self._lock:
             self._buckets[namespace]  = _TokenBucket(quota.rate_per_second, quota.burst)
@@ -337,7 +337,7 @@ class RateLimitCheckResult:
 
 
 def check_rate_limit_config(config: RateLimitConfig) -> RateLimitCheckResult:
-    \"\"\"Validate the rate limit configuration; return a structured result.\"\"\"
+    """Validate the rate limit configuration; return a structured result."""
     issues: List[str] = []
 
     if not config.enabled:

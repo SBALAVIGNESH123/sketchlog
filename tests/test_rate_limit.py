@@ -1,4 +1,4 @@
-\"\"\"Tests for sketchlog.rate_limit (Issue #252).\"\"\"
+"""Tests for sketchlog.rate_limit (Issue #252)."""
 from __future__ import annotations
 
 import time
