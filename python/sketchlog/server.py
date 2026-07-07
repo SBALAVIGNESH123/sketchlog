@@ -26,10 +26,12 @@ from sketchlog.slo import SmartSLOEngine
 from sketchlog.diff import SketchDiff
 from sketchlog.canary import CanaryAnalysisConfig, CanaryAnalyzer, CanaryThresholds
 try:
-    from sketchlog.tls_config import TLSConfig, build_ssl_context
+    from sketchlog.tls_config import TLSConfig as _TLSConfig, build_ssl_context as _build_ssl_context
     _TLS_CONFIG_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _TLS_CONFIG_AVAILABLE = False
+    _TLSConfig = None  # type: ignore[assignment,misc]
+    _build_ssl_context = None  # type: ignore[assignment]
 
 from sketchlog.sql import SQLParser, execute_stream_query
 from prometheus_client import CollectorRegistry
@@ -1351,13 +1353,13 @@ def main() -> None:
         raise ValueError("Both SKETCHLOG_TLS_CERT and SKETCHLOG_TLS_KEY must be provided for TLS, but only one was found.")
     if args.tls_cert and args.tls_key:
         if _TLS_CONFIG_AVAILABLE:
-            _tls = TLSConfig(
+            _tls = _TLSConfig(  # type: ignore[misc]
                 cert_file=args.tls_cert,
                 key_file=args.tls_key,
                 ca_file=getattr(args, "tls_ca", None),
                 require_client_cert=getattr(args, "tls_ca", None) is not None,
             )
-            kwargs["ssl"] = build_ssl_context(_tls)
+            kwargs["ssl"] = _build_ssl_context(_tls)  # type: ignore[misc]
         else:
             kwargs["ssl_certfile"] = args.tls_cert
             kwargs["ssl_keyfile"] = args.tls_key
