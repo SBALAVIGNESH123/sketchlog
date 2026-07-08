@@ -89,7 +89,6 @@ func (s *DDSketch) Quantile(q float64) (float64, error) {
 	for k, v := range s.buckets {
 		pairs = append(pairs, kv{k, v})
 	}
-	// sort by bucket index
 	for i := 1; i < len(pairs); i++ {
 		for j := i; j > 0 && pairs[j-1].k > pairs[j].k; j-- {
 			pairs[j-1], pairs[j] = pairs[j], pairs[j-1]
