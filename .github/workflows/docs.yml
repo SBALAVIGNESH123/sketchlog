@@ -22,7 +22,35 @@ jobs:
         with:
           python-version: 3.x
       - run: python -m pip install "mkdocs>=1.6,<2" "mkdocs-material>=9.5,<10"
-      - run: mkdocs build --strict
+      - run: mkdocs build --strict --site-dir site/docs
+      - name: Copy landing page
+        run: cp -r website-standalone/* site/
+      - name: Copy interactive playground
+        run: |
+          mkdir -p site/demo
+          cp demo/index.html site/demo/index.html
+          cp -r demo/assets site/demo/assets
+      - name: Create legacy docs redirects
+        run: |
+          for page in architecture benchmarks guarantees sdks async_client exporters kubernetes-operator rbac runbooks threat_model; do
+            mkdir -p "site/$page"
+            cat > "site/$page/index.html" <<EOF
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=../docs/$page/">
+          <link rel="canonical" href="../docs/$page/">
+          <title>Redirecting to SketchLog docs</title>
+          <p>Redirecting to <a href="../docs/$page/">SketchLog docs</a>.</p>
+          EOF
+          done
+      - name: Verify combined Pages artifact
+        run: |
+          test -f site/index.html
+          test -f site/docs/index.html
+          test -f site/demo/index.html
+          test -f site/demo/assets/demo.css
+          test -f site/demo/assets/demo.js
+          test -f site/architecture/index.html
 
   deploy:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -46,6 +74,37 @@ jobs:
       # Copy standalone landing page into site root
       - name: Copy landing page
         run: cp -r website-standalone/* site/
+
+      # Copy the zero-dependency interactive playground linked from the website
+      - name: Copy interactive playground
+        run: |
+          mkdir -p site/demo
+          cp demo/index.html site/demo/index.html
+          cp -r demo/assets site/demo/assets
+
+      # Keep pre-/docs README and package links working after MkDocs moved under /docs/
+      - name: Create legacy docs redirects
+        run: |
+          for page in architecture benchmarks guarantees sdks async_client exporters kubernetes-operator rbac runbooks threat_model; do
+            mkdir -p "site/$page"
+            cat > "site/$page/index.html" <<EOF
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=../docs/$page/">
+          <link rel="canonical" href="../docs/$page/">
+          <title>Redirecting to SketchLog docs</title>
+          <p>Redirecting to <a href="../docs/$page/">SketchLog docs</a>.</p>
+          EOF
+          done
+
+      - name: Verify combined Pages artifact
+        run: |
+          test -f site/index.html
+          test -f site/docs/index.html
+          test -f site/demo/index.html
+          test -f site/demo/assets/demo.css
+          test -f site/demo/assets/demo.js
+          test -f site/architecture/index.html
 
       # Deploy combined site to gh-pages
       - name: Deploy to GitHub Pages

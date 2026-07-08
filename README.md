@@ -104,7 +104,7 @@ flowchart LR
 ```
 
 Each stream stores compact sketch state rather than raw telemetry. See the
-[architecture guide](https://sbalavignesh123.github.io/sketchlog/architecture/)
+[architecture guide](https://sbalavignesh123.github.io/sketchlog/docs/architecture/)
 for merge behavior, windowing, drift detection, memory limits, and runtime
 details.
 
@@ -228,20 +228,20 @@ declarative cluster management.
 ## Documentation
 
 The full documentation is published at
-[sbalavignesh123.github.io/sketchlog](https://sbalavignesh123.github.io/sketchlog/).
+[sbalavignesh123.github.io/sketchlog/docs](https://sbalavignesh123.github.io/sketchlog/docs/).
 
 Important sections:
 
-- [Architecture](https://sbalavignesh123.github.io/sketchlog/architecture/)
-- [Benchmarks](https://sbalavignesh123.github.io/sketchlog/benchmarks/)
-- [Formal guarantees](https://sbalavignesh123.github.io/sketchlog/guarantees/)
-- [Client SDKs](https://sbalavignesh123.github.io/sketchlog/sdks/)
-- [Async Python client](https://sbalavignesh123.github.io/sketchlog/async_client/)
-- [Export integrations](https://sbalavignesh123.github.io/sketchlog/exporters/)
-- [Kubernetes Operator](https://sbalavignesh123.github.io/sketchlog/kubernetes-operator/)
-- [RBAC](https://sbalavignesh123.github.io/sketchlog/rbac/)
-- [Runbooks](https://sbalavignesh123.github.io/sketchlog/runbooks/)
-- [Threat model](https://sbalavignesh123.github.io/sketchlog/threat_model/)
+- [Architecture](https://sbalavignesh123.github.io/sketchlog/docs/architecture/)
+- [Benchmarks](https://sbalavignesh123.github.io/sketchlog/docs/benchmarks/)
+- [Formal guarantees](https://sbalavignesh123.github.io/sketchlog/docs/guarantees/)
+- [Client SDKs](https://sbalavignesh123.github.io/sketchlog/docs/sdks/)
+- [Async Python client](https://sbalavignesh123.github.io/sketchlog/docs/async_client/)
+- [Export integrations](https://sbalavignesh123.github.io/sketchlog/docs/exporters/)
+- [Kubernetes Operator](https://sbalavignesh123.github.io/sketchlog/docs/kubernetes-operator/)
+- [RBAC](https://sbalavignesh123.github.io/sketchlog/docs/rbac/)
+- [Runbooks](https://sbalavignesh123.github.io/sketchlog/docs/runbooks/)
+- [Threat model](https://sbalavignesh123.github.io/sketchlog/docs/threat_model/)
 
 Build docs locally:
 
@@ -285,7 +285,7 @@ SketchLog is a streaming metrics compression layer. It is deliberately not:
 ## Community
 
 - GitHub: <https://github.com/SBALAVIGNESH123/sketchlog>
-- Documentation: <https://sbalavignesh123.github.io/sketchlog/>
+- Documentation: <https://sbalavignesh123.github.io/sketchlog/docs/>
 - Slack: <https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ>
 
 ## License
