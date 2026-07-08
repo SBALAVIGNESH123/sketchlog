@@ -1,9 +1,12 @@
 """Loki HTTP push exporter for SketchLog."""
 from __future__ import annotations
+
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional, List
+
 import httpx
+
 from .base import ExporterError
 
 
@@ -12,130 +15,107 @@ class LokiConfig:
     """Configuration for the Loki exporter.
 
     Args:
-        url: Base URL of the Loki instance, e.g. ``http://loki:3100``.
-        timeout: HTTP request timeout in seconds (default 10).
-        username: Optional HTTP Basic-auth username.
-        password: Optional HTTP Basic-auth password.
-        bearer_token: Optional Bearer token (mutually exclusive with Basic auth).
-        tenant_id: Optional Loki tenant / org-id header value.
+        url: Base URL of the Loki instance (e.g. ``http://localhost:3100``).
+        timeout: HTTP request timeout in seconds.
+        username: Optional HTTP Basic auth username.
+        password: Optional HTTP Basic auth password.
+        bearer_token: Optional Bearer token for authentication.
+        extra_headers: Additional HTTP headers to include in every request.
     """
 
     url: str
     timeout: float = 10.0
-    username: str | None = None
-    password: str | None = None
-    bearer_token: str | None = None
-    tenant_id: str | None = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    bearer_token: Optional[str] = None
+    extra_headers: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.url:
             raise ValueError("url must not be empty")
-        if self.bearer_token and (self.username or self.password):
-            raise ValueError("bearer_token and Basic auth are mutually exclusive")
-        object.__setattr__(self, "url", self.url.rstrip("/"))
+        if self.timeout <= 0:
+            raise ValueError("timeout must be > 0")
+        if self.username and not self.password:
+            raise ValueError("password required when username is set")
+        if self.bearer_token and self.username:
+            raise ValueError("use either bearer_token or username/password, not both")
 
 
 @dataclass
 class LokiStream:
-    """A single Loki stream with its label-set and log lines.
+    """A single Loki stream with labels and log lines.
 
     Args:
-        labels: Mapping of label name → value, e.g. ``{"app": "myapp"}``.
-        lines: List of log-line strings to push.
-        timestamps: Optional list of nanosecond UNIX timestamps (one per line).
-                    If omitted the current time is used for every line.
+        labels: Dict of label key-value pairs for this stream.
+        lines: List of log line strings.
+        timestamps_ns: Optional list of nanosecond timestamps (one per line).
     """
 
     labels: dict[str, str]
-    lines: list[str]
-    timestamps: list[int] = field(default_factory=list)
+    lines: List[str]
+    timestamps_ns: Optional[List[int]] = None
+
+    def to_payload(self) -> dict[str, Any]:
+        label_str = "{" + ",".join(f'{k}="{v}"' for k, v in self.labels.items()) + "}"
+        values: List[List[str]] = []
+        for i, line in enumerate(self.lines):
+            if self.timestamps_ns and i < len(self.timestamps_ns):
+                ts = str(self.timestamps_ns[i])
+            else:
+                ts = str(time.time_ns())
+            values.append([ts, line])
+        return {"stream": {k: v for k, v in self.labels.items()}, "values": values}
 
 
 class LokiExporter:
-    """Synchronous Loki log exporter.
+    """Push log streams to Grafana Loki.
 
-    Supports context-manager usage::
+    Can be used as a context manager or standalone with explicit ``close()``.
 
+    Example::
+
+        cfg = LokiConfig(url="http://localhost:3100")
         with LokiExporter(cfg) as exp:
-            exp.push(["log line"])
-
-    Args:
-        config: :class:`LokiConfig` instance.
-        client: Optional pre-built ``httpx.Client`` (for testing / reuse).
+            exp.push(["request completed", "response sent"],
+                     labels={"app": "myapp", "env": "prod"})
     """
 
-    def __init__(self, config: LokiConfig, client: httpx.Client | None = None) -> None:
-        self._cfg = config
-        self._client = client
+    def __init__(self, config: LokiConfig, client: Optional[httpx.Client] = None) -> None:
+        self._config = config
+        self._client: Optional[httpx.Client] = client
         self._owned = client is None
 
-    # ── context manager ───────────────────────────────────────────────────────
-    def __enter__(self) -> "LokiExporter":
-        if self._owned and self._client is None:
+    def _make_client(self) -> httpx.Client:
+        cfg = self._config
+        auth = None
+        if cfg.username and cfg.password:
+            auth = (cfg.username, cfg.password)
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if cfg.bearer_token:
+            headers["Authorization"] = f"Bearer {cfg.bearer_token}"
+        headers.update(cfg.extra_headers)
+        return httpx.Client(auth=auth, headers=headers, timeout=cfg.timeout)
+
+    def _endpoint(self) -> str:
+        return self._config.url.rstrip("/") + "/loki/api/v1/push"
+
+    def open(self) -> "LokiExporter":
+        """Open the underlying HTTP client (called automatically by context manager)."""
+        if self._client is None:
             self._client = self._make_client()
         return self
 
-    def __exit__(self, *_: Any) -> None:
-        self.close()
-
     def close(self) -> None:
-        """Close the underlying HTTP client if it was created by this exporter."""
-        if self._owned and self._client is not None:
+        """Close the underlying HTTP client."""
+        if self._client is not None and self._owned:
             self._client.close()
             self._client = None
 
-    # ── public API ────────────────────────────────────────────────────────────
-    def push(self, lines: list[str], labels: dict[str, str] | None = None) -> None:
-        """Push a list of log lines with optional labels.
+    def __enter__(self) -> "LokiExporter":
+        return self.open()
 
-        Args:
-            lines: Log lines to push.
-            labels: Label key/value pairs (default ``{"source": "sketchlog"}``).
-
-        Raises:
-            ExporterError: On HTTP or transport failure.
-        """
-        stream = LokiStream(labels=labels or {"source": "sketchlog"}, lines=lines)
-        self.push_stream(stream)
-
-    def push_stream(self, stream: LokiStream) -> None:
-        """Push a single :class:`LokiStream`.
-
-        Raises:
-            ExporterError: On HTTP or transport failure.
-        """
-        self.push_streams([stream])
-
-    def push_streams(self, streams: list[LokiStream]) -> None:
-        """Push multiple :class:`LokiStream` objects in one request.
-
-        Raises:
-            ExporterError: On HTTP or transport failure.
-        """
-        now_ns = str(int(time.time() * 1e9))
-        payload: dict[str, Any] = {"streams": []}
-        for s in streams:
-            values = []
-            for i, line in enumerate(s.lines):
-                ts = str(s.timestamps[i]) if i < len(s.timestamps) else now_ns
-                values.append([ts, line])
-            payload["streams"].append({"stream": s.labels, "values": values})
-        self._do_push(payload)
-
-    # ── internals ─────────────────────────────────────────────────────────────
-    def _endpoint(self) -> str:
-        return f"{self._cfg.url}/loki/api/v1/push"
-
-    def _make_client(self) -> httpx.Client:
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self._cfg.tenant_id:
-            headers["X-Scope-OrgID"] = self._cfg.tenant_id
-        if self._cfg.bearer_token:
-            headers["Authorization"] = f"Bearer {self._cfg.bearer_token}"
-        auth = None
-        if self._cfg.username:
-            auth = (self._cfg.username, self._cfg.password or "")
-        return httpx.Client(headers=headers, auth=auth, timeout=self._cfg.timeout)
+    def __exit__(self, *_: Any) -> None:
+        self.close()
 
     def _do_push(self, payload: dict[str, Any]) -> None:
         client = self._client
@@ -153,7 +133,35 @@ class LokiExporter:
         except httpx.TimeoutException as exc:
             raise ExporterError(f"Loki push timed out: {exc}") from exc
         except httpx.RequestError as exc:
-            raise ExporterError(f"Loki transport error: {exc}") from exc
+            raise ExporterError(f"Loki connection error: {exc}") from exc
         finally:
             if owned:
                 client.close()
+
+    def push(
+        self,
+        lines: List[str],
+        labels: Optional[dict[str, str]] = None,
+        timestamps_ns: Optional[List[int]] = None,
+    ) -> None:
+        """Push log lines to Loki.
+
+        Args:
+            lines: List of log line strings.
+            labels: Optional label dict. Defaults to ``{"source": "sketchlog"}``.
+            timestamps_ns: Optional nanosecond timestamps (one per line).
+        """
+        stream = LokiStream(
+            labels=labels or {"source": "sketchlog"},
+            lines=lines,
+            timestamps_ns=timestamps_ns,
+        )
+        self._do_push({"streams": [stream.to_payload()]})
+
+    def push_stream(self, stream: LokiStream) -> None:
+        """Push a single :class:`LokiStream` to Loki."""
+        self._do_push({"streams": [stream.to_payload()]})
+
+    def push_streams(self, streams: List[LokiStream]) -> None:
+        """Push multiple :class:`LokiStream` objects in one request."""
+        self._do_push({"streams": [s.to_payload() for s in streams]})
