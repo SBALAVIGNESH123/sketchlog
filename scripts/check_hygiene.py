@@ -132,6 +132,65 @@ def check_makefile_wiring():
             failed = True
     return failed
 
+def check_pages_link_wiring():
+    print("Checking GitHub Pages link wiring...")
+    failed = False
+
+    try:
+        with open("README.md", "r", encoding="utf-8") as file:
+            readme = file.read()
+    except OSError as exc:
+        print(f"ERROR: Could not read README.md: {exc}")
+        return True
+
+    docs_pages = [
+        "architecture",
+        "benchmarks",
+        "guarantees",
+        "sdks",
+        "async_client",
+        "exporters",
+        "kubernetes-operator",
+        "rbac",
+        "runbooks",
+        "threat_model",
+    ]
+    for page in docs_pages:
+        bad_url = f"https://sbalavignesh123.github.io/sketchlog/{page}/"
+        good_url = f"https://sbalavignesh123.github.io/sketchlog/docs/{page}/"
+        if bad_url in readme:
+            print(f"ERROR: README docs link must include /docs/: {bad_url}")
+            failed = True
+        if good_url not in readme:
+            print(f"ERROR: README is missing expected docs link: {good_url}")
+            failed = True
+
+    try:
+        with open(".github/workflows/docs.yml", "r", encoding="utf-8") as file:
+            docs_workflow = file.read()
+    except OSError as exc:
+        print(f"ERROR: Could not read docs workflow: {exc}")
+        return True
+
+    required_workflow_snippets = [
+        "mkdocs build --strict --site-dir site/docs",
+        "cp -r website-standalone/* site/",
+        "cp demo/index.html site/demo/index.html",
+        "cp -r demo/assets site/demo/assets",
+        "Create legacy docs redirects",
+        "for page in architecture benchmarks guarantees sdks async_client exporters kubernetes-operator rbac runbooks threat_model",
+        "test -f site/index.html",
+        "test -f site/docs/index.html",
+        "test -f site/demo/index.html",
+        "test -f site/architecture/index.html",
+    ]
+    for snippet in required_workflow_snippets:
+        if snippet not in docs_workflow:
+            print(f"ERROR: docs workflow is missing Pages artifact check/copy step: {snippet}")
+            failed = True
+
+    return failed
+
 if __name__ == "__main__":
     git_files = get_git_files()
     if not git_files:
@@ -142,8 +201,9 @@ if __name__ == "__main__":
     whitespace_failed = check_encoding_and_whitespace(git_files)
     docs_nav_failed = check_docs_navigation()
     makefile_failed = check_makefile_wiring()
+    pages_link_failed = check_pages_link_wiring()
 
-    if generated_failed or whitespace_failed or docs_nav_failed or makefile_failed:
+    if generated_failed or whitespace_failed or docs_nav_failed or makefile_failed or pages_link_failed:
         print("Hygiene checks failed!")
         sys.exit(1)
     else:
