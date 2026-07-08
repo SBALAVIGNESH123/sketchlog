@@ -1,7 +1,7 @@
 # SketchLog Go client
 
 ```bash
-go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.3
+go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.4
 ```
 
 ```go
