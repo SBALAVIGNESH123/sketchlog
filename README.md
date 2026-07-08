@@ -42,6 +42,9 @@ operational features continue to mature.
 
 ## Live demo
 
+Open the hosted playground:
+[https://sbalavignesh123.github.io/sketchlog/demo/](https://sbalavignesh123.github.io/sketchlog/demo/)
+
 Run the deterministic product demo and its end-to-end verifier:
 
 ```bash

@@ -264,6 +264,7 @@
       <nav class="navlinks" aria-label="Primary navigation">
         <a href="#why">Why SketchLog</a>
         <a href="#platform">Platform</a>
+        <a href="#playground">Playground</a>
         <a href="#workflow">Workflow</a>
         <a href="#integrations">Integrations</a>
         <a href="docs/">Docs</a>
@@ -284,6 +285,7 @@
           <p class="hero-copy">SketchLog turns high-volume telemetry into compact, mergeable sketches for latency percentiles, unique counts, event frequencies, anomalies, SLOs, canary analysis, and distributed monitoring.</p>
           <div class="hero-actions">
             <a class="btn primary" href="#quickstart">Run the demo</a>
+            <a class="btn secondary" href="demo/">Open playground</a>
             <a class="btn secondary" href="docs/">Read the docs</a>
             <a class="btn secondary" href="https://github.com/SBALAVIGNESH123/sketchlog">View on GitHub</a>
           </div>
@@ -364,6 +366,28 @@
           <div class="cap"><b>Grafana plugin</b><span>Query SketchLog directly from Grafana dashboards.</span></div>
           <div class="cap"><b>OTel Collector</b><span>Route pipeline telemetry into SketchLog from infrastructure.</span></div>
           <div class="cap"><b>WASM runtime</b><span>Run sketches in browsers, edge functions, and CDN environments.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="playground">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">Hosted playground</div>
+          <h2>Try SketchLog in the browser before installing anything.</h2>
+          <p>The hosted playground is a zero-dependency static demo. It works offline, uses no external CDN, stores no secrets, and shows the same sketch concepts behind the production package.</p>
+        </div>
+        <div class="cap-grid">
+          <div class="cap"><b>DDSketch quantiles</b><span>Add latency or duration values and watch p50, p95, and p99 update in real time.</span></div>
+          <div class="cap"><b>Accuracy controls</b><span>Adjust relative accuracy and inspect how the bucket distribution changes.</span></div>
+          <div class="cap"><b>Stream simulation</b><span>Write JSON records to stream paths and read them back in the browser.</span></div>
+          <div class="cap"><b>Exporter previews</b><span>Inspect Loki, Datadog, and New Relic payload shapes before using credentials.</span></div>
+          <div class="cap"><b>Python cheatsheet</b><span>Copy snippets for sketch usage, stream writes, agent config, and Loki export.</span></div>
+          <div class="cap"><b>Safe static demo</b><span>No cookies, no tracking, no API keys, no eval, and no build step.</span></div>
+        </div>
+        <div class="hero-actions" style="justify-content:center;margin-top:34px;">
+          <a class="btn primary" href="demo/">Open the playground</a>
+          <a class="btn secondary" href="docs/demo/">Read the demo guide</a>
         </div>
       </div>
     </section>

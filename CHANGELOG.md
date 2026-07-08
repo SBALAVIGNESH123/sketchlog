@@ -8,6 +8,8 @@
   the published MkDocs navigation.
 - Refresh the README into a product-focused overview and remove emoji-style
   section markers from the public landing documentation.
+- Promote the hosted playground on the public website and README, with a
+  polished no-install demo guide.
 - Fix stale Makefile developer commands for the TypeScript client, WASM package,
   C++ build, and Python package build.
 - Upgrade pinned GitHub Actions to Node 24-compatible releases and disable the

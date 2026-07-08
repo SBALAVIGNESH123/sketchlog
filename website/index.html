@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SketchLog — Probabilistic Metrics for Engineers</title>
-  <meta name="description" content="SketchLog is the open-source probabilistic metrics library that gives you sub-millisecond latency histograms, accurate quantiles, and lightweight sketches — without the storage overhead." />
-  <meta property="og:title" content="SketchLog — Probabilistic Metrics for Engineers" />
+  <title>SketchLog - Probabilistic Metrics for Engineers</title>
+  <meta name="description" content="SketchLog is the open-source probabilistic metrics library that gives you sub-millisecond latency histograms, accurate quantiles, and lightweight sketches without the storage overhead." />
+  <meta property="og:title" content="SketchLog - Probabilistic Metrics for Engineers" />
   <meta property="og:description" content="Sub-millisecond histograms. Accurate quantiles. No storage bloat." />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -17,11 +17,12 @@
 <nav class="nav" id="nav">
   <div class="nav__inner">
     <a class="nav__logo" href="#hero">
-      <span class="nav__logo-mark">■</span>
+      <span class="nav__logo-mark">SL</span>
       <span class="nav__logo-text">SketchLog</span>
     </a>
     <ul class="nav__links" id="nav-links">
       <li><a href="#features">Features</a></li>
+      <li><a href="#playground">Playground</a></li>
       <li><a href="#how-it-works">How it works</a></li>
       <li><a href="#integrations">Integrations</a></li>
       <li><a href="#quickstart">Quickstart</a></li>
@@ -38,25 +39,26 @@
 <!-- ── HERO ────────────────────────────────────────────────────────────────── -->
 <section class="hero" id="hero">
   <div class="hero__inner">
-    <div class="hero__badge">Open source · MIT · Python 3.10+</div>
+    <div class="hero__badge">Open source / MIT / Python 3.10+</div>
     <h1 class="hero__headline">
       Probabilistic metrics<br />
       <span class="hero__accent">built for production</span>
     </h1>
     <p class="hero__sub">
       SketchLog gives you sub-millisecond latency histograms, accurate quantiles,
-      and memory-efficient sketches — without the storage overhead of raw event logs.
+      and memory-efficient sketches without the storage overhead of raw event logs.
     </p>
     <div class="hero__actions">
       <a class="btn btn--primary btn--lg" href="#quickstart">Get started free</a>
+      <a class="btn btn--outline btn--lg" href="demo/">Open playground</a>
       <a class="btn btn--outline btn--lg" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank" rel="noopener">View on GitHub</a>
     </div>
     <div class="hero__stats">
       <div class="stat"><span class="stat__num">&lt;1ms</span><span class="stat__label">write latency</span></div>
       <div class="stat__divider"></div>
-      <div class="stat"><span class="stat__num">±0.1%</span><span class="stat__label">quantile error</span></div>
+      <div class="stat"><span class="stat__num">+/-0.1%</span><span class="stat__label">quantile error</span></div>
       <div class="stat__divider"></div>
-      <div class="stat"><span class="stat__num">100×</span><span class="stat__label">storage reduction</span></div>
+      <div class="stat"><span class="stat__num">100x</span><span class="stat__label">storage reduction</span></div>
       <div class="stat__divider"></div>
       <div class="stat"><span class="stat__num">0</span><span class="stat__label">extra dependencies</span></div>
     </div>
@@ -81,10 +83,55 @@ sl.record(<span class="st">"latency/checkout"</span>, <span class="nu">42.7</spa
 sl.record(<span class="st">"latency/checkout"</span>, <span class="nu">38.1</span>)
 sl.record(<span class="st">"latency/checkout"</span>, <span class="nu">91.2</span>)
 
-<span class="cm"># Query accurate quantiles — no sampling error</span>
+<span class="cm"># Query accurate quantiles - no sampling error</span>
 p50 = sl.quantile(<span class="st">"latency/checkout"</span>, <span class="nu">0.50</span>)
 p99 = sl.quantile(<span class="st">"latency/checkout"</span>, <span class="nu">0.99</span>)
 <span class="bi">print</span>(<span class="st">f"p50={p50:.1f}ms  p99={p99:.1f}ms"</span>)</code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="features" id="playground">
+  <div class="section__inner">
+    <div class="section__header">
+      <h2>Hosted demo and interactive playground</h2>
+      <p>Explore SketchLog in any browser with a zero-dependency static playground. No install, no account, no secrets, and no tracking.</p>
+    </div>
+    <div class="features__grid">
+      <div class="feature-card">
+        <div class="feature-card__icon">P99</div>
+        <h3>DDSketch quantiles</h3>
+        <p>Add latency, duration, or request-size values and watch p50, p95, and p99 estimates update in real time.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card__icon">ACC</div>
+        <h3>Accuracy control</h3>
+        <p>Adjust relative accuracy and see how the DDSketch guarantee changes through an interactive bucket distribution.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card__icon">LOG</div>
+        <h3>Stream operations</h3>
+        <p>Write JSON records to stream paths, read them back, and understand the core SketchLog stream abstraction.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card__icon">EXP</div>
+        <h3>Export preview</h3>
+        <p>Preview the exact Loki, Datadog, and New Relic payloads before wiring real production credentials.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card__icon">API</div>
+        <h3>Python cheatsheet</h3>
+        <p>Copy practical snippets for sketch creation, stream writes, agent config, and Loki export workflows.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card__icon">SEC</div>
+        <h3>Safe static demo</h3>
+        <p>Runs offline as plain HTML, CSS, and JavaScript with no external CDN, cookies, API keys, eval, or build step.</p>
+      </div>
+    </div>
+    <div class="hero__actions" style="justify-content:center;margin-top:2rem;">
+      <a class="btn btn--primary btn--lg" href="demo/">Open the playground</a>
+      <a class="btn btn--outline btn--lg" href="docs/demo/">Read the demo guide</a>
     </div>
   </div>
 </section>
@@ -98,32 +145,32 @@ p99 = sl.quantile(<span class="st">"latency/checkout"</span>, <span class="nu">0
     </div>
     <div class="features__grid">
       <div class="feature-card">
-        <div class="feature-card__icon">⚡</div>
+        <div class="feature-card__icon">FAST</div>
         <h3>Sub-millisecond writes</h3>
         <p>DDSketch-powered ingestion keeps write overhead under 1ms even at millions of events per second.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-card__icon">🎯</div>
+        <div class="feature-card__icon">P99</div>
         <h3>Accurate quantiles</h3>
-        <p>Relative-error guarantees of ±0.1% at any percentile — including the long tail at p99.9.</p>
+        <p>Relative-error guarantees of +/-0.1% at any percentile, including the long tail at p99.9.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-card__icon">🗜️</div>
-        <h3>100× storage savings</h3>
+        <div class="feature-card__icon">100x</div>
+        <h3>100x storage savings</h3>
         <p>Sketches compress 10,000 raw events into ~100 buckets with no meaningful precision loss.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-card__icon">🔌</div>
+        <div class="feature-card__icon">INT</div>
         <h3>Rich integrations</h3>
         <p>Export to Loki, Datadog, and New Relic. Ingest from Prometheus. Deploy on Kubernetes.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-card__icon">🐍</div>
+        <div class="feature-card__icon">PY</div>
         <h3>Pure Python</h3>
         <p>Zero compiled extensions, zero mandatory dependencies. Runs anywhere Python 3.10+ runs.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-card__icon">🔒</div>
+        <div class="feature-card__icon">SEC</div>
         <h3>Type-safe &amp; audited</h3>
         <p>mypy strict + pyright clean. CodeQL audited. Bandit + pip-audit clean on every commit.</p>
       </div>
@@ -143,7 +190,7 @@ p99 = sl.quantile(<span class="st">"latency/checkout"</span>, <span class="nu">0
         <div class="how__step-num">01</div>
         <div class="how__step-body">
           <h3>Record</h3>
-          <p>Your application calls <code>sl.record(stream, value)</code>. SketchLog inserts the value into a DDSketch in memory — typically under 1ms.</p>
+          <p>Your application calls <code>sl.record(stream, value)</code>. SketchLog inserts the value into a DDSketch in memory, typically under 1ms.</p>
         </div>
       </div>
       <div class="how__step">
@@ -157,7 +204,7 @@ p99 = sl.quantile(<span class="st">"latency/checkout"</span>, <span class="nu">0
         <div class="how__step-num">03</div>
         <div class="how__step-body">
           <h3>Query</h3>
-          <p>Query any quantile at any time window. The server merges sketches and returns a precise estimate — no sampling, no approximation from raw logs.</p>
+          <p>Query any quantile at any time window. The server merges sketches and returns a precise estimate with no sampling and no approximation from raw logs.</p>
         </div>
       </div>
       <div class="how__step">
@@ -176,36 +223,36 @@ p99 = sl.quantile(<span class="st">"latency/checkout"</span>, <span class="nu">0
   <div class="section__inner">
     <div class="section__header">
       <h2>Works with your stack</h2>
-      <p>Native integrations — no glue code required.</p>
+      <p>Native integrations with no glue code required.</p>
     </div>
     <div class="integrations__grid">
       <div class="integration-card">
-        <div class="integration-card__logo">📊</div>
+        <div class="integration-card__logo">PM</div>
         <h4>Prometheus</h4>
         <p>Scrape any /metrics endpoint and forward mapped values to SketchLog streams via the built-in agent.</p>
       </div>
       <div class="integration-card">
-        <div class="integration-card__logo">🐾</div>
+        <div class="integration-card__logo">DD</div>
         <h4>Datadog</h4>
         <p>Send GAUGE, COUNT, and RATE metrics directly to the Datadog Metrics API v2 with prefix and tag support.</p>
       </div>
       <div class="integration-card">
-        <div class="integration-card__logo">📋</div>
+        <div class="integration-card__logo">LOKI</div>
         <h4>Loki</h4>
         <p>Push structured log streams to Grafana Loki with Bearer or basic auth and nanosecond timestamps.</p>
       </div>
       <div class="integration-card">
-        <div class="integration-card__logo">🔭</div>
+        <div class="integration-card__logo">NR</div>
         <h4>New Relic</h4>
         <p>Ship events and metrics to New Relic Events API and Metric API with US/EU region routing.</p>
       </div>
       <div class="integration-card">
-        <div class="integration-card__logo">☸️</div>
+        <div class="integration-card__logo">K8S</div>
         <h4>Kubernetes</h4>
         <p>Deploy the SketchLog operator and manage clusters declaratively with the SketchLogCluster CRD.</p>
       </div>
       <div class="integration-card">
-        <div class="integration-card__logo">⚡</div>
+        <div class="integration-card__logo">ASYNC</div>
         <h4>asyncio</h4>
         <p>Full async client with connection pooling, retry logic, and streaming support for high-concurrency workloads.</p>
       </div>
@@ -247,15 +294,15 @@ sl = SketchLog(<span class="st">"http://localhost:8080"</span>, namespace=<span 
 <span class="kw">for</span> v <span class="kw">in</span> [<span class="nu">10</span>, <span class="nu">20</span>, <span class="nu">50</span>, <span class="nu">100</span>, <span class="nu">200</span>]:
     sl.record(<span class="st">"latency/api"</span>, v)
 
-<span class="bi">print</span>(sl.quantile(<span class="st">"latency/api"</span>, <span class="nu">0.99</span>))  <span class="cm"># → 200.0</span></code></pre>
+<span class="bi">print</span>(sl.quantile(<span class="st">"latency/api"</span>, <span class="nu">0.99</span>))  <span class="cm"># -> 200.0</span></code></pre>
         </div>
       </div>
       <div class="qs__step">
         <div class="qs__step-label">3. Explore the docs</div>
         <div class="qs__doc-links">
-          <a class="doc-link" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank" rel="noopener">📖 Full documentation</a>
-          <a class="doc-link" href="https://github.com/SBALAVIGNESH123/sketchlog/tree/main/python/sketchlog" target="_blank" rel="noopener">🐍 Python API reference</a>
-          <a class="doc-link" href="https://github.com/SBALAVIGNESH123/sketchlog/tree/main/docs" target="_blank" rel="noopener">☸️ Kubernetes operator guide</a>
+          <a class="doc-link" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank" rel="noopener">Full documentation</a>
+          <a class="doc-link" href="https://github.com/SBALAVIGNESH123/sketchlog/tree/main/python/sketchlog" target="_blank" rel="noopener">Python API reference</a>
+          <a class="doc-link" href="https://github.com/SBALAVIGNESH123/sketchlog/tree/main/docs" target="_blank" rel="noopener">Kubernetes operator guide</a>
         </div>
       </div>
     </div>
@@ -271,7 +318,7 @@ sl = SketchLog(<span class="st">"http://localhost:8080"</span>, namespace=<span 
     <div class="faq__list">
       <details class="faq__item">
         <summary>What is a DDSketch?</summary>
-        <p>DDSketch (DataDog Sketch) is a mergeable, fully-distributed quantile sketch algorithm. It guarantees relative error — meaning the estimate for p99 is within ±0.1% of the true value, regardless of the data distribution or value range.</p>
+        <p>DDSketch (DataDog Sketch) is a mergeable, fully-distributed quantile sketch algorithm. It guarantees relative error, meaning the estimate for p99 is within +/-0.1% of the true value, regardless of the data distribution or value range.</p>
       </details>
       <details class="faq__item">
         <summary>How accurate are the quantile estimates?</summary>
@@ -279,7 +326,7 @@ sl = SketchLog(<span class="st">"http://localhost:8080"</span>, namespace=<span 
       </details>
       <details class="faq__item">
         <summary>Does SketchLog require any infrastructure?</summary>
-        <p>No — you can run the SketchLog server with a single <code>pip install sketchlog &amp;&amp; sketchlog-server</code> command. For production, a Docker image and Kubernetes Helm chart are also provided.</p>
+        <p>No. You can run the SketchLog server with a single <code>pip install sketchlog &amp;&amp; sketchlog-server</code> command. For production, a Docker image and Kubernetes Helm chart are also provided.</p>
       </details>
       <details class="faq__item">
         <summary>Can I use SketchLog in an async application?</summary>
@@ -291,7 +338,7 @@ sl = SketchLog(<span class="st">"http://localhost:8080"</span>, namespace=<span 
       </details>
       <details class="faq__item">
         <summary>Is SketchLog production-ready?</summary>
-        <p>SketchLog is tested on Python 3.10–3.14 across Linux, macOS, and Windows. Every commit runs mypy strict, pyright, CodeQL, Bandit, pip-audit, stress tests, and conformance suites.</p>
+        <p>SketchLog is tested on Python 3.10-3.14 across Linux, macOS, and Windows. Every commit runs mypy strict, pyright, CodeQL, Bandit, pip-audit, stress tests, and conformance suites.</p>
       </details>
     </div>
   </div>
@@ -301,10 +348,10 @@ sl = SketchLog(<span class="st">"http://localhost:8080"</span>, namespace=<span 
 <section class="cta">
   <div class="section__inner">
     <h2>Start measuring smarter today</h2>
-    <p>Open source · MIT licence · No vendor lock-in</p>
+    <p>Open source / MIT licence / No vendor lock-in</p>
     <div class="cta__actions">
       <a class="btn btn--primary btn--lg" href="#quickstart">Get started free</a>
-      <a class="btn btn--outline-white btn--lg" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank" rel="noopener">Star on GitHub ★</a>
+      <a class="btn btn--outline-white btn--lg" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank" rel="noopener">Star on GitHub</a>
     </div>
   </div>
 </section>
@@ -313,7 +360,7 @@ sl = SketchLog(<span class="st">"http://localhost:8080"</span>, namespace=<span 
 <footer class="footer">
   <div class="footer__inner">
     <div class="footer__brand">
-      <span class="nav__logo-mark">■</span>
+      <span class="nav__logo-mark">SL</span>
       <span>SketchLog</span>
     </div>
     <nav class="footer__links">
@@ -321,7 +368,7 @@ sl = SketchLog(<span class="st">"http://localhost:8080"</span>, namespace=<span 
       <a href="https://github.com/SBALAVIGNESH123/sketchlog/issues" target="_blank" rel="noopener">Issues</a>
       <a href="https://github.com/SBALAVIGNESH123/sketchlog/tree/main/docs" target="_blank" rel="noopener">Docs</a>
     </nav>
-    <p class="footer__copy">© 2026 SketchLog contributors. MIT licence.</p>
+    <p class="footer__copy">(c) 2026 SketchLog contributors. MIT licence.</p>
   </div>
 </footer>
 
