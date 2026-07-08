@@ -11,10 +11,10 @@ import (
 // O(width * depth) counters with guaranteed over-counting error ≤ ε * N
 // with probability ≥ 1 - δ, where width = ⌈e/ε⌉ and depth = ⌈ln(1/δ)⌉.
 type CountMinSketch struct {
-	width   uint32
-	depth   uint32
-	table   [][]uint64
-	count   uint64
+	width  uint32
+	depth  uint32
+	table  [][]uint64
+	count  uint64
 }
 
 // NewCountMinSketch creates a CountMinSketch with error rate epsilon and
@@ -28,8 +28,16 @@ func NewCountMinSketch(epsilon, delta float64) (*CountMinSketch, error) {
 	if delta <= 0 || delta >= 1 {
 		return nil, errors.New("countminsketch: delta must be in (0, 1)")
 	}
-	width := uint32(math.Ceil(math.E / epsilon))
-	depth := uint32(math.Ceil(math.Log(1.0 / delta)))
+	wf := math.Ceil(math.E / epsilon)
+	if wf > float64(math.MaxUint32) {
+		return nil, errors.New("countminsketch: epsilon too small — resulting width overflows uint32")
+	}
+	df := math.Ceil(math.Log(1.0 / delta))
+	if df > float64(math.MaxUint32) {
+		return nil, errors.New("countminsketch: delta too small — resulting depth overflows uint32")
+	}
+	width := uint32(wf)
+	depth := uint32(df)
 	table := make([][]uint64, depth)
 	for i := range table {
 		table[i] = make([]uint64, width)
