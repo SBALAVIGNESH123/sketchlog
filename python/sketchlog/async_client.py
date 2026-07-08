@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import random
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, AsyncGenerator, Dict, List, Optional, Type, cast
 
 import httpx
 
@@ -13,6 +12,7 @@ import httpx
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
+
 
 class SketchLogError(Exception):
     """Base error for all SketchLog client errors."""
@@ -24,6 +24,7 @@ class SketchLogAuthError(SketchLogError):
 
 class SketchLogRateLimitError(SketchLogError):
     """Raised on HTTP 429."""
+
     def __init__(self, message: str, retry_after: Optional[int] = None) -> None:
         super().__init__(message)
         self.retry_after = retry_after
@@ -31,13 +32,15 @@ class SketchLogRateLimitError(SketchLogError):
 
 class SketchLogServerError(SketchLogError):
     """Raised on HTTP 5xx."""
+
     def __init__(self, message: str, status_code: int = 500) -> None:
         super().__init__(message)
         self.status_code = status_code
 
 
 class SketchLogClientError(SketchLogError):
-    """Raised on HTTP 4xx (non-auth, non-rate-limit)."""
+    """Raised on HTTP 4xx (except 401/403/429)."""
+
     def __init__(self, message: str, status_code: int = 400) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -48,68 +51,59 @@ class SketchLogTimeoutError(SketchLogError):
 
 
 # ---------------------------------------------------------------------------
-# Config
+# Configuration
 # ---------------------------------------------------------------------------
 
-@dataclass(frozen=True)
+
+@dataclass
 class AsyncClientConfig:
     """Configuration for AsyncSketchLogClient."""
+
     base_url: str
     token: str
     timeout: float = 30.0
     max_retries: int = 3
-    backoff_base: float = 0.5
-    backoff_cap: float = 30.0
-    max_connections: int = 100
+    max_connections: int = 10
 
     def __post_init__(self) -> None:
+        self.base_url = self.base_url.rstrip("/")
         if not self.base_url:
-            raise ValueError("base_url must not be empty")
+            raise ValueError("base_url is required")
         if not self.token:
-            raise ValueError("token must not be empty")
+            raise ValueError("token is required")
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")
         if self.max_retries < 0:
             raise ValueError("max_retries must be >= 0")
-        if self.backoff_base <= 0:
-            raise ValueError("backoff_base must be positive")
-        if self.backoff_cap <= 0:
-            raise ValueError("backoff_cap must be positive")
-        # Strip trailing slash
-        object.__setattr__(self, "base_url", self.base_url.rstrip("/"))
 
 
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
 
+
 class AsyncSketchLogClient:
-    """Production-grade async client for SketchLog using httpx."""
+    """Production-grade async Python client for SketchLog."""
 
     def __init__(self, config: AsyncClientConfig) -> None:
         self._config = config
         self._client: Optional[httpx.AsyncClient] = None
 
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Lifecycle
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
     async def open(self) -> None:
-        """Open the underlying HTTP client."""
-        if self._client is None:
-            limits = httpx.Limits(
-                max_connections=self._config.max_connections,
-                max_keepalive_connections=self._config.max_connections,
-            )
-            self._client = httpx.AsyncClient(
-                base_url=self._config.base_url,
-                headers={"Authorization": f"Bearer {self._config.token}"},
-                timeout=self._config.timeout,
-                limits=limits,
-            )
+        """Open the HTTP connection pool."""
+        self._client = httpx.AsyncClient(
+            base_url=self._config.base_url,
+            headers={"Authorization": f"Bearer {self._config.token}"},
+            timeout=self._config.timeout,
+            limits=httpx.Limits(max_connections=self._config.max_connections),
+        )
 
     async def close(self) -> None:
-        """Close the underlying HTTP client (idempotent)."""
+        """Close the HTTP connection pool (idempotent)."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
@@ -118,304 +112,246 @@ class AsyncSketchLogClient:
         await self.open()
         return self
 
-    async def __aexit__(self, *_: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[object],
+    ) -> None:
         await self.close()
 
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Internal helpers
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
     def _url(self, path: str) -> str:
-        """Build a full URL, collapsing double slashes."""
-        base = self._config.base_url.rstrip("/")
-        path = path.lstrip("/")
-        return f"{base}/{path}"
+        """Strip leading slash so path is relative to base_url."""
+        return path.lstrip("/")
 
     def _backoff(self, attempt: int) -> float:
-        """Exponential backoff with full jitter."""
-        cap = self._config.backoff_cap
-        base = self._config.backoff_base
-        ceiling = min(cap, base * (2 ** attempt))
-        return random.uniform(0, ceiling)
+        """Exponential backoff with jitter, capped at 30 s."""
+        return float(min(0.1 * (2 ** attempt) + random.uniform(0.0, 0.1), 30.0))
 
     async def _request(
         self,
         method: str,
         path: str,
         *,
-        json: Any = None,
+        json: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         timeout: Optional[float] = None,
-    ) -> Any:
+    ) -> Dict[str, Any]:
+        """Send an HTTP request with retry / backoff on transient errors."""
         if self._client is None:
-            raise SketchLogError("Client is not open. Use 'async with' or call open() first.")
+            raise RuntimeError(
+                "Client is not open. Use `async with` or call `open()` first."
+            )
 
-        retries = self._config.max_retries
-        last_exc: Exception = SketchLogError("No attempts made")
+        retries: int = self._config.max_retries
+        eff_timeout: float = timeout if timeout is not None else self._config.timeout
+        last_exc: Optional[BaseException] = None
 
         for attempt in range(retries + 1):
             try:
                 resp = await self._client.request(
                     method,
-                    path,
+                    self._url(path),
                     json=json,
                     params=params,
-                    timeout=timeout or self._config.timeout,
+                    timeout=eff_timeout,
                 )
 
-                # Auth errors — no retry
                 if resp.status_code in (401, 403):
                     raise SketchLogAuthError(
-                        f"Authentication failed: HTTP {resp.status_code}"
+                        f"Authentication failed (HTTP {resp.status_code})"
                     )
-
-                # Rate limit — no retry
                 if resp.status_code == 429:
-                    retry_after = int(resp.headers.get("Retry-After", 0)) or None
+                    hdr: Optional[str] = resp.headers.get("Retry-After")
+                    retry_after: Optional[int] = int(hdr) if hdr is not None else None
                     raise SketchLogRateLimitError(
-                        f"Rate limited: HTTP 429",
-                        retry_after=retry_after,
+                        "Rate limit exceeded", retry_after=retry_after
                     )
-
-                # Server errors — retry
                 if resp.status_code >= 500:
-                    last_exc = SketchLogServerError(
-                        f"Server error: HTTP {resp.status_code}",
+                    raise SketchLogServerError(
+                        f"Server error (HTTP {resp.status_code})",
                         status_code=resp.status_code,
                     )
-                    if attempt < retries:
-                        await asyncio.sleep(self._backoff(attempt))
-                        continue
-                    raise last_exc
-
-                # Other 4xx — no retry
                 if resp.status_code >= 400:
                     raise SketchLogClientError(
-                        f"Client error: HTTP {resp.status_code}",
+                        f"Client error (HTTP {resp.status_code})",
                         status_code=resp.status_code,
                     )
 
-                return resp.json()
+                body: Any = resp.json()
+                if isinstance(body, dict):
+                    return cast(Dict[str, Any], body)
+                return {"data": body}
 
             except (SketchLogAuthError, SketchLogRateLimitError, SketchLogClientError):
                 raise
+            except SketchLogServerError as exc:
+                last_exc = exc
+                if attempt < retries:
+                    await asyncio.sleep(self._backoff(attempt))
             except httpx.TimeoutException as exc:
                 last_exc = SketchLogTimeoutError(str(exc))
                 if attempt < retries:
                     await asyncio.sleep(self._backoff(attempt))
-            except SketchLogError:
-                raise
-            except Exception as exc:
+            except httpx.RequestError as exc:
                 last_exc = exc
                 if attempt < retries:
                     await asyncio.sleep(self._backoff(attempt))
 
-        raise last_exc
+        if last_exc is not None:
+            raise last_exc
+        raise SketchLogError("Request failed after exhausting all retries")
 
-    # -----------------------------------------------------------------------
-    # Health / Info
-    # -----------------------------------------------------------------------
-
-    async def health(self, *, timeout: Optional[float] = None) -> Dict[str, Any]:
-        """GET /health"""
-        result = await self._request("GET", "/health", timeout=timeout)
-        return dict(result) if isinstance(result, dict) else {"data": result}
-
-    async def info(self, *, timeout: Optional[float] = None) -> Dict[str, Any]:
-        """GET /info"""
-        result = await self._request("GET", "/info", timeout=timeout)
-        return dict(result) if isinstance(result, dict) else {"data": result}
-
-    # -----------------------------------------------------------------------
-    # Ingest
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # API — Ingestion
+    # ------------------------------------------------------------------
 
     async def ingest(
         self,
-        namespace: str,
         stream: str,
         events: List[Dict[str, Any]],
         *,
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """POST /namespaces/{namespace}/streams/{stream}/ingest"""
+        """Ingest events into stream."""
         if not events:
             raise ValueError("events must not be empty")
-        result = await self._request(
+        return await self._request(
             "POST",
-            f"/namespaces/{namespace}/streams/{stream}/ingest",
+            f"/streams/{stream}/ingest",
             json={"events": events},
             timeout=timeout,
         )
-        return dict(result) if isinstance(result, dict) else {"data": result}
 
-    # -----------------------------------------------------------------------
-    # Query
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # API — Query
+    # ------------------------------------------------------------------
 
     async def query(
         self,
-        namespace: str,
         stream: str,
         *,
         limit: Optional[int] = None,
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """GET /namespaces/{namespace}/streams/{stream}/query"""
-        params: Dict[str, Any] = {}
-        if limit is not None:
-            params["limit"] = limit
-        result = await self._request(
-            "GET",
-            f"/namespaces/{namespace}/streams/{stream}/query",
-            params=params or None,
-            timeout=timeout,
+        """Query events from stream."""
+        qparams: Optional[Dict[str, Any]] = (
+            {"limit": limit} if limit is not None else None
         )
-        return dict(result) if isinstance(result, dict) else {"data": result}
+        return await self._request(
+            "GET", f"/streams/{stream}/query", params=qparams, timeout=timeout
+        )
 
     async def query_cdf(
         self,
-        namespace: str,
         stream: str,
         *,
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """GET /namespaces/{namespace}/streams/{stream}/query/cdf"""
-        result = await self._request(
-            "GET",
-            f"/namespaces/{namespace}/streams/{stream}/query/cdf",
-            timeout=timeout,
+        """Query the CDF of stream."""
+        return await self._request(
+            "GET", f"/streams/{stream}/cdf", timeout=timeout
         )
-        return dict(result) if isinstance(result, dict) else {"data": result}
 
-    # -----------------------------------------------------------------------
-    # Namespaces
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # API — Namespaces
+    # ------------------------------------------------------------------
 
-    async def list_namespaces(self, *, timeout: Optional[float] = None) -> Dict[str, Any]:
-        """GET /namespaces"""
-        result = await self._request("GET", "/namespaces", timeout=timeout)
-        return dict(result) if isinstance(result, dict) else {"data": result}
+    async def list_namespaces(
+        self, *, timeout: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """List all namespaces."""
+        return await self._request("GET", "/namespaces", timeout=timeout)
 
     async def create_namespace(
-        self,
-        namespace: str,
-        *,
-        timeout: Optional[float] = None,
+        self, name: str, *, timeout: Optional[float] = None
     ) -> Dict[str, Any]:
-        """POST /namespaces"""
-        result = await self._request(
-            "POST",
-            "/namespaces",
-            json={"name": namespace},
-            timeout=timeout,
+        """Create a namespace."""
+        return await self._request(
+            "POST", "/namespaces", json={"name": name}, timeout=timeout
         )
-        return dict(result) if isinstance(result, dict) else {"data": result}
 
     async def delete_namespace(
-        self,
-        namespace: str,
-        *,
-        timeout: Optional[float] = None,
+        self, name: str, *, timeout: Optional[float] = None
     ) -> Dict[str, Any]:
-        """DELETE /namespaces/{namespace}"""
-        result = await self._request(
-            "DELETE",
-            f"/namespaces/{namespace}",
-            timeout=timeout,
+        """Delete a namespace."""
+        return await self._request(
+            "DELETE", f"/namespaces/{name}", timeout=timeout
         )
-        return dict(result) if isinstance(result, dict) else {"data": result}
 
-    # -----------------------------------------------------------------------
-    # Streams
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # API — Streams
+    # ------------------------------------------------------------------
 
     async def list_streams(
-        self,
-        namespace: str,
-        *,
-        timeout: Optional[float] = None,
+        self, *, timeout: Optional[float] = None
     ) -> Dict[str, Any]:
-        """GET /namespaces/{namespace}/streams"""
-        result = await self._request(
-            "GET",
-            f"/namespaces/{namespace}/streams",
-            timeout=timeout,
-        )
-        return dict(result) if isinstance(result, dict) else {"data": result}
+        """List all streams."""
+        return await self._request("GET", "/streams", timeout=timeout)
 
     async def create_stream(
-        self,
-        namespace: str,
-        stream: str,
-        *,
-        timeout: Optional[float] = None,
+        self, name: str, *, timeout: Optional[float] = None
     ) -> Dict[str, Any]:
-        """POST /namespaces/{namespace}/streams"""
-        result = await self._request(
-            "POST",
-            f"/namespaces/{namespace}/streams",
-            json={"name": stream},
-            timeout=timeout,
+        """Create a stream."""
+        return await self._request(
+            "POST", "/streams", json={"name": name}, timeout=timeout
         )
-        return dict(result) if isinstance(result, dict) else {"data": result}
 
     async def delete_stream(
-        self,
-        namespace: str,
-        stream: str,
-        *,
-        timeout: Optional[float] = None,
+        self, name: str, *, timeout: Optional[float] = None
     ) -> Dict[str, Any]:
-        """DELETE /namespaces/{namespace}/streams/{stream}"""
-        result = await self._request(
-            "DELETE",
-            f"/namespaces/{namespace}/streams/{stream}",
-            timeout=timeout,
+        """Delete a stream."""
+        return await self._request(
+            "DELETE", f"/streams/{name}", timeout=timeout
         )
-        return dict(result) if isinstance(result, dict) else {"data": result}
 
-    # -----------------------------------------------------------------------
-    # Streaming subscription
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # API — Health / Info
+    # ------------------------------------------------------------------
 
-    @asynccontextmanager
+    async def health(self, *, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """Check server health."""
+        return await self._request("GET", "/health", timeout=timeout)
+
+    async def info(self, *, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """Get server info."""
+        return await self._request("GET", "/info", timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # API — Streaming subscription
+    # ------------------------------------------------------------------
+
     async def subscribe_stream(
         self,
-        namespace: str,
         stream: str,
         *,
         poll_interval: float = 1.0,
         max_events: Optional[int] = None,
-        max_consecutive_errors: int = 10,
+        max_consecutive_errors: int = 3,
         timeout: Optional[float] = None,
-    ) -> AsyncIterator[Dict[str, Any]]:
-        """Async context manager that yields events from a stream."""
-        count = 0
-        consecutive_errors = 0
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Async generator: poll stream and yield events until cancelled."""
+        count: int = 0
+        consecutive_errors: int = 0
 
-        async def _generator() -> AsyncIterator[Dict[str, Any]]:
-            nonlocal count, consecutive_errors
-            while True:
-                if max_events is not None and count >= max_events:
-                    return
-                try:
-                    result = await self.query(
-                        namespace, stream, timeout=timeout
-                    )
-                    consecutive_errors = 0
-                    events = result.get("events", [])
-                    for event in events:
-                        yield event
-                        count += 1
-                        if max_events is not None and count >= max_events:
-                            return
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    consecutive_errors += 1
-                    if consecutive_errors >= max_consecutive_errors:
+        while True:
+            try:
+                result = await self.query(stream, timeout=timeout)
+                consecutive_errors = 0
+                raw_events: Any = result.get("events", [])
+                for raw_event in raw_events:
+                    yield cast(Dict[str, Any], raw_event)
+                    count += 1
+                    if max_events is not None and count >= max_events:
                         return
-                await asyncio.sleep(poll_interval)
-
-        yield _generator()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                consecutive_errors += 1
+                if consecutive_errors >= max_consecutive_errors:
+                    raise
+            await asyncio.sleep(poll_interval)
