@@ -42,10 +42,22 @@ func NewHyperLogLog(p uint8) (*HyperLogLog, error) {
 	}, nil
 }
 
+// mix64 applies a Murmur3 finalizer to improve bit uniformity.
+// FNV-64a has poor high-bit distribution; mixing ensures all 64 bits are
+// well-avalanched before we split them into register index and rho value.
+func mix64(x uint64) uint64 {
+	x ^= x >> 33
+	x *= 0xff51afd7ed558ccd
+	x ^= x >> 33
+	x *= 0xc4ceb9fe1a85ec53
+	x ^= x >> 33
+	return x
+}
+
 func (h *HyperLogLog) hash(data []byte) uint64 {
 	f := fnv.New64a()
 	_, _ = f.Write(data)
-	return f.Sum64()
+	return mix64(f.Sum64())
 }
 
 // Add adds a data item to the sketch.
