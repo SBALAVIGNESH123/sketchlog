@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SketchLog — Interactive Playground</title>
+<meta name="description" content="Try SketchLog in your browser. Sketch metrics, explore DDSketch quantile estimation, and test stream operations without installing anything.">
+<link rel="stylesheet" href="assets/demo.css">
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-brand" href="../">SketchLog</a>
+  <div class="nav-links">
+    <a href="#sketch-demo">Sketch Demo</a>
+    <a href="#stream-demo">Stream Demo</a>
+    <a href="#export-demo">Export Demo</a>
+    <a href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-inner">
+    <span class="badge">Interactive Playground</span>
+    <h1>Try SketchLog <em>in your browser</em></h1>
+    <p>Explore DDSketch quantile estimation, stream operations, and export integrations — no install required.</p>
+  </div>
+</header>
+
+<!-- ── SKETCH DEMO ── -->
+<section id="sketch-demo" class="section">
+  <div class="container">
+    <h2>DDSketch Quantile Estimation</h2>
+    <p class="section-desc">Add values to a sketch and see p50 / p95 / p99 estimates update in real time.</p>
+    <div class="playground-grid">
+      <div class="panel">
+        <label>Add values (comma-separated or one per line)</label>
+        <textarea id="sketch-input" rows="5" placeholder="10, 20, 50, 100, 200, 500, 1000&#10;Or paste latency values...">10, 25, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 5000</textarea>
+        <div class="btn-row">
+          <button id="sketch-add-btn" class="btn btn-primary">Add to Sketch</button>
+          <button id="sketch-reset-btn" class="btn btn-ghost">Reset</button>
+        </div>
+        <div class="param-row">
+          <label>Relative accuracy (α)</label>
+          <input id="sketch-alpha" type="range" min="0.001" max="0.1" step="0.001" value="0.01">
+          <span id="sketch-alpha-val">0.01</span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span class="stat-label">Count</span>
+            <span class="stat-value" id="s-count">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Min</span>
+            <span class="stat-value" id="s-min">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Max</span>
+            <span class="stat-value" id="s-max">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">p50</span>
+            <span class="stat-value" id="s-p50">—</span>
+          </div>
+          <div class="stat-card highlight">
+            <span class="stat-label">p95</span>
+            <span class="stat-value" id="s-p95">—</span>
+          </div>
+          <div class="stat-card highlight">
+            <span class="stat-label">p99</span>
+            <span class="stat-value" id="s-p99">—</span>
+          </div>
+        </div>
+        <div id="sketch-chart" class="mini-chart" aria-label="Bucket distribution chart"></div>
+        <div id="sketch-accuracy" class="accuracy-note"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── STREAM DEMO ── -->
+<section id="stream-demo" class="section section-alt">
+  <div class="container">
+    <h2>Stream Operations</h2>
+    <p class="section-desc">Simulate writing to and reading from SketchLog streams. See how records flow through the system.</p>
+    <div class="playground-grid">
+      <div class="panel">
+        <label>Stream path</label>
+        <input id="stream-path" type="text" value="myapp/latency/api" placeholder="namespace/metric/label">
+        <label>Write records (JSON, one per line)</label>
+        <textarea id="stream-input" rows="6" placeholder='{"value": 42, "ts": 1700000000}'>{"value": 12.5, "ts": 1700000000}
+{"value": 37.2, "ts": 1700000001}
+{"value": 8.1,  "ts": 1700000002}
+{"value": 95.0, "ts": 1700000003}
+{"value": 21.4, "ts": 1700000004}</textarea>
+        <div class="btn-row">
+          <button id="stream-write-btn" class="btn btn-primary">Write Records</button>
+          <button id="stream-read-btn"  class="btn btn-secondary">Read Back</button>
+          <button id="stream-reset-btn" class="btn btn-ghost">Reset</button>
+        </div>
+      </div>
+      <div class="panel">
+        <label>Stream log</label>
+        <div id="stream-log" class="log-box" role="log" aria-live="polite"></div>
+        <div class="stream-stats">
+          <span>Records written: <strong id="s-written">0</strong></span>
+          <span>Records read: <strong id="s-read">0</strong></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── EXPORT DEMO ── -->
+<section id="export-demo" class="section">
+  <div class="container">
+    <h2>Export Integrations</h2>
+    <p class="section-desc">Preview the JSON payload that SketchLog would send to Loki, Datadog, or New Relic.</p>
+    <div class="export-tabs">
+      <button class="tab-btn active" data-target="loki-panel">Loki</button>
+      <button class="tab-btn" data-target="dd-panel">Datadog</button>
+      <button class="tab-btn" data-target="nr-panel">New Relic</button>
+    </div>
+    <div class="tab-panels">
+      <div id="loki-panel" class="tab-panel active">
+        <div class="config-row">
+          <input id="loki-url" type="text" value="http://loki:3100" placeholder="Loki URL">
+          <input id="loki-job" type="text" value="sketchlog" placeholder="job label">
+          <button class="btn btn-primary" onclick="previewExport('loki')">Preview Payload</button>
+        </div>
+        <pre id="loki-output" class="code-preview">// Click "Preview Payload" to generate</pre>
+      </div>
+      <div id="dd-panel" class="tab-panel">
+        <div class="config-row">
+          <input id="dd-site" type="text" value="datadoghq.com" placeholder="DD site">
+          <input id="dd-prefix" type="text" value="sketchlog." placeholder="metric prefix">
+          <button class="btn btn-primary" onclick="previewExport('datadog')">Preview Payload</button>
+        </div>
+        <pre id="dd-output" class="code-preview">// Click "Preview Payload" to generate</pre>
+      </div>
+      <div id="nr-panel" class="tab-panel">
+        <div class="config-row">
+          <select id="nr-region"><option value="US">US</option><option value="EU">EU</option></select>
+          <input id="nr-type" type="text" value="SketchLogMetric" placeholder="event type">
+          <button class="btn btn-primary" onclick="previewExport('newrelic')">Preview Payload</button>
+        </div>
+        <pre id="nr-output" class="code-preview">// Click "Preview Payload" to generate</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CODE SNIPPET ── -->
+<section class="section section-alt">
+  <div class="container">
+    <h2>Python API Cheatsheet</h2>
+    <div class="snippet-tabs">
+      <button class="snippet-btn active" data-snippet="basic">Basic sketch</button>
+      <button class="snippet-btn" data-snippet="stream">Stream write</button>
+      <button class="snippet-btn" data-snippet="agent">Agent config</button>
+      <button class="snippet-btn" data-snippet="loki">Loki export</button>
+    </div>
+    <div id="snippet-display" class="code-block">
+<code id="snippet-code"></code>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta-section">
+  <div class="container">
+    <h2>Ready to use SketchLog in production?</h2>
+    <p>Install in seconds. Zero new dependencies for core features.</p>
+    <div class="cta-btns">
+      <a href="https://github.com/SBALAVIGNESH123/sketchlog" class="btn btn-primary btn-lg" target="_blank" rel="noopener">View on GitHub</a>
+      <a href="../" class="btn btn-ghost btn-lg">Back to Docs</a>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container">
+    <p>© 2026 SketchLog — <a href="https://github.com/SBALAVIGNESH123/sketchlog/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></p>
+  </div>
+</footer>
+
+<script src="assets/demo.js"></script>
+</body>
+</html>
