@@ -1,0 +1,58 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sketchlog-operator
+  namespace: sketchlog-system
+  labels:
+    app.kubernetes.io/name: sketchlog-operator
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: sketchlog-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sketchlog-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sketchlog-operator
+        app.kubernetes.io/component: operator
+    spec:
+      serviceAccountName: sketchlog-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: operator
+          image: sketchlog/operator:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sketchlog-operator"]
+          args: ["--log-level", "INFO"]
+          env:
+            - name: OPERATOR_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: RECONCILE_INTERVAL
+              value: "30"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          livenessProbe:
+            exec:
+              command: ["sketchlog-operator", "--once", "--dry-run"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 30
