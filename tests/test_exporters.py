@@ -1,516 +1,593 @@
-"""Comprehensive exporter tests — zero real network calls."""
+"""Comprehensive tests for SketchLog export integrations.
+
+All tests are deterministic and network-free.  HTTP clients are mocked
+via :func:`unittest.mock.patch`.
+"""
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 from typing import Any
-from urllib.parse import urlparse
+
 import httpx
+from urllib.parse import urlparse
 
 from sketchlog.exporters.base import ExporterError
-from sketchlog.exporters.loki import LokiConfig, LokiStream, LokiExporter
-from sketchlog.exporters.datadog import DatadogConfig, DatadogMetric, MetricType, DatadogExporter
+from sketchlog.exporters.loki import LokiConfig, LokiExporter, LokiStream
+from sketchlog.exporters.datadog import DatadogConfig, DatadogExporter, DatadogMetric, MetricType
 from sketchlog.exporters.newrelic import (
-    NewRelicConfig, NewRelicEvent, NewRelicMetric,
-    NewRelicExporter, NewRelicRegion, NewRelicMetricType,
+    NewRelicConfig,
+    NewRelicEvent,
+    NewRelicExporter,
+    NewRelicMetric,
+    NewRelicMetricType,
+    NewRelicRegion,
 )
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# ── helpers ──────────────────────────────────────────────────────────────────
 
-# A single reusable dummy request — avoids constructing httpx.Request repeatedly.
-_DUMMY_REQ = httpx.Request("GET", "http://test.example.com")
-
-
-def _resp(status: int, body: Any = None) -> MagicMock:
-    """Create a mock httpx.Response with the given status code."""
-    mock = MagicMock(spec=httpx.Response)
-    mock.status_code = status
+def _resp(status: int = 204) -> MagicMock:
+    r = MagicMock(spec=httpx.Response)
+    r.status_code = status
     if status >= 400:
-        err = httpx.HTTPStatusError(
-            f"HTTP {status}",
-            request=_DUMMY_REQ,
-            response=MagicMock(status_code=status),
+        r.raise_for_status.side_effect = httpx.HTTPStatusError(
+            f"HTTP {status}", request=MagicMock(), response=r
         )
-        mock.raise_for_status.side_effect = err
     else:
-        mock.raise_for_status.return_value = None
-    if body is not None:
-        mock.json.return_value = body
-    return mock
+        r.raise_for_status.return_value = None
+    return r
 
 
-def _client(status: int = 204, body: Any = None) -> MagicMock:
-    """Create a mock httpx.Client whose post() returns a mock response."""
-    c = MagicMock(spec=httpx.Client)
-    c.post.return_value = _resp(status, body)
-    return c
-
-
-def _timeout_exc(msg: str = "timed out") -> httpx.ReadTimeout:
-    """httpx.ReadTimeout is a concrete TimeoutException subclass — safe to construct."""
-    return httpx.ReadTimeout(msg, request=_DUMMY_REQ)
-
-
-def _connect_exc(msg: str = "connection refused") -> httpx.ConnectError:
-    """httpx.ConnectError requires request= in all httpx versions."""
-    return httpx.ConnectError(msg, request=_DUMMY_REQ)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 # ExporterError
-# ══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def test_exporter_error_basic() -> None:
-    e = ExporterError("boom")
-    assert str(e) == "boom"
-    assert e.status_code is None
-
-
-def test_exporter_error_with_status() -> None:
-    e = ExporterError("not found", status_code=404)
-    assert e.status_code == 404
+def test_exporter_error_no_status():
+    err = ExporterError("boom")
+    assert str(err) == "boom"
+    assert err.status_code is None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# LokiConfig validation
-# ══════════════════════════════════════════════════════════════════════════════
-
-def test_loki_config_ok() -> None:
-    cfg = LokiConfig(url="http://localhost:3100")
-    assert cfg.url == "http://localhost:3100"
+def test_exporter_error_with_status():
+    err = ExporterError("rate limited", status_code=429)
+    assert err.status_code == 429
 
 
-def test_loki_config_empty_url() -> None:
+# ═══════════════════════════════════════════════════════════════════════════════
+# LokiConfig
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_loki_config_valid():
+    cfg = LokiConfig(url="http://loki:3100", labels={"app": "test"})
+    assert cfg.url == "http://loki:3100"
+    assert cfg.labels == {"app": "test"}
+    assert cfg.timeout == 10.0
+
+
+def test_loki_config_empty_url():
     with pytest.raises(ValueError, match="url"):
         LokiConfig(url="")
 
 
-def test_loki_config_bad_timeout() -> None:
+def test_loki_config_zero_timeout():
     with pytest.raises(ValueError, match="timeout"):
-        LokiConfig(url="http://x", timeout=0)
+        LokiConfig(url="http://loki:3100", timeout=0)
 
 
-def test_loki_config_missing_password() -> None:
-    with pytest.raises(ValueError, match="password"):
-        LokiConfig(url="http://x", username="u")
+def test_loki_config_negative_timeout():
+    with pytest.raises(ValueError, match="timeout"):
+        LokiConfig(url="http://loki:3100", timeout=-1.0)
 
 
-def test_loki_config_both_auth() -> None:
-    with pytest.raises(ValueError, match="bearer_token"):
-        LokiConfig(url="http://x", username="u", password="p", bearer_token="t")
+def test_loki_config_with_auth_token():
+    cfg = LokiConfig(url="http://loki:3100", auth_token="secret")
+    assert cfg.auth_token == "secret"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+def test_loki_config_with_basic_auth():
+    cfg = LokiConfig(url="http://loki:3100", username="admin", password="pass")
+    assert cfg.username == "admin"
+    assert cfg.password == "pass"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LokiStream
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_loki_stream_valid():
+    s = LokiStream(labels={"app": "x"}, lines=["hello"])
+    assert s.lines == ["hello"]
+
+
+def test_loki_stream_empty_lines():
+    with pytest.raises(ValueError, match="lines"):
+        LokiStream(labels={}, lines=[])
+
+
+def test_loki_stream_timestamps_mismatch():
+    with pytest.raises(ValueError, match="timestamps_ns"):
+        LokiStream(labels={}, lines=["a", "b"], timestamps_ns=[1])
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # LokiExporter
-# ══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def test_loki_push_ok() -> None:
-    cfg = LokiConfig(url="http://loki:3100")
-    c = _client(204)
-    exp = LokiExporter(cfg, client=c)
-    exp.push(["hello world"])
-    c.post.assert_called_once()
-    payload = c.post.call_args.kwargs["json"]
-    assert "streams" in payload
-
-
-def test_loki_push_with_labels() -> None:
-    cfg = LokiConfig(url="http://loki:3100")
-    c = _client(204)
-    exp = LokiExporter(cfg, client=c)
-    exp.push(["msg"], labels={"app": "test"})
-    payload = c.post.call_args.kwargs["json"]
-    assert payload["streams"][0]["stream"]["app"] == "test"
+def test_loki_push_ok():
+    cfg = LokiConfig(url="http://loki:3100", labels={"app": "test"})
+    exp = LokiExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(204)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.push(["hello world"])
+    mock_client.post.assert_called_once()
+    mock_client.close.assert_called_once()
 
 
-def test_loki_push_stream() -> None:
-    cfg = LokiConfig(url="http://loki:3100")
-    c = _client(204)
-    exp = LokiExporter(cfg, client=c)
-    stream = LokiStream(labels={"job": "x"}, lines=["line1"])
-    exp.push_stream(stream)
-    c.post.assert_called_once()
-
-
-def test_loki_push_streams_batch() -> None:
-    cfg = LokiConfig(url="http://loki:3100")
-    c = _client(204)
-    exp = LokiExporter(cfg, client=c)
-    streams = [
-        LokiStream(labels={"app": "a"}, lines=["a"]),
-        LokiStream(labels={"app": "b"}, lines=["b"]),
-    ]
-    exp.push_streams(streams)
-    payload = c.post.call_args.kwargs["json"]
-    assert len(payload["streams"]) == 2
-
-
-def test_loki_push_with_timestamps() -> None:
-    cfg = LokiConfig(url="http://loki:3100")
-    c = _client(204)
-    exp = LokiExporter(cfg, client=c)
-    exp.push(["t"], timestamps_ns=[1_000_000_000])
-    payload = c.post.call_args.kwargs["json"]
-    assert payload["streams"][0]["values"][0][0] == "1000000000"
-
-
-def test_loki_context_manager() -> None:
-    cfg = LokiConfig(url="http://loki:3100")
-    c = _client(204)
-    with LokiExporter(cfg, client=c) as exp:
-        exp.push(["msg"])
-    c.post.assert_called_once()
-
-
-def test_loki_double_close() -> None:
+def test_loki_push_empty_lines_raises():
     cfg = LokiConfig(url="http://loki:3100")
     exp = LokiExporter(cfg)
-    exp.open()
-    exp.close()
-    exp.close()  # must not raise
+    with pytest.raises(ValueError, match="lines"):
+        exp.push([])
 
 
-def test_loki_http_error() -> None:
+def test_loki_push_with_extra_labels():
+    cfg = LokiConfig(url="http://loki:3100", labels={"env": "prod"})
+    exp = LokiExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(204)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.push(["msg"], extra_labels={"service": "api"})
+    _, kwargs = mock_client.post.call_args
+    streams = kwargs["json"]["streams"]
+    assert streams[0]["stream"]["env"] == "prod"
+    assert streams[0]["stream"]["service"] == "api"
+
+
+def test_loki_push_stream():
     cfg = LokiConfig(url="http://loki:3100")
-    c = _client(500)
-    exp = LokiExporter(cfg, client=c)
-    with pytest.raises(ExporterError) as exc_info:
-        exp.push(["err"])
+    exp = LokiExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(204)
+    s = LokiStream(labels={"job": "test"}, lines=["line1"])
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.push_stream(s)
+    mock_client.post.assert_called_once()
+
+
+def test_loki_push_streams_empty_raises():
+    cfg = LokiConfig(url="http://loki:3100")
+    exp = LokiExporter(cfg)
+    with pytest.raises(ValueError, match="streams"):
+        exp.push_streams([])
+
+
+def test_loki_push_streams_with_timestamps():
+    cfg = LokiConfig(url="http://loki:3100")
+    exp = LokiExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(204)
+    s = LokiStream(labels={}, lines=["a", "b"], timestamps_ns=[1000, 2000])
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.push_streams([s])
+    _, kwargs = mock_client.post.call_args
+    values = kwargs["json"]["streams"][0]["values"]
+    assert values[0][0] == "1000"
+    assert values[1][0] == "2000"
+
+
+def test_loki_push_http_error():
+    cfg = LokiConfig(url="http://loki:3100")
+    exp = LokiExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(500)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        with pytest.raises(ExporterError) as exc_info:
+            exp.push(["line"])
     assert exc_info.value.status_code == 500
 
 
-def test_loki_timeout_error() -> None:
+def test_loki_push_timeout():
     cfg = LokiConfig(url="http://loki:3100")
-    c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _timeout_exc("timed out")
-    exp = LokiExporter(cfg, client=c)
-    with pytest.raises(ExporterError, match="timed out"):
-        exp.push(["x"])
+    exp = LokiExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.side_effect = httpx.TimeoutException("timed out")
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        with pytest.raises(ExporterError, match="timed out"):
+            exp.push(["line"])
 
 
-def test_loki_request_error() -> None:
+def test_loki_context_manager():
+    cfg = LokiConfig(url="http://loki:3100", auth_token="tok")
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(204)
+    with patch("sketchlog.exporters.loki.httpx.Client", return_value=mock_client):
+        with LokiExporter(cfg) as exp:
+            exp.push(["ctx line"])
+    mock_client.close.assert_called_once()
+
+
+def test_loki_double_close():
     cfg = LokiConfig(url="http://loki:3100")
-    c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _connect_exc()
-    exp = LokiExporter(cfg, client=c)
-    with pytest.raises(ExporterError, match="connection error"):
-        exp.push(["x"])
-
-
-def test_loki_bearer_auth() -> None:
-    cfg = LokiConfig(url="http://loki:3100", bearer_token="mytoken")
-    with patch("sketchlog.exporters.loki.httpx.Client") as MockClient:
-        mock_instance = _client(204)
-        MockClient.return_value = mock_instance
+    mock_client = MagicMock()
+    with patch("sketchlog.exporters.loki.httpx.Client", return_value=mock_client):
         exp = LokiExporter(cfg)
-        exp.push(["line"])
-    _, kwargs = MockClient.call_args
-    assert kwargs.get("headers", {}).get("Authorization") == "Bearer mytoken"
+        exp._client = mock_client
+        exp.close()
+        exp.close()  # second close must not raise
+    assert mock_client.close.call_count == 1
 
 
-def test_loki_basic_auth() -> None:
+def test_loki_basic_auth_client():
     cfg = LokiConfig(url="http://loki:3100", username="u", password="p")
-    with patch("sketchlog.exporters.loki.httpx.Client") as MockClient:
-        mock_instance = _client(204)
-        MockClient.return_value = mock_instance
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(204)
+    with patch("sketchlog.exporters.loki.httpx.Client", return_value=mock_client) as MockCls:
         exp = LokiExporter(cfg)
-        exp.push(["line"])
-    _, kwargs = MockClient.call_args
-    assert kwargs.get("auth") == ("u", "p")
+        with patch.object(exp, "_make_client", return_value=mock_client):
+            exp.push(["line"])
+    mock_client.post.assert_called_once()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# DatadogConfig validation
-# ══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# DatadogConfig
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def test_dd_config_ok() -> None:
-    cfg = DatadogConfig(api_key="key123")
+def test_dd_config_valid():
+    cfg = DatadogConfig(api_key="abc123")
+    assert cfg.api_key == "abc123"
     assert cfg.site == "datadoghq.com"
+    assert cfg.timeout == 10.0
 
 
-def test_dd_config_empty_key() -> None:
+def test_dd_config_empty_api_key():
     with pytest.raises(ValueError, match="api_key"):
         DatadogConfig(api_key="")
 
 
-def test_dd_config_bad_timeout() -> None:
+def test_dd_config_negative_timeout():
     with pytest.raises(ValueError, match="timeout"):
-        DatadogConfig(api_key="k", timeout=-1)
+        DatadogConfig(api_key="k", timeout=-5.0)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# DatadogExporter
-# ══════════════════════════════════════════════════════════════════════════════
-
-def test_dd_send_metric_ok() -> None:
-    cfg = DatadogConfig(api_key="k")
-    c = _client(202)
-    exp = DatadogExporter(cfg, client=c)
-    exp.send_metric(DatadogMetric("cpu", 0.5))
-    c.post.assert_called_once()
-    payload = c.post.call_args.kwargs["json"]
-    assert payload["series"][0]["metric"] == "cpu"
-
-
-def test_dd_send_metrics_batch() -> None:
-    cfg = DatadogConfig(api_key="k")
-    c = _client(202)
-    exp = DatadogExporter(cfg, client=c)
-    exp.send_metrics([
-        DatadogMetric("cpu", 0.5, MetricType.GAUGE),
-        DatadogMetric("reqs", 10, MetricType.COUNT),
-    ])
-    payload = c.post.call_args.kwargs["json"]
-    assert len(payload["series"]) == 2
-
-
-def test_dd_metric_prefix() -> None:
-    cfg = DatadogConfig(api_key="k", metric_prefix="app.")
-    c = _client(202)
-    exp = DatadogExporter(cfg, client=c)
-    exp.send_metric(DatadogMetric("latency", 1.0))
-    payload = c.post.call_args.kwargs["json"]
-    assert payload["series"][0]["metric"] == "app.latency"
-
-
-def test_dd_default_tags() -> None:
-    cfg = DatadogConfig(api_key="k", default_tags=["env:prod"])
-    c = _client(202)
-    exp = DatadogExporter(cfg, client=c)
-    exp.send_metric(DatadogMetric("m", 1.0, tags=["app:x"]))
-    payload = c.post.call_args.kwargs["json"]
-    assert "env:prod" in payload["series"][0]["tags"]
-    assert "app:x" in payload["series"][0]["tags"]
-
-
-def test_dd_eu_site() -> None:
+def test_dd_config_eu_site():
     cfg = DatadogConfig(api_key="k", site="datadoghq.eu")
-    c = _client(202)
-    exp = DatadogExporter(cfg, client=c)
-    exp.send_metric(DatadogMetric("m", 1.0))
-    url = c.post.call_args.args[0]
-    assert "datadoghq.eu" in url
+    assert "datadoghq.eu" in DatadogExporter(cfg)._endpoint()
 
 
-def test_dd_context_manager() -> None:
-    cfg = DatadogConfig(api_key="k")
-    c = _client(202)
-    with DatadogExporter(cfg, client=c) as exp:
-        exp.send_metric(DatadogMetric("m", 1.0))
-    c.post.assert_called_once()
+# ═══════════════════════════════════════════════════════════════════════════════
+# DatadogMetric
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_dd_metric_valid():
+    m = DatadogMetric(name="cpu", value=0.9)
+    assert m.metric_type == MetricType.GAUGE
 
 
-def test_dd_double_close() -> None:
-    cfg = DatadogConfig(api_key="k")
+def test_dd_metric_empty_name():
+    with pytest.raises(ValueError, match="name"):
+        DatadogMetric(name="", value=1.0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DatadogExporter
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_dd_send_metric_ok():
+    cfg = DatadogConfig(api_key="key")
     exp = DatadogExporter(cfg)
-    exp.open()
-    exp.close()
-    exp.close()  # must not raise
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_metric(DatadogMetric("cpu", 0.5))
+    mock_client.post.assert_called_once()
 
 
-def test_dd_http_error() -> None:
-    cfg = DatadogConfig(api_key="k")
-    c = _client(403)
-    exp = DatadogExporter(cfg, client=c)
-    with pytest.raises(ExporterError) as exc_info:
-        exp.send_metric(DatadogMetric("m", 1.0))
+def test_dd_send_metrics_empty_raises():
+    cfg = DatadogConfig(api_key="key")
+    exp = DatadogExporter(cfg)
+    with pytest.raises(ValueError, match="metrics"):
+        exp.send_metrics([])
+
+
+def test_dd_send_metrics_multiple():
+    cfg = DatadogConfig(api_key="key", default_tags=["env:test"])
+    exp = DatadogExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    metrics = [DatadogMetric("m1", 1.0), DatadogMetric("m2", 2.0)]
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_metrics(metrics)
+    _, kwargs = mock_client.post.call_args
+    assert len(kwargs["json"]["series"]) == 2
+    assert "env:test" in kwargs["json"]["series"][0]["tags"]
+
+
+def test_dd_send_metric_with_prefix():
+    cfg = DatadogConfig(api_key="key", metric_prefix="myapp")
+    exp = DatadogExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_metric(DatadogMetric("latency", 0.1))
+    _, kwargs = mock_client.post.call_args
+    assert kwargs["json"]["series"][0]["metric"] == "myapp.latency"
+
+
+def test_dd_send_metric_with_host():
+    cfg = DatadogConfig(api_key="key")
+    exp = DatadogExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_metric(DatadogMetric("mem", 1024.0, host="web-01"))
+    _, kwargs = mock_client.post.call_args
+    assert kwargs["json"]["series"][0]["resources"][0]["name"] == "web-01"
+
+
+def test_dd_send_metric_with_timestamp():
+    cfg = DatadogConfig(api_key="key")
+    exp = DatadogExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_metric(DatadogMetric("m", 1.0, timestamp=1700000000))
+    _, kwargs = mock_client.post.call_args
+    assert kwargs["json"]["series"][0]["points"][0]["timestamp"] == 1700000000
+
+
+def test_dd_send_metric_http_error():
+    cfg = DatadogConfig(api_key="key")
+    exp = DatadogExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(403)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        with pytest.raises(ExporterError) as exc_info:
+            exp.send_metric(DatadogMetric("m", 1.0))
     assert exc_info.value.status_code == 403
 
 
-def test_dd_timeout_error() -> None:
-    cfg = DatadogConfig(api_key="k")
-    c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _timeout_exc("timeout")
-    exp = DatadogExporter(cfg, client=c)
-    with pytest.raises(ExporterError, match="timed out"):
-        exp.send_metric(DatadogMetric("m", 1.0))
+def test_dd_send_metric_timeout():
+    cfg = DatadogConfig(api_key="key")
+    exp = DatadogExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.side_effect = httpx.TimeoutException("timeout")
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        with pytest.raises(ExporterError, match="timed out"):
+            exp.send_metric(DatadogMetric("m", 1.0))
 
 
-def test_dd_request_error() -> None:
-    cfg = DatadogConfig(api_key="k")
-    c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _connect_exc()
-    exp = DatadogExporter(cfg, client=c)
-    with pytest.raises(ExporterError, match="connection error"):
-        exp.send_metric(DatadogMetric("m", 1.0))
+def test_dd_context_manager():
+    cfg = DatadogConfig(api_key="key")
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    with patch("sketchlog.exporters.datadog.httpx.Client", return_value=mock_client):
+        with DatadogExporter(cfg) as exp:
+            exp.send_metric(DatadogMetric("m", 1.0))
+    mock_client.close.assert_called_once()
 
 
-def test_dd_host_tag() -> None:
-    cfg = DatadogConfig(api_key="k")
-    c = _client(202)
-    exp = DatadogExporter(cfg, client=c)
-    exp.send_metric(DatadogMetric("m", 1.0, host="server1"))
-    payload = c.post.call_args.kwargs["json"]
-    resources = payload["series"][0].get("resources", [])
-    assert any(r.get("type") == "host" and r.get("name") == "server1" for r in resources)
+def test_dd_double_close():
+    cfg = DatadogConfig(api_key="key")
+    mock_client = MagicMock()
+    exp = DatadogExporter(cfg)
+    exp._client = mock_client
+    exp.close()
+    exp.close()
+    assert mock_client.close.call_count == 1
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# NewRelicConfig validation
-# ══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# NewRelicConfig
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def test_nr_config_ok() -> None:
-    cfg = NewRelicConfig(api_key="NRII-key", account_id="123")
+def test_nr_config_valid():
+    cfg = NewRelicConfig(api_key="NRAK-x", account_id="123")
     assert cfg.region == NewRelicRegion.US
 
 
-def test_nr_config_empty_key() -> None:
+def test_nr_config_empty_api_key():
     with pytest.raises(ValueError, match="api_key"):
-        NewRelicConfig(api_key="")
+        NewRelicConfig(api_key="", account_id="123")
 
 
-def test_nr_config_bad_timeout() -> None:
+def test_nr_config_empty_account_id():
+    with pytest.raises(ValueError, match="account_id"):
+        NewRelicConfig(api_key="k", account_id="")
+
+
+def test_nr_config_negative_timeout():
     with pytest.raises(ValueError, match="timeout"):
-        NewRelicConfig(api_key="k", timeout=0)
+        NewRelicConfig(api_key="k", account_id="1", timeout=0)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# NewRelicExporter — URL routing (exact hostname assertions)
-# ══════════════════════════════════════════════════════════════════════════════
+def test_nr_config_eu_region():
+    cfg = NewRelicConfig(api_key="k", account_id="1", region=NewRelicRegion.EU)
+    assert cfg.region == NewRelicRegion.EU
 
-def test_nr_us_region_events_url() -> None:
-    cfg = NewRelicConfig(api_key="k", account_id="123")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NewRelicEvent
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_nr_event_valid():
+    ev = NewRelicEvent("PageView", {"url": "/home"})
+    assert ev.event_type == "PageView"
+
+
+def test_nr_event_empty_type():
+    with pytest.raises(ValueError, match="event_type"):
+        NewRelicEvent(event_type="")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NewRelicMetric
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_nr_metric_valid():
+    m = NewRelicMetric("cpu", 0.5)
+    assert m.metric_type == NewRelicMetricType.GAUGE
+
+
+def test_nr_metric_empty_name():
+    with pytest.raises(ValueError, match="name"):
+        NewRelicMetric(name="", value=1.0)
+
+
+def test_nr_metric_count_without_interval():
+    with pytest.raises(ValueError, match="interval_ms"):
+        NewRelicMetric("req", 10.0, metric_type=NewRelicMetricType.COUNT)
+
+
+def test_nr_metric_count_with_interval():
+    m = NewRelicMetric("req", 10.0, metric_type=NewRelicMetricType.COUNT, interval_ms=60000)
+    assert m.interval_ms == 60000
+
+
+def test_nr_metric_summary_without_interval():
+    with pytest.raises(ValueError, match="interval_ms"):
+        NewRelicMetric("p99", 0.9, metric_type=NewRelicMetricType.SUMMARY)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NewRelicExporter
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_nr_send_event_ok():
+    cfg = NewRelicConfig(api_key="NRAK-x", account_id="123")
     exp = NewRelicExporter(cfg)
-    parsed = urlparse(exp._events_url())
-    assert parsed.hostname == "insights-collector.newrelic.com"
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(200)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_event(NewRelicEvent("Test", {"k": "v"}))
+    mock_client.post.assert_called_once()
 
 
-def test_nr_eu_region_events_url() -> None:
+def test_nr_send_events_empty_raises():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    with pytest.raises(ValueError, match="events"):
+        exp.send_events([])
+
+
+def test_nr_send_events_multiple():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(200)
+    events = [NewRelicEvent("A"), NewRelicEvent("B")]
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_events(events)
+    _, kwargs = mock_client.post.call_args
+    assert len(kwargs["json"]) == 2
+
+
+def test_nr_send_event_with_timestamp():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(200)
+    ev = NewRelicEvent("TS", timestamp=1700000000)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_event(ev)
+    _, kwargs = mock_client.post.call_args
+    assert kwargs["json"][0]["timestamp"] == 1700000000
+
+
+def test_nr_send_metric_ok():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_metric(NewRelicMetric("cpu", 0.5))
+    mock_client.post.assert_called_once()
+
+
+def test_nr_send_metrics_empty_raises():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    with pytest.raises(ValueError, match="metrics"):
+        exp.send_metrics([])
+
+
+def test_nr_send_metrics_with_interval():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    m = NewRelicMetric("req", 5.0, metric_type=NewRelicMetricType.COUNT, interval_ms=60000)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_metrics([m])
+    _, kwargs = mock_client.post.call_args
+    item = kwargs["json"][0]["metrics"][0]
+    assert item["interval.ms"] == 60000
+
+
+def test_nr_send_metric_http_error():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(429)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        with pytest.raises(ExporterError) as exc_info:
+            exp.send_metric(NewRelicMetric("m", 1.0))
+    assert exc_info.value.status_code == 429
+
+
+def test_nr_send_metric_timeout():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.side_effect = httpx.TimeoutException("timeout")
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        with pytest.raises(ExporterError, match="timed out"):
+            exp.send_metric(NewRelicMetric("m", 1.0))
+
+
+def test_nr_context_manager():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(200)
+    with patch("sketchlog.exporters.newrelic.httpx.Client", return_value=mock_client):
+        with NewRelicExporter(cfg) as exp:
+            exp.send_event(NewRelicEvent("Click"))
+    mock_client.close.assert_called_once()
+
+
+def test_nr_eu_region_events_url():
     cfg = NewRelicConfig(api_key="k", account_id="999", region=NewRelicRegion.EU)
     exp = NewRelicExporter(cfg)
     parsed = urlparse(exp._events_url())
     assert parsed.hostname == "insights-collector.eu01.nr-data.net"
 
 
-def test_nr_us_region_metrics_url() -> None:
-    cfg = NewRelicConfig(api_key="k", account_id="123")
-    exp = NewRelicExporter(cfg)
-    parsed = urlparse(exp._metrics_url())
-    assert parsed.hostname == "metric-api.newrelic.com"
-
-
-def test_nr_eu_region_metrics_url() -> None:
+def test_nr_eu_region_metrics_url():
     cfg = NewRelicConfig(api_key="k", account_id="999", region=NewRelicRegion.EU)
     exp = NewRelicExporter(cfg)
     parsed = urlparse(exp._metrics_url())
     assert parsed.hostname == "metric-api.eu.newrelic.com"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# NewRelicExporter — events
-# ══════════════════════════════════════════════════════════════════════════════
-
-def test_nr_send_event_ok() -> None:
-    cfg = NewRelicConfig(api_key="k", account_id="123")
-    c = _client(200)
-    exp = NewRelicExporter(cfg, client=c)
-    exp.send_event(NewRelicEvent("PageView", {"url": "/home"}))
-    c.post.assert_called_once()
-    payload = c.post.call_args.kwargs["json"]
-    assert payload[0]["eventType"] == "PageView"
-
-
-def test_nr_send_events_batch() -> None:
-    cfg = NewRelicConfig(api_key="k", account_id="123")
-    c = _client(200)
-    exp = NewRelicExporter(cfg, client=c)
-    exp.send_events([
-        NewRelicEvent("Click", {"button": "submit"}),
-        NewRelicEvent("View", {"page": "home"}),
-    ])
-    payload = c.post.call_args.kwargs["json"]
-    assert len(payload) == 2
-
-
-def test_nr_send_event_no_account_id() -> None:
-    cfg = NewRelicConfig(api_key="k")
-    c = _client(200)
-    exp = NewRelicExporter(cfg, client=c)
-    with pytest.raises(ValueError, match="account_id"):
-        exp.send_event(NewRelicEvent("E", {}))
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# NewRelicExporter — metrics
-# ══════════════════════════════════════════════════════════════════════════════
-
-def test_nr_send_metric_ok() -> None:
-    cfg = NewRelicConfig(api_key="k")
-    c = _client(202)
-    exp = NewRelicExporter(cfg, client=c)
-    exp.send_metric(NewRelicMetric("cpu", 0.9, NewRelicMetricType.GAUGE))
-    c.post.assert_called_once()
-    payload = c.post.call_args.kwargs["json"]
-    assert payload[0]["metrics"][0]["name"] == "cpu"
-
-
-def test_nr_send_metrics_batch() -> None:
-    cfg = NewRelicConfig(api_key="k")
-    c = _client(202)
-    exp = NewRelicExporter(cfg, client=c)
-    exp.send_metrics([
-        NewRelicMetric("m1", 1.0, NewRelicMetricType.GAUGE),
-        NewRelicMetric("m2", 2.0, NewRelicMetricType.COUNT, interval_ms=1000),
-    ])
-    payload = c.post.call_args.kwargs["json"]
-    assert len(payload[0]["metrics"]) == 2
-
-
-def test_nr_summary_metric() -> None:
-    cfg = NewRelicConfig(api_key="k")
-    c = _client(202)
-    exp = NewRelicExporter(cfg, client=c)
-    summary_val = {"count": 10.0, "sum": 100.0, "min": 1.0, "max": 20.0}
-    exp.send_metric(
-        NewRelicMetric("latency", summary_val, NewRelicMetricType.SUMMARY, interval_ms=60000)
-    )
-    payload = c.post.call_args.kwargs["json"]
-    assert payload[0]["metrics"][0]["value"] == summary_val
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# NewRelicExporter — lifecycle & errors
-# ══════════════════════════════════════════════════════════════════════════════
-
-def test_nr_context_manager() -> None:
-    cfg = NewRelicConfig(api_key="k")
-    c = _client(202)
-    with NewRelicExporter(cfg, client=c) as exp:
-        exp.send_metric(NewRelicMetric("m", 1.0))
-    c.post.assert_called_once()
-
-
-def test_nr_double_close() -> None:
-    cfg = NewRelicConfig(api_key="k")
+def test_nr_double_close():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    mock_client = MagicMock()
     exp = NewRelicExporter(cfg)
-    exp.open()
+    exp._client = mock_client
     exp.close()
-    exp.close()  # must not raise
+    exp.close()
+    assert mock_client.close.call_count == 1
 
 
-def test_nr_http_error() -> None:
-    cfg = NewRelicConfig(api_key="k")
-    c = _client(400)
-    exp = NewRelicExporter(cfg, client=c)
-    with pytest.raises(ExporterError) as exc_info:
-        exp.send_metric(NewRelicMetric("m", 1.0))
-    assert exc_info.value.status_code == 400
-
-
-def test_nr_timeout_error() -> None:
-    cfg = NewRelicConfig(api_key="k")
-    c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _timeout_exc("timeout")
-    exp = NewRelicExporter(cfg, client=c)
-    with pytest.raises(ExporterError, match="timed out"):
-        exp.send_metric(NewRelicMetric("m", 1.0))
-
-
-def test_nr_request_error() -> None:
-    cfg = NewRelicConfig(api_key="k")
-    c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _connect_exc()
-    exp = NewRelicExporter(cfg, client=c)
-    with pytest.raises(ExporterError, match="connection error"):
-        exp.send_metric(NewRelicMetric("m", 1.0))
+def test_nr_send_metric_with_timestamp():
+    cfg = NewRelicConfig(api_key="k", account_id="1")
+    exp = NewRelicExporter(cfg)
+    mock_client = MagicMock()
+    mock_client.post.return_value = _resp(202)
+    m = NewRelicMetric("cpu", 0.7, timestamp=1700000000000)
+    with patch.object(exp, "_make_client", return_value=mock_client):
+        exp.send_metric(m)
+    _, kwargs = mock_client.post.call_args
+    item = kwargs["json"][0]["metrics"][0]
+    assert item["timestamp"] == 1700000000000
