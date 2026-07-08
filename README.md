@@ -132,7 +132,7 @@ npm install @sketchlog/client
 Install the Go client:
 
 ```bash
-go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.3
+go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.4
 ```
 
 ## Quickstart
@@ -203,14 +203,14 @@ err := client.IngestEvents(ctx, "production_api", batch)
 Run the server with Docker:
 
 ```bash
-docker run --rm -p 8000:8000 ghcr.io/sbalavignesh123/sketchlog:1.2.3
+docker run --rm -p 8000:8000 ghcr.io/sbalavignesh123/sketchlog:1.2.4
 ```
 
 Install with Helm:
 
 ```bash
 helm upgrade --install sketchlog oci://ghcr.io/sbalavignesh123/charts/sketchlog \
-  --version 1.2.3
+  --version 1.2.4
 ```
 
 Run mesh mode on Kubernetes:

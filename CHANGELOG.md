@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.4
+
 ### Changed
 
 - Link newly added async client, exporter, Kubernetes Operator, and RBAC docs in
