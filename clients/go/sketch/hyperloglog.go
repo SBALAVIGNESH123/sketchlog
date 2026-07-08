@@ -66,7 +66,7 @@ func fnv64a(data []byte) uint64 {
 func (h *HyperLogLog) Add(data []byte) {
 	x := fnv64a(data)
 	j := x >> (64 - uint(h.precision)) // top p bits → register index
-	// leading zeros of the remaining bits + 1
+	// leading zeros of the remaining (64-p) bits + 1
 	rho := uint8(bits.LeadingZeros64(x<<uint(h.precision))) + 1
 	if rho > h.registers[j] {
 		h.registers[j] = rho
@@ -82,7 +82,8 @@ func (h *HyperLogLog) Count() uint64 {
 	}
 	estimate := h.alpha * m * m / sum
 
-	// Small range correction
+	// Small range correction: use linear counting when estimate is low
+	// and there are empty registers.
 	if estimate <= 2.5*m {
 		zeros := 0
 		for _, v := range h.registers {
@@ -94,10 +95,9 @@ func (h *HyperLogLog) Count() uint64 {
 			estimate = m * math.Log(m/float64(zeros))
 		}
 	}
-	// Large range correction
-	if estimate > (1.0/30.0)*math.Pow(2, 32) {
-		estimate = -math.Pow(2, 32) * math.Log(1-estimate/math.Pow(2, 32))
-	}
+	// Large range correction is omitted: FNV-1a produces 64-bit hashes,
+	// so the collision threshold (~2^64/30) is unreachable in practice.
+
 	return uint64(estimate)
 }
 
