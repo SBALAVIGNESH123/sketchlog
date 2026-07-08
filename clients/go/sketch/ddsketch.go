@@ -74,6 +74,9 @@ func (d *DDSketch) Quantile(q float64) (float64, error) {
 		return 0, errors.New("sketch is empty")
 	}
 	rank := uint64(math.Ceil(q * float64(d.count)))
+	if rank == 0 {
+		rank = 1 // clamp: 0-quantile returns minimum, not unconditional zero
+	}
 	// zeroes
 	if rank <= d.zeroCount {
 		return 0, nil
