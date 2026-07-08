@@ -175,7 +175,7 @@ document.getElementById('stream-reset-btn').addEventListener('click', () => {
 function previewExport(type) {
   const now = Math.floor(Date.now() / 1000);
   const path = document.getElementById('stream-path').value.trim() || 'myapp/latency/api';
-  const metricName = path.replace(/\/g, '_');
+  const metricName = path.replace(/\//g, '_');
 
   if (type === 'loki') {
     const url  = document.getElementById('loki-url').value;
