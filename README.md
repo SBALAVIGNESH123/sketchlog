@@ -5,112 +5,137 @@
 <h1 align="center">SketchLog</h1>
 
 <p align="center">
-  <strong>Bounded-memory streaming metrics with explicit approximation guarantees.</strong>
+  <strong>Bounded-memory telemetry sketches for streaming metrics, live analytics, and production operations.</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-beta-orange" alt="Status" />
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python Version" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
-  <a href="https://github.com/SBALAVIGNESH123/sketchlog/actions"><img src="https://img.shields.io/github/actions/workflow/status/SBALAVIGNESH123/sketchlog/ci.yml?label=CI" alt="CI" /></a>
+  <a href="https://github.com/SBALAVIGNESH123/sketchlog/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/SBALAVIGNESH123/sketchlog/ci.yml?label=CI" alt="CI" />
+  </a>
 </p>
 
+SketchLog compresses high-throughput telemetry streams into bounded-memory,
+mergeable statistical summaries. It combines DDSketch for latency percentiles,
+HyperLogLog for cardinality, and Count-Min Sketch for event frequencies, then
+adds production surfaces for APIs, dashboards, alerts, exporters, Kubernetes,
+and multi-language SDKs.
 
-SketchLog allows you to ingest high-throughput event streams and extract accurate
-percentiles and cardinalities in constant memory. It combines **DDSketch** for latencies,
-**HyperLogLog** for unique items, and **Count-Min Sketch** for event frequencies.
+The goal is simple: keep the operational signal without retaining every raw
+event.
 
-Instead of storing arrays of events or exporting raw telemetry, SketchLog compresses
-the statistical shape of your data in real time, making it ideal for continuous
-monitoring, edge devices, and memory-constrained environments.
+## Why SketchLog
 
----
+- Bounded memory per stream instead of unbounded raw-event storage.
+- Explicit approximation guarantees for percentiles, cardinality, and frequency.
+- Mergeable sketch state for distributed systems and edge deployments.
+- Live query, dashboard, SLO, anomaly, and export workflows built on the same
+  compact telemetry model.
+- Production-minded release engineering with CI, coverage, security scanning,
+  docs, Helm packaging, container checks, and public demo verification.
 
-## Live Product Demo
+SketchLog is currently a production-minded open-source beta. The core data
+structures and release pipeline are heavily tested, while some higher-level
+operational features continue to mature.
 
-Run the deterministic dashboard and its end-to-end verifier with one command:
+## Live demo
+
+Run the deterministic product demo and its end-to-end verifier:
 
 ```bash
 docker compose -f demo/compose.yml up --build --wait
 ```
 
-Then open <http://localhost:4173>. See the
-[launch demo runbook](demo/README.md) for the verified feature list, alternate
-port configuration, recording sequence, and cleanup command.
+Open <http://localhost:4173>.
 
----
+The demo includes live ingestion, percentile sketches, cardinality metrics,
+Streaming SQL examples, anomaly evidence, tenant isolation, exporter examples,
+and operational readiness checks. See the [demo runbook](demo/README.md) for
+ports, cleanup, verification, and recording guidance.
+
+## Core capabilities
+
+| Area | Capabilities |
+| --- | --- |
+| Sketch engine | DDSketch, HyperLogLog, Count-Min Sketch, bounded sparse stores, merge contracts |
+| Server | FastAPI service, HTTP ingestion, WebSocket updates, health/readiness, OpenAPI contract |
+| Streaming analytics | Streaming SQL, query builder, sketch diffing, anomaly comparison, Smart SLO engine |
+| Multi-tenancy | Namespace quotas, namespace-scoped auth, RBAC checks, tenant-safe metrics |
+| Distributed mode | Authenticated Sketch Mesh, versioned tombstones, peer allowlists, convergence tests |
+| Dashboards | React dashboard SDK, standalone demo dashboard, Grafana dashboard, Grafana datasource plugin |
+| Integrations | Prometheus, OpenTelemetry, OpenTelemetry Collector component, Loki, Datadog, New Relic |
+| Clients | Python embedded API, Python async client, TypeScript client, Go HTTP client, native Go sketches |
+| Deployment | Docker image, Docker Compose demo, Helm chart, Kubernetes Operator manifests |
+| Operations | Doctor checks, alert manager, rate limiting, TLS/mTLS helpers, DB hardening, benchmark lab |
+| Runtime targets | Python, C++, TypeScript, Go, WebAssembly, Linux eBPF collector |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Ingestion
-        SDKs[Python / TypeScript / Go]
+    subgraph Producers
+        Python[Python SDK]
+        TypeScript[TypeScript SDK]
+        Go[Go SDK]
         OTel[OpenTelemetry]
-        EBPF[Linux eBPF collector]
+        EBPF[Linux eBPF]
     end
 
-    SDKs --> API[HTTP + WebSocket API]
+    Python --> API[SketchLog API]
+    TypeScript --> API
+    Go --> API
     OTel --> API
     EBPF --> API
-    API --> Registry[Capacity-bounded namespace registry]
-    Registry --> Stream[Per-tenant StreamLog]
+
+    API --> Registry[Namespace registry]
+    Registry --> Stream[Bounded StreamLog]
     Stream --> DDS[DDSketch]
     Stream --> HLL[HyperLogLog]
     Stream --> CMS[Count-Min Sketch]
-    Stream --> Analysis[SQL / SLO / diff / anomaly]
+    Stream --> Analytics[SQL, SLO, diff, anomaly]
     Stream <--> Mesh[Authenticated Sketch Mesh]
-    API --> Dashboard[Live dashboard SDK]
-    API --> Prometheus[Prometheus exporter]
+    API --> Dashboard[Live dashboards]
+    API --> Exporters[Prometheus, OTel, Loki, Datadog, New Relic]
 ```
 
-Each stream retains bounded sketch state rather than raw telemetry. See the
+Each stream stores compact sketch state rather than raw telemetry. See the
 [architecture guide](https://sbalavignesh123.github.io/sketchlog/architecture/)
-for merge, windowing, drift, and runtime details.
-
----
-
-## 📚 Documentation
-
-The full documentation is available at [SketchLog Documentation Site](https://sbalavignesh123.github.io/sketchlog/) (or via `/docs` in the repository).
-It includes:
-- **Architecture**: Details on distributed merges, drift detection, and memory footprint.
-- **Benchmarks**: Memory footprint scaling and CPU throughput limits.
-- **Guarantees**: Published error bounds, implementation preconditions, and
-  checked capacity limits.
-- **Integrations**: How to integrate with Prometheus, FastAPI, and OpenTelemetry.
-- **API Reference**: Core classes, methods, and persistence operations.
-- **Contributing**: Guidelines for contributing to SketchLog.
-
-### Local Documentation Build
-To build and preview the documentation locally:
-```bash
-pip install ".[docs]"
-mkdocs serve
-```
-
----
+for merge behavior, windowing, drift detection, memory limits, and runtime
+details.
 
 ## Installation
 
-### 1. The Core Library (Python)
-If you just want to use the high-performance sketching data structures directly in Python:
+Install the embedded Python library:
+
 ```bash
 pip install sketchlog
 ```
 
-### 2. The Standalone Server
-To run SketchLog as an independent network service (like Redis or Prometheus):
+Install the standalone server:
+
 ```bash
 pip install "sketchlog[server]"
-uvicorn sketchlog.server:app --port 8080
+sketchlog-server --host 127.0.0.1 --port 8000
 ```
 
----
+Install the TypeScript client:
+
+```bash
+npm install @sketchlog/client
+```
+
+Install the Go client:
+
+```bash
+go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.3
+```
 
 ## Quickstart
 
-### 🐍 Python (Embedded Library)
+### Python embedded sketch
+
 ```python
 from sketchlog import StreamLog
 
@@ -120,36 +145,45 @@ log.add_batch([15.0, 88.2, 42.1])
 log.add_unique("user_12345")
 log.add_event("cache_miss", count=5)
 
-print(f"p99 Latency:  {log.p99():.2f}ms")
+print(f"p99 latency: {log.p99():.2f} ms")
 ```
 
-### 🟨 TypeScript / Node.js SDK
-Connect to the standalone server via HTTP:
-```bash
-npm install @sketchlog/client
+### Python async client
+
+```python
+from sketchlog.async_client import AsyncSketchLogClient
+
+async with AsyncSketchLogClient("http://localhost:8000") as client:
+    await client.ingest_events(
+        namespace="production",
+        stream="api.latency",
+        latencies=[42.5, 15.0, 88.2],
+        uniques=["user_12345"],
+        events={"cache_miss": 5},
+    )
 ```
+
+### TypeScript client
+
 ```typescript
 import { SketchLogClient } from '@sketchlog/client';
 
-const client = new SketchLogClient({ endpoint: 'http://localhost:8080' });
+const client = new SketchLogClient({ endpoint: 'http://localhost:8000' });
 
-// Validated HTTP ingestion with bounded retries
 await client.ingestEvents('production_api', {
   latencies: [42.5, 15.0, 88.2, 42.1],
-  uniques: ["user_12345"],
-  events: { "cache_miss": 5 }
+  uniques: ['user_12345'],
+  events: { cache_miss: 5 },
 });
 ```
 
-### 🐹 Go SDK
-```bash
-go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.3
-```
+### Go client
+
 ```go
 import "github.com/SBALAVIGNESH123/sketchlog/clients/go"
 
 client := sketchlog.NewClient(sketchlog.ClientOptions{
-    Endpoint: "http://localhost:8080",
+    Endpoint: "http://localhost:8000",
 })
 
 batch := sketchlog.EventBatch{
@@ -161,37 +195,96 @@ batch := sketchlog.EventBatch{
 err := client.IngestEvents(ctx, "production_api", batch)
 ```
 
-## Distributed Clustering (Beta)
+## Deployment
 
-SketchLog supports multi-node clustering without requiring external coordination services like Redis.
+Run the server with Docker:
 
-You can run a cluster using the following environment variables:
 ```bash
-SKETCHLOG_NODE_ID="node-1"
-SKETCHLOG_PEERS="http://node2:8000,http://node3:8000"
-SKETCHLOG_CLUSTER_SECRET="your-secret-token"
-uvicorn sketchlog.server:app --port 8000
+docker run --rm -p 8000:8000 ghcr.io/sbalavignesh123/sketchlog:1.2.3
 ```
 
-> **Performance trade-off**: Mesh mode currently uses deterministic Python
-> sketches to guarantee identical merge state across heterogeneous nodes. Measure
-> this mode with your own traffic before capacity planning.
+Install with Helm:
 
-## Community
+```bash
+helm upgrade --install sketchlog oci://ghcr.io/sbalavignesh123/charts/sketchlog \
+  --version 1.2.3
+```
 
-Join us in Slack! [Join SketchLog Slack](https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ)
+Run mesh mode on Kubernetes:
 
----
+```bash
+helm upgrade --install sketchlog ./charts/sketchlog \
+  --set replicaCount=3 \
+  --set mesh.enabled=true \
+  --set-string mesh.clusterSecret="$CLUSTER_SECRET"
+```
 
-## What this is not
+SketchLog also includes Kubernetes Operator manifests and documentation for
+declarative cluster management.
+
+## Documentation
+
+The full documentation is published at
+[sbalavignesh123.github.io/sketchlog](https://sbalavignesh123.github.io/sketchlog/).
+
+Important sections:
+
+- [Architecture](https://sbalavignesh123.github.io/sketchlog/architecture/)
+- [Benchmarks](https://sbalavignesh123.github.io/sketchlog/benchmarks/)
+- [Formal guarantees](https://sbalavignesh123.github.io/sketchlog/guarantees/)
+- [Client SDKs](https://sbalavignesh123.github.io/sketchlog/sdks/)
+- [Async Python client](https://sbalavignesh123.github.io/sketchlog/async_client/)
+- [Export integrations](https://sbalavignesh123.github.io/sketchlog/exporters/)
+- [Kubernetes Operator](https://sbalavignesh123.github.io/sketchlog/kubernetes-operator/)
+- [RBAC](https://sbalavignesh123.github.io/sketchlog/rbac/)
+- [Runbooks](https://sbalavignesh123.github.io/sketchlog/runbooks/)
+- [Threat model](https://sbalavignesh123.github.io/sketchlog/threat_model/)
+
+Build docs locally:
+
+```bash
+pip install ".[docs]"
+mkdocs serve
+```
+
+## Development
+
+Install the development environment:
+
+```bash
+make dev-install
+```
+
+Run checks:
+
+```bash
+make test
+make test-go
+make test-ts
+make docs
+```
+
+Run the full demo:
+
+```bash
+make demo
+```
+
+## What SketchLog is not
 
 SketchLog is a streaming metrics compression layer. It is deliberately not:
 
-- **Not a tracing system.** No request paths, no correlation IDs, no causal chains.
-- **Not a time-series database.** No historical drill-down, no label indexing.
-- **Not an observability platform.** No raw log storage, no ad-hoc queries.
-- **Not exact.** All results are probabilistic with bounded error. If you need exact percentiles, use numpy.
+- A tracing system. It does not store request paths, spans, correlation IDs, or causal chains.
+- A time-series database. It does not provide raw historical drill-down or full label indexing.
+- A raw log storage system. It keeps compact summaries, not every event payload.
+- An exact analytics engine. Results are probabilistic with documented error bounds.
 
----
+## Community
 
-MIT License
+- GitHub: <https://github.com/SBALAVIGNESH123/sketchlog>
+- Documentation: <https://sbalavignesh123.github.io/sketchlog/>
+- Slack: <https://join.slack.com/t/sketchlog/shared_invite/zt-41kc03dnl-tiyHm4Gr2CbaJWuGHxdbiQ>
+
+## License
+
+SketchLog is released under the MIT License.

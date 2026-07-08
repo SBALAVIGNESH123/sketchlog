@@ -1,4 +1,4 @@
-# SketchLog — one-command developer experience
+# SketchLog - one-command developer experience
 # Run `make help` to see all available targets.
 
 .DEFAULT_GOAL := help
@@ -21,7 +21,7 @@ dev-install: ## Install all dev dependencies (Python + Node + Go)
 	pip install -e ".[dev,server]" --quiet
 	cd frontend/react-sketchlog && npm ci --silent
 	cd clients/go && go mod download
-	@echo "✅  Dev install complete — run 'make dev' to start"
+	@echo "Dev install complete - run 'make dev' to start"
 
 .PHONY: install
 install: ## Install SketchLog Python package only
@@ -69,7 +69,7 @@ test-go: ## Run Go client tests
 
 .PHONY: test-ts
 test-ts: ## Run TypeScript/Node conformance tests
-	cd clients/node && npm test
+	cd clients/typescript && npm test
 
 .PHONY: test-all
 test-all: test test-go test-ts ## Run all tests (Python + Go + TypeScript)
@@ -125,15 +125,15 @@ docs-serve: ## Serve docs locally with live reload (port 8000)
 # ──────────────────────────────────────────────────────────────────────────────
 .PHONY: build
 build: ## Build Python wheel and sdist
-	python -m build python/
+	python -m build
 
 .PHONY: build-wasm
 build-wasm: ## Build WASM package
-	cd bindings/wasm && npm run build
+	cd wasm && npm run build
 
 .PHONY: build-cpp
 build-cpp: ## Build C++ extension (requires cmake)
-	cmake -B build -S bindings/cpp && cmake --build build --parallel
+	cmake -B build -S . && cmake --build build --parallel
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Database
@@ -181,7 +181,7 @@ clean: ## Remove build artifacts, caches, and temp files
 	rm -rf python/*.egg-info python/sketchlog/__pycache__
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	@echo "✅  Clean complete"
+	@echo "Clean complete"
 
 .PHONY: version
 version: ## Print installed SketchLog version
@@ -197,4 +197,4 @@ env-check: ## Verify required tools are installed
 	@go version
 	@docker --version
 	@git --version
-	@echo "✅  All required tools found"
+	@echo "All required tools found"
