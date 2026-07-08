@@ -1,15 +1,9 @@
-"""Grafana Loki export integration for SketchLog.
-
-Pushes log streams to a Loki instance via the HTTP push API
-(``POST /loki/api/v1/push``).  Supports bearer-token and
-HTTP basic authentication, arbitrary label sets, custom per-line
-timestamps, and both standalone and context-manager usage patterns.
-"""
+"""Grafana Loki export integration for SketchLog."""
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 
@@ -30,10 +24,10 @@ class LokiConfig:
     """
 
     url: str
-    labels: dict[str, str] = field(default_factory=dict)
-    auth_token: str | None = None
-    username: str | None = None
-    password: str | None = None
+    labels: Dict[str, str] = field(default_factory=dict)
+    auth_token: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
     timeout: float = 10.0
 
     def __post_init__(self) -> None:
@@ -41,119 +35,109 @@ class LokiConfig:
             raise ValueError("url must not be empty")
         if (self.username is None) != (self.password is None):
             raise ValueError("username and password must both be set or both be None")
-        object.__setattr__(self, "url", self.url.rstrip("/"))
 
 
 @dataclass
 class LokiStream:
-    """A single Loki stream with a label set and log lines.
+    """A single labelled stream of log lines.
 
     Args:
-        labels: Label set that identifies this stream.
-        lines: Log lines to push.  Each entry is either a plain string
-            (timestamp auto-assigned) or a ``(ns_timestamp, line)`` tuple.
+        labels: Label key-value pairs identifying this stream.
+        lines: Log line strings to push.
+        timestamps_ns: Optional per-line timestamps in nanoseconds since epoch.
+            If omitted, the current time is used for all lines.
     """
 
-    labels: dict[str, str]
-    lines: list[str | tuple[int, str]] = field(default_factory=list)
+    labels: Dict[str, str]
+    lines: List[str]
+    timestamps_ns: Optional[List[int]] = None
 
 
 class LokiExporter:
-    """Pushes log lines to Grafana Loki.
+    """Pushes log streams to Grafana Loki via the HTTP push API.
 
     Can be used standalone or as a context manager::
 
         with LokiExporter(cfg) as exp:
-            exp.push(["something happened"])
+            exp.push(["line one", "line two"])
+
+    Args:
+        config: :class:`LokiConfig` instance.
+        client: Optional pre-configured :class:`httpx.Client`.  If *None* a
+            short-lived client is created for each request.
     """
 
-    def __init__(self, config: LokiConfig, client: httpx.Client | None = None) -> None:
-        self._cfg = config
+    def __init__(self, config: LokiConfig, client: Optional[httpx.Client] = None) -> None:
+        self._config = config
         self._client = client
-        self._owned = client is None
 
-    # ── lifecycle ──────────────────────────────────────────────────────────
+    # ── context manager ──────────────────────────────────────────────────────
 
-    def open(self) -> None:
-        """Open a persistent HTTP connection pool."""
-        if self._client is None:
-            self._client = self._make_client()
-
-    def close(self) -> None:
-        """Close the persistent connection pool (idempotent)."""
-        if self._client is not None and self._owned:
-            self._client.close()
-            self._client = None
-
-    def __enter__(self) -> LokiExporter:
+    def __enter__(self) -> "LokiExporter":
         self.open()
         return self
 
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    # ── public API ─────────────────────────────────────────────────────────
+    def open(self) -> None:
+        """Open a persistent HTTP connection."""
+        if self._client is None:
+            self._client = self._make_client()
 
-    def push(
-        self,
-        lines: list[str | tuple[int, str]],
-        labels: dict[str, str] | None = None,
-    ) -> None:
-        """Push *lines* as a single stream using *labels* (or the config defaults).
+    def close(self) -> None:
+        """Close the underlying HTTP client (idempotent)."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
 
-        Args:
-            lines: Log lines.  Each entry is a plain string or a
-                ``(nanosecond_timestamp, line)`` tuple.
-            labels: Override the config default labels for this push.
-        """
-        merged = {**self._cfg.labels, **(labels or {})}
-        stream = LokiStream(labels=merged, lines=lines)
+    # ── public API ───────────────────────────────────────────────────────────
+
+    def push(self, lines: List[str], timestamps_ns: Optional[List[int]] = None) -> None:
+        """Push *lines* using the exporter's default label set."""
+        stream = LokiStream(labels=self._config.labels, lines=lines,
+                            timestamps_ns=timestamps_ns)
         self.push_stream(stream)
 
     def push_stream(self, stream: LokiStream) -> None:
         """Push a single :class:`LokiStream`."""
         self.push_streams([stream])
 
-    def push_streams(self, streams: list[LokiStream]) -> None:
+    def push_streams(self, streams: List[LokiStream]) -> None:
         """Push multiple :class:`LokiStream` objects in one request."""
-        now_ns = time.time_ns()
-        payload: dict[str, Any] = {"streams": []}
+        now_ns = str(time.time_ns())
+        payload: Dict[str, object] = {"streams": []}
         for s in streams:
-            values = []
-            for ln in s.lines:
-                if isinstance(ln, tuple):
-                    ts, msg = ln
-                else:
-                    ts, msg = now_ns, ln
-                values.append([str(ts), msg])
-            payload["streams"].append({"stream": s.labels, "values": values})
+            ts_list = s.timestamps_ns or [None] * len(s.lines)
+            values = [
+                [str(ts) if ts is not None else now_ns, line]
+                for ts, line in zip(ts_list, s.lines)
+            ]
+            stream_entry: Dict[str, object] = {"stream": s.labels, "values": values}
+            assert isinstance(payload["streams"], list)
+            payload["streams"].append(stream_entry)
         self._do_push(payload)
 
-    # ── internal ───────────────────────────────────────────────────────────
+    # ── internals ────────────────────────────────────────────────────────────
 
     def _endpoint(self) -> str:
-        return f"{self._cfg.url}/loki/api/v1/push"
+        return self._config.url.rstrip("/") + "/loki/api/v1/push"
 
     def _make_client(self) -> httpx.Client:
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self._cfg.auth_token:
-            headers["Authorization"] = f"Bearer {self._cfg.auth_token}"
-        auth: tuple[str, str] | None = None
-        if self._cfg.username and self._cfg.password:
-            auth = (self._cfg.username, self._cfg.password)
-        return httpx.Client(
-            headers=headers,
-            auth=auth,
-            timeout=self._cfg.timeout,
-        )
+        cfg = self._config
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        if cfg.auth_token:
+            headers["Authorization"] = f"Bearer {cfg.auth_token}"
+        auth: Optional[Tuple[str, str]] = None
+        if cfg.username and cfg.password:
+            auth = (cfg.username, cfg.password)
+        return httpx.Client(headers=headers, auth=auth, timeout=cfg.timeout)
 
-    def _do_push(self, payload: dict[str, Any]) -> None:
-        client = self._client
-        owned = client is None
-        if owned:
-            client = self._make_client()
+    def _do_push(self, payload: Dict[str, object]) -> None:
+        owned = self._client is None
+        _client: httpx.Client = self._client if self._client is not None else self._make_client()
         try:
-            resp = client.post(self._endpoint(), json=payload)
+            resp = _client.post(self._endpoint(), json=payload)
             try:
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
@@ -163,7 +147,7 @@ class LokiExporter:
         except httpx.TimeoutException as exc:
             raise ExporterError(f"Loki push timed out: {exc}") from exc
         except httpx.RequestError as exc:
-            raise ExporterError(f"Loki transport error: {exc}") from exc
+            raise ExporterError(f"Loki push failed: {exc}") from exc
         finally:
             if owned:
-                client.close()
+                _client.close()
