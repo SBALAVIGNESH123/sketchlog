@@ -111,8 +111,10 @@ def test_loki_push_bearer_auth():
 
 def test_loki_basic_auth_client():
     cfg = LokiConfig(url="http://loki:3100", username="u", password="p")
+    # Create mock BEFORE patch so spec=httpx.Client works (httpx.Client is not yet mocked)
+    mc = _mock_client(204)
     with patch("sketchlog.exporters.loki.httpx.Client") as MockCls:
-        MockCls.return_value = _mock_client(204)
+        MockCls.return_value = mc
         exp = LokiExporter(cfg)
         exp.push(["line"])
     call_kwargs = MockCls.call_args[1]
