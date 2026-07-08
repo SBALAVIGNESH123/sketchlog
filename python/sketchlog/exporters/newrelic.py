@@ -1,10 +1,13 @@
-"""New Relic Events + Metric API exporter for SketchLog."""
+"""New Relic Events and Metric API exporter for SketchLog."""
 from __future__ import annotations
+
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Union
+from typing import Any, Optional, List, Union
+
 import httpx
+
 from .base import ExporterError
 
 
@@ -28,22 +31,22 @@ class NewRelicConfig:
     """Configuration for the New Relic exporter.
 
     Args:
-        api_key: New Relic Ingest - License key (required).
+        api_key: New Relic Ingest API key (``NRII-...``).
         account_id: New Relic account ID (required for Events API).
-        region: :class:`NewRelicRegion` — US (default) or EU.
-        timeout: HTTP request timeout in seconds (default 10).
+        region: ``US`` (default) or ``EU``.
+        timeout: HTTP request timeout in seconds.
     """
 
     api_key: str
-    account_id: str
+    account_id: str = ""
     region: NewRelicRegion = NewRelicRegion.US
     timeout: float = 10.0
 
     def __post_init__(self) -> None:
         if not self.api_key:
             raise ValueError("api_key must not be empty")
-        if not self.account_id:
-            raise ValueError("account_id must not be empty")
+        if self.timeout <= 0:
+            raise ValueError("timeout must be > 0")
 
 
 @dataclass
@@ -51,14 +54,14 @@ class NewRelicEvent:
     """A New Relic custom event.
 
     Args:
-        event_type: New Relic event type name (alphanumeric + underscore).
-        attributes: Mapping of attribute name → value.
-        timestamp: Optional UNIX timestamp (seconds). Current time used if omitted.
+        event_type: Event type name (alphanumeric + underscore).
+        attributes: Dict of event attributes.
+        timestamp: Unix timestamp in seconds (defaults to now).
     """
 
     event_type: str
     attributes: dict[str, Any] = field(default_factory=dict)
-    timestamp: int | None = None
+    timestamp: Optional[int] = None
 
 
 @dataclass
@@ -67,140 +70,70 @@ class NewRelicMetric:
 
     Args:
         name: Metric name.
-        value: Numeric value for GAUGE/COUNT, or a ``dict`` with keys
-               ``sum``, ``count``, ``min``, ``max`` for SUMMARY metrics.
-        type: :class:`NewRelicMetricType` (default GAUGE).
-        attributes: Optional metric attributes.
-        interval_ms: Required for COUNT and SUMMARY metrics (milliseconds).
+        value: Numeric value. For SUMMARY metrics, pass a dict with keys
+            ``count``, ``sum``, ``min``, ``max``.
+        metric_type: GAUGE, COUNT, or SUMMARY.
+        attributes: Additional attributes/tags.
+        interval_ms: Interval in milliseconds (required for COUNT and SUMMARY).
     """
 
     name: str
     value: Union[float, dict[str, float]]
-    type: NewRelicMetricType = NewRelicMetricType.GAUGE
+    metric_type: NewRelicMetricType = NewRelicMetricType.GAUGE
     attributes: dict[str, Any] = field(default_factory=dict)
-    interval_ms: int | None = None
+    interval_ms: Optional[int] = None
 
 
 class NewRelicExporter:
-    """Synchronous New Relic exporter — Events API and Metric API.
+    """Send events and metrics to New Relic.
 
-    Supports context-manager usage::
+    Example::
 
+        cfg = NewRelicConfig(api_key="NRII-...", account_id="12345")
         with NewRelicExporter(cfg) as exp:
-            exp.send_event(NewRelicEvent("MyEvent", {"key": "value"}))
-
-    Args:
-        config: :class:`NewRelicConfig` instance.
-        client: Optional pre-built ``httpx.Client`` (for testing / reuse).
+            exp.send_event(NewRelicEvent("PageView", {"url": "/home"}))
+            exp.send_metric(NewRelicMetric("cpu.usage", 0.72, NewRelicMetricType.GAUGE))
     """
 
-    def __init__(self, config: NewRelicConfig, client: httpx.Client | None = None) -> None:
-        self._cfg = config
-        self._client = client
+    def __init__(self, config: NewRelicConfig, client: Optional[httpx.Client] = None) -> None:
+        self._config = config
+        self._client: Optional[httpx.Client] = client
         self._owned = client is None
-
-    # ── context manager ───────────────────────────────────────────────────────
-    def __enter__(self) -> "NewRelicExporter":
-        if self._owned and self._client is None:
-            self._client = self._make_client()
-        return self
-
-    def __exit__(self, *_: Any) -> None:
-        self.close()
-
-    def close(self) -> None:
-        """Close the underlying HTTP client if it was created by this exporter."""
-        if self._owned and self._client is not None:
-            self._client.close()
-            self._client = None
-
-    # ── public API — Events ───────────────────────────────────────────────────
-    def send_event(self, event: NewRelicEvent) -> None:
-        """Send a single custom event.
-
-        Args:
-            event: :class:`NewRelicEvent` to send.
-
-        Raises:
-            ExporterError: On HTTP or transport failure.
-        """
-        self.send_events([event])
-
-    def send_events(self, events: list[NewRelicEvent]) -> None:
-        """Send multiple custom events in one request.
-
-        Args:
-            events: List of :class:`NewRelicEvent` to send.
-
-        Raises:
-            ExporterError: On HTTP or transport failure.
-        """
-        payload = []
-        for e in events:
-            obj: dict[str, Any] = {"eventType": e.event_type, **e.attributes}
-            if e.timestamp is not None:
-                obj["timestamp"] = e.timestamp
-            payload.append(obj)
-        self._do_post(self._events_url(), payload)
-
-    # ── public API — Metrics ──────────────────────────────────────────────────
-    def send_metric(self, metric: NewRelicMetric) -> None:
-        """Send a single metric data point.
-
-        Args:
-            metric: :class:`NewRelicMetric` to send.
-
-        Raises:
-            ExporterError: On HTTP or transport failure.
-        """
-        self.send_metrics([metric])
-
-    def send_metrics(self, metrics: list[NewRelicMetric]) -> None:
-        """Send multiple metric data points in one request.
-
-        Args:
-            metrics: List of :class:`NewRelicMetric` to send.
-
-        Raises:
-            ExporterError: On HTTP or transport failure.
-        """
-        data = []
-        for m in metrics:
-            point: dict[str, Any] = {
-                "name": m.name,
-                "type": m.type.value,
-                "value": m.value,
-                "timestamp": int(time.time() * 1000),
-            }
-            if m.interval_ms is not None:
-                point["interval.ms"] = m.interval_ms
-            if m.attributes:
-                point["attributes"] = m.attributes
-            data.append(point)
-        self._do_post(self._metrics_url(), [{"metrics": data}])
-
-    # ── internals ─────────────────────────────────────────────────────────────
-    def _events_url(self) -> str:
-        if self._cfg.region == NewRelicRegion.EU:
-            return (
-                f"https://insights-collector.eu01.nr-data.net/v1/accounts"
-                f"/{self._cfg.account_id}/events"
-            )
-        return (
-            f"https://insights-collector.nr-data.net/v1/accounts"
-            f"/{self._cfg.account_id}/events"
-        )
-
-    def _metrics_url(self) -> str:
-        if self._cfg.region == NewRelicRegion.EU:
-            return "https://metric-api.eu.newrelic.com/metric/v1"
-        return "https://metric-api.newrelic.com/metric/v1"
 
     def _make_client(self) -> httpx.Client:
         return httpx.Client(
-            headers={"Api-Key": self._cfg.api_key, "Content-Type": "application/json"},
-            timeout=self._cfg.timeout,
+            headers={"Api-Key": self._config.api_key, "Content-Type": "application/json"},
+            timeout=self._config.timeout,
         )
+
+    def _events_url(self) -> str:
+        cfg = self._config
+        if cfg.region == NewRelicRegion.EU:
+            return f"https://insights-collector.eu01.nr-data.net/v1/accounts/{cfg.account_id}/events"
+        return f"https://insights-collector.newrelic.com/v1/accounts/{cfg.account_id}/events"
+
+    def _metrics_url(self) -> str:
+        if self._config.region == NewRelicRegion.EU:
+            return "https://metric-api.eu.newrelic.com/metric/v1"
+        return "https://metric-api.newrelic.com/metric/v1"
+
+    def open(self) -> "NewRelicExporter":
+        """Open the underlying HTTP client."""
+        if self._client is None:
+            self._client = self._make_client()
+        return self
+
+    def close(self) -> None:
+        """Close the underlying HTTP client."""
+        if self._client is not None and self._owned:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> "NewRelicExporter":
+        return self.open()
+
+    def __exit__(self, *_: Any) -> None:
+        self.close()
 
     def _do_post(self, url: str, payload: Any) -> None:
         client = self._client
@@ -218,7 +151,46 @@ class NewRelicExporter:
         except httpx.TimeoutException as exc:
             raise ExporterError(f"New Relic post timed out: {exc}") from exc
         except httpx.RequestError as exc:
-            raise ExporterError(f"New Relic transport error: {exc}") from exc
+            raise ExporterError(f"New Relic connection error: {exc}") from exc
         finally:
             if owned:
                 client.close()
+
+    def _build_event(self, event: NewRelicEvent) -> dict[str, Any]:
+        payload: dict[str, Any] = {"eventType": event.event_type}
+        payload.update(event.attributes)
+        payload["timestamp"] = event.timestamp if event.timestamp is not None else int(time.time())
+        return payload
+
+    def _build_metric(self, metric: NewRelicMetric) -> dict[str, Any]:
+        ts_ms = int(time.time() * 1000)
+        m: dict[str, Any] = {
+            "name": metric.name,
+            "type": metric.metric_type.value,
+            "value": metric.value,
+            "timestamp": ts_ms,
+            "attributes": metric.attributes,
+        }
+        if metric.interval_ms is not None:
+            m["interval.ms"] = metric.interval_ms
+        return m
+
+    def send_event(self, event: NewRelicEvent) -> None:
+        """Send a single custom event to New Relic."""
+        if not self._config.account_id:
+            raise ValueError("account_id is required to send events")
+        self._do_post(self._events_url(), [self._build_event(event)])
+
+    def send_events(self, events: List[NewRelicEvent]) -> None:
+        """Send multiple custom events in a single request."""
+        if not self._config.account_id:
+            raise ValueError("account_id is required to send events")
+        self._do_post(self._events_url(), [self._build_event(e) for e in events])
+
+    def send_metric(self, metric: NewRelicMetric) -> None:
+        """Send a single metric to New Relic."""
+        self._do_post(self._metrics_url(), [{"metrics": [self._build_metric(metric)]}])
+
+    def send_metrics(self, metrics: List[NewRelicMetric]) -> None:
+        """Send multiple metrics in a single request."""
+        self._do_post(self._metrics_url(), [{"metrics": [self._build_metric(m) for m in metrics]}])
