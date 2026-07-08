@@ -1,133 +1,131 @@
 // Package sketch provides native Go implementations of probabilistic data
-// structures for embedded use — no network connection required.
+// structures for embedded use - no network connection required.
 package sketch
 
 import (
 	"errors"
 	"math"
-	"sort"
 )
 
-// DDSketch is a quantile sketch with relative-error guarantees.
-// For any quantile q, the returned value v satisfies:
+// DDSketch estimates quantiles with a guaranteed relative-error bound alpha.
+// For a value v the reported quantile estimate q satisfies:
 //
-//	|v_true - v| / v_true ≤ alpha
-//
-// Reference: "DDSketch: A fast and fully-mergeable quantile sketch with
-// relative-error guarantees" (Masson et al., 2019).
+//	|q - v| / v <= alpha
 type DDSketch struct {
-	alpha     float64
-	gamma     float64 // 1 + 2*alpha/(1-alpha)
-	gammaLn   float64 // ln(gamma)
-	buckets   map[int]float64
-	count     float64
-	sum       float64
-	minVal    float64
-	maxVal    float64
-	zeroCount float64
+	alpha   float64
+	gamma   float64
+	buckets map[int]uint64
+	count   float64
+	sum     float64
+	zeros   uint64
+	minVal  float64
+	maxVal  float64
 }
 
 // NewDDSketch creates a DDSketch with relative accuracy alpha (0 < alpha < 1).
-// A typical value is 0.01 (1% relative error).
 func NewDDSketch(alpha float64) (*DDSketch, error) {
 	if alpha <= 0 || alpha >= 1 {
 		return nil, errors.New("ddsketch: alpha must be in (0, 1)")
 	}
-	gamma := 1.0 + 2.0*alpha/(1.0-alpha)
 	return &DDSketch{
 		alpha:   alpha,
-		gamma:   gamma,
-		gammaLn: math.Log(gamma),
-		buckets: make(map[int]float64),
-		minVal:  math.Inf(1),
-		maxVal:  math.Inf(-1),
+		gamma:   (1 + alpha) / (1 - alpha),
+		buckets: make(map[int]uint64),
+		minVal:  math.MaxFloat64,
+		maxVal:  -math.MaxFloat64,
 	}, nil
 }
 
-func (d *DDSketch) bucketIndex(v float64) int {
-	return int(math.Ceil(math.Log(v) / d.gammaLn))
+func (s *DDSketch) bucketIndex(v float64) int {
+	return int(math.Ceil(math.Log(v) / math.Log(s.gamma)))
 }
 
 // Add inserts a non-negative value into the sketch.
-func (d *DDSketch) Add(v float64) error {
+func (s *DDSketch) Add(v float64) error {
 	if v < 0 {
-		return errors.New("ddsketch: negative values not supported")
+		return errors.New("ddsketch: negative values are not supported")
 	}
-	d.count++
-	d.sum += v
-	if v < d.minVal {
-		d.minVal = v
+	s.count++
+	s.sum += v
+	if v < s.minVal {
+		s.minVal = v
 	}
-	if v > d.maxVal {
-		d.maxVal = v
+	if v > s.maxVal {
+		s.maxVal = v
 	}
 	if v == 0 {
-		d.zeroCount++
+		s.zeros++
 		return nil
 	}
-	d.buckets[d.bucketIndex(v)]++
+	idx := s.bucketIndex(v)
+	s.buckets[idx]++
 	return nil
 }
 
-// Count returns the total number of values added.
-func (d *DDSketch) Count() float64 { return d.count }
-
-// Sum returns the sum of all values added.
-func (d *DDSketch) Sum() float64 { return d.sum }
-
-// Quantile returns the approximate value at quantile q (0 ≤ q ≤ 1).
-func (d *DDSketch) Quantile(q float64) (float64, error) {
+// Quantile returns the q-th quantile estimate (0 <= q <= 1).
+func (s *DDSketch) Quantile(q float64) (float64, error) {
+	if s.count == 0 {
+		return 0, errors.New("ddsketch: sketch is empty")
+	}
 	if q < 0 || q > 1 {
 		return 0, errors.New("ddsketch: q must be in [0, 1]")
 	}
-	if d.count == 0 {
-		return 0, errors.New("ddsketch: sketch is empty")
-	}
 	if q == 0 {
-		return d.minVal, nil
+		return s.minVal, nil
 	}
 	if q == 1 {
-		return d.maxVal, nil
+		return s.maxVal, nil
 	}
-
-	rank := q * d.count
-	if rank <= d.zeroCount {
+	target := q * s.count
+	cumulative := float64(s.zeros)
+	if cumulative >= target {
 		return 0, nil
 	}
-	rank -= d.zeroCount
-
-	keys := make([]int, 0, len(d.buckets))
-	for k := range d.buckets {
-		keys = append(keys, k)
+	type kv struct {
+		k int
+		v uint64
 	}
-	sort.Ints(keys)
-
-	cumulative := 0.0
-	for _, k := range keys {
-		cumulative += d.buckets[k]
-		if cumulative >= rank {
-			return 2.0 * math.Pow(d.gamma, float64(k)) / (1.0 + d.gamma), nil
+	pairs := make([]kv, 0, len(s.buckets))
+	for k, v := range s.buckets {
+		pairs = append(pairs, kv{k, v})
+	}
+	// sort by bucket index
+	for i := 1; i < len(pairs); i++ {
+		for j := i; j > 0 && pairs[j-1].k > pairs[j].k; j-- {
+			pairs[j-1], pairs[j] = pairs[j], pairs[j-1]
 		}
 	}
-	return d.maxVal, nil
+	for _, p := range pairs {
+		cumulative += float64(p.v)
+		if cumulative >= target {
+			return 2 * math.Pow(s.gamma, float64(p.k)) / (s.gamma + 1), nil
+		}
+	}
+	return s.maxVal, nil
 }
 
-// Merge merges other into d. Both must have the same alpha.
-func (d *DDSketch) Merge(other *DDSketch) error {
-	if d.alpha != other.alpha {
+// Count returns the number of values added.
+func (s *DDSketch) Count() float64 { return s.count }
+
+// Sum returns the sum of all added values.
+func (s *DDSketch) Sum() float64 { return s.sum }
+
+// Merge merges other into s. Both must have the same alpha.
+func (s *DDSketch) Merge(other *DDSketch) error {
+	if s.alpha != other.alpha {
 		return errors.New("ddsketch: cannot merge sketches with different alpha")
 	}
-	d.count += other.count
-	d.sum += other.sum
-	d.zeroCount += other.zeroCount
-	if other.minVal < d.minVal {
-		d.minVal = other.minVal
-	}
-	if other.maxVal > d.maxVal {
-		d.maxVal = other.maxVal
-	}
+	s.count += other.count
+	s.sum += other.sum
+	s.zeros += other.zeros
 	for k, v := range other.buckets {
-		d.buckets[k] += v
+		s.buckets[k] += v
+	}
+	if other.minVal < s.minVal {
+		s.minVal = other.minVal
+	}
+	if other.maxVal > s.maxVal {
+		s.maxVal = other.maxVal
 	}
 	return nil
 }
