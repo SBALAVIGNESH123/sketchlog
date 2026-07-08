@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// ── DDSketch ────────────────────────────────────────────────────────────────
-
 func TestDDSketch_InvalidAlpha(t *testing.T) {
 	for _, a := range []float64{-1, 0, 1, 2} {
 		if _, err := NewDDSketch(a); err == nil {
@@ -137,8 +135,6 @@ func TestDDSketch_MergeIncompatible(t *testing.T) {
 	}
 }
 
-// ── HyperLogLog ─────────────────────────────────────────────────────────────
-
 func TestHLL_InvalidPrecision(t *testing.T) {
 	for _, p := range []uint8{0, 3, 19} {
 		if _, err := NewHyperLogLog(p); err == nil {
@@ -155,11 +151,10 @@ func TestHLL_Cardinality(t *testing.T) {
 	}
 	got := h.Count()
 	expected := uint64(n)
-	// Allow 5% error for p=14 (~0.81% std error)
 	lo := uint64(float64(expected) * 0.90)
 	hi := uint64(float64(expected) * 1.10)
 	if got < lo || got > hi {
-		t.Errorf("cardinality estimate %d outside [%d, %d] for n=%d", got, lo, hi, n)
+		t.Errorf("cardinality %d outside [%d, %d]", got, lo, hi)
 	}
 }
 
@@ -168,9 +163,8 @@ func TestHLL_Duplicates(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		h.Add([]byte("same-item"))
 	}
-	got := h.Count()
-	if got > 5 {
-		t.Errorf("expected ~1 distinct, got %d", got)
+	if h.Count() > 5 {
+		t.Errorf("expected ~1 distinct, got %d", h.Count())
 	}
 }
 
@@ -185,10 +179,8 @@ func TestHLL_Merge(t *testing.T) {
 		t.Fatalf("Merge failed: %v", err)
 	}
 	got := a.Count()
-	lo := uint64(7000)
-	hi := uint64(13000)
-	if got < lo || got > hi {
-		t.Errorf("merged cardinality %d outside [%d, %d]", got, lo, hi)
+	if got < 7000 || got > 13000 {
+		t.Errorf("merged cardinality %d outside [7000, 13000]", got)
 	}
 }
 
@@ -199,8 +191,6 @@ func TestHLL_MergeIncompatible(t *testing.T) {
 		t.Error("expected error merging different precision")
 	}
 }
-
-// ── CountMinSketch ──────────────────────────────────────────────────────────
 
 func TestCMS_InvalidParams(t *testing.T) {
 	if _, err := NewCountMinSketch(0, 0.01); err == nil {
@@ -244,7 +234,7 @@ func TestCMS_Frequency(t *testing.T) {
 	for _, item := range items {
 		got := c.Count([]byte(item.key))
 		if got < item.count {
-			t.Errorf("%s: got %d, expected ≥ %d", item.key, got, item.count)
+			t.Errorf("%s: got %d, expected >= %d", item.key, got, item.count)
 		}
 	}
 }
@@ -279,9 +269,8 @@ func TestCMS_Merge(t *testing.T) {
 	if a.TotalCount() != 50 {
 		t.Errorf("expected total 50, got %d", a.TotalCount())
 	}
-	got := a.Count([]byte("key"))
-	if got < 50 {
-		t.Errorf("expected ≥ 50, got %d", got)
+	if a.Count([]byte("key")) < 50 {
+		t.Errorf("expected >= 50, got %d", a.Count([]byte("key")))
 	}
 }
 
