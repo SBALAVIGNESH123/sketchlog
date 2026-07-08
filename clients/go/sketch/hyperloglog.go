@@ -1,37 +1,18 @@
-// Package sketch provides native Go implementations of probabilistic data
-// structures for embedded use - no network connection required.
 package sketch
 
 import (
 	"errors"
+	"hash/fnv"
 	"math"
 	"math/bits"
 )
 
-// HyperLogLog estimates the cardinality (number of distinct elements) of a
-// multiset using O(2^precision) bytes of memory.
-//
-// For precision p (4 <= p <= 18) the standard error is ~1.04/sqrt(2^p).
-// A typical value is p=14, giving ~0.81% error with 16 KiB of memory.
+// HyperLogLog estimates the cardinality of a multiset.
 type HyperLogLog struct {
-	precision uint8
+	p         uint8
 	m         uint32
 	registers []uint8
 	alpha     float64
-}
-
-// NewHyperLogLog creates a HyperLogLog with the given precision (4 <= p <= 18).
-func NewHyperLogLog(precision uint8) (*HyperLogLog, error) {
-	if precision < 4 || precision > 18 {
-		return nil, errors.New("hyperloglog: precision must be in [4, 18]")
-	}
-	m := uint32(1) << precision
-	return &HyperLogLog{
-		precision: precision,
-		m:         m,
-		registers: make([]uint8, m),
-		alpha:     hllAlpha(m),
-	}, nil
 }
 
 func hllAlpha(m uint32) float64 {
@@ -43,29 +24,36 @@ func hllAlpha(m uint32) float64 {
 	case 64:
 		return 0.709
 	default:
-		return 0.7213 / (1.0 + 1.079/float64(m))
+		return 0.7213 / (1 + 1.079/float64(m))
 	}
 }
 
-// fnv64a hashes a byte slice using FNV-1a (64-bit).
-func fnv64a(data []byte) uint64 {
-	const (
-		offset64 uint64 = 14695981039346656037
-		prime64  uint64 = 1099511628211
-	)
-	h := offset64
-	for _, b := range data {
-		h ^= uint64(b)
-		h *= prime64
+// NewHyperLogLog creates a HyperLogLog with precision p (4 <= p <= 18).
+func NewHyperLogLog(p uint8) (*HyperLogLog, error) {
+	if p < 4 || p > 18 {
+		return nil, errors.New("precision p must be in [4, 18]")
 	}
-	return h
+	m := uint32(1) << p
+	return &HyperLogLog{
+		p:         p,
+		m:         m,
+		registers: make([]uint8, m),
+		alpha:     hllAlpha(m),
+	}, nil
 }
 
-// Add adds a byte slice to the sketch.
+func (h *HyperLogLog) hash(data []byte) uint64 {
+	f := fnv.New64a()
+	_, _ = f.Write(data)
+	return f.Sum64()
+}
+
+// Add adds a data item to the sketch.
 func (h *HyperLogLog) Add(data []byte) {
-	x := fnv64a(data)
-	j := x >> (64 - uint(h.precision))
-	rho := uint8(bits.LeadingZeros64(x<<uint(h.precision))) + 1
+	x := h.hash(data)
+	j := x >> (64 - uint(h.p))
+	w := x<<uint(h.p) | (uint64(j) >> (64 - uint(h.p)))
+	rho := uint8(bits.LeadingZeros64(w)) + 1
 	if rho > h.registers[j] {
 		h.registers[j] = rho
 	}
@@ -73,30 +61,35 @@ func (h *HyperLogLog) Add(data []byte) {
 
 // Count returns the estimated cardinality.
 func (h *HyperLogLog) Count() uint64 {
-	m := float64(h.m)
-	sum := 0.0
+	var sum float64
 	for _, v := range h.registers {
 		sum += math.Pow(2, -float64(v))
 	}
+	m := float64(h.m)
 	estimate := h.alpha * m * m / sum
+
+	// Small range correction
 	if estimate <= 2.5*m {
-		zeros := 0
+		var zeros float64
 		for _, v := range h.registers {
 			if v == 0 {
 				zeros++
 			}
 		}
 		if zeros > 0 {
-			estimate = m * math.Log(m/float64(zeros))
+			estimate = m * math.Log(m/zeros)
 		}
 	}
+	// Large range correction is omitted: hash space is 2^64, correction
+	// would only apply above ~6e17 which exceeds practical use.
+
 	return uint64(estimate)
 }
 
-// Merge merges other into h. Both must have the same precision.
+// Merge combines another HyperLogLog into this one (same precision required).
 func (h *HyperLogLog) Merge(other *HyperLogLog) error {
-	if h.precision != other.precision {
-		return errors.New("hyperloglog: cannot merge sketches with different precision")
+	if h.p != other.p {
+		return errors.New("precision mismatch")
 	}
 	for i, v := range other.registers {
 		if v > h.registers[i] {

@@ -1,99 +1,95 @@
-// Package sketch provides native Go implementations of probabilistic data
-// structures for embedded use - no network connection required.
 package sketch
 
 import (
 	"errors"
+	"hash/fnv"
 	"math"
 )
 
-// CountMinSketch estimates the frequency of elements in a data stream using
-// O(width * depth) counters.
+// CountMinSketch estimates the frequency of items in a data stream.
 type CountMinSketch struct {
-	width uint32
-	depth uint32
-	table [][]uint64
-	count uint64
+	width  uint32
+	depth  uint32
+	matrix [][]uint64
+	total  uint64
 }
 
-// NewCountMinSketch creates a CountMinSketch with error rate epsilon and
-// failure probability delta (both in (0, 1)).
+const maxCMSDimension = 1 << 20 // 1 048 576 — prevent enormous allocations
+
+// NewCountMinSketch creates a CMS with the given accuracy parameters.
+// epsilon controls error (smaller = more accurate, more memory).
+// delta controls confidence (smaller = higher confidence, more memory).
 func NewCountMinSketch(epsilon, delta float64) (*CountMinSketch, error) {
 	if epsilon <= 0 || epsilon >= 1 {
-		return nil, errors.New("countminsketch: epsilon must be in (0, 1)")
+		return nil, errors.New("epsilon must be in (0, 1)")
 	}
 	if delta <= 0 || delta >= 1 {
-		return nil, errors.New("countminsketch: delta must be in (0, 1)")
+		return nil, errors.New("delta must be in (0, 1)")
 	}
 	wf := math.Ceil(math.E / epsilon)
-	if wf > float64(math.MaxUint32) {
-		return nil, errors.New("countminsketch: epsilon too small")
-	}
 	df := math.Ceil(math.Log(1.0 / delta))
-	if df > float64(math.MaxUint32) {
-		return nil, errors.New("countminsketch: delta too small")
+	if wf > maxCMSDimension || df > maxCMSDimension {
+		return nil, errors.New("epsilon or delta too small: resulting dimensions exceed limit")
 	}
-	return newCMS(uint32(wf), uint32(df))
+	return NewCountMinSketchFromDimensions(uint32(wf), uint32(df))
 }
 
-// NewCountMinSketchFromDimensions creates a CountMinSketch with explicit dimensions.
+// NewCountMinSketchFromDimensions creates a CMS with explicit width and depth.
 func NewCountMinSketchFromDimensions(width, depth uint32) (*CountMinSketch, error) {
-	if width == 0 {
-		return nil, errors.New("countminsketch: width must be > 0")
+	if width == 0 || depth == 0 {
+		return nil, errors.New("width and depth must be > 0")
 	}
-	if depth == 0 {
-		return nil, errors.New("countminsketch: depth must be > 0")
+	matrix := make([][]uint64, depth)
+	for i := range matrix {
+		matrix[i] = make([]uint64, width)
 	}
-	return newCMS(width, depth)
+	return &CountMinSketch{width: width, depth: depth, matrix: matrix}, nil
 }
 
-func newCMS(width, depth uint32) (*CountMinSketch, error) {
-	table := make([][]uint64, depth)
-	for i := range table {
-		table[i] = make([]uint64, width)
-	}
-	return &CountMinSketch{width: width, depth: depth, table: table}, nil
-}
-
-func (c *CountMinSketch) hash(data []byte, seed uint32) uint32 {
-	h := fnv64a(data) ^ uint64(seed)*2654435761
-	return uint32(h>>32) ^ uint32(h)
-}
-
-// Add increments the count of data by delta.
-func (c *CountMinSketch) Add(data []byte, delta uint64) {
+func (c *CountMinSketch) hashes(data []byte) []uint32 {
+	h := make([]uint32, c.depth)
 	for i := uint32(0); i < c.depth; i++ {
-		j := c.hash(data, i) % c.width
-		c.table[i][j] += delta
+		f := fnv.New32a()
+		// Mix row index into hash seed
+		_, _ = f.Write([]byte{byte(i), byte(i >> 8), byte(i >> 16), byte(i >> 24)})
+		_, _ = f.Write(data)
+		h[i] = f.Sum32() % c.width
 	}
-	c.count += delta
+	return h
 }
 
-// Count returns the estimated frequency of data.
-func (c *CountMinSketch) Count(data []byte) uint64 {
-	var min uint64 = ^uint64(0)
-	for i := uint32(0); i < c.depth; i++ {
-		j := c.hash(data, i) % c.width
-		if c.table[i][j] < min {
-			min = c.table[i][j]
+// Add increments the count of item by delta.
+func (c *CountMinSketch) Add(item []byte, delta uint64) {
+	c.total += delta
+	for i, col := range c.hashes(item) {
+		c.matrix[i][col] += delta
+	}
+}
+
+// Count returns the estimated frequency of item.
+func (c *CountMinSketch) Count(item []byte) uint64 {
+	var min uint64 = math.MaxUint64
+	for i, col := range c.hashes(item) {
+		if v := c.matrix[i][col]; v < min {
+			min = v
 		}
 	}
 	return min
 }
 
-// TotalCount returns the total number of items added.
-func (c *CountMinSketch) TotalCount() uint64 { return c.count }
+// TotalCount returns the total number of increments applied.
+func (c *CountMinSketch) TotalCount() uint64 { return c.total }
 
-// Merge merges other into c. Both must have the same dimensions.
+// Merge combines another CountMinSketch into this one (same dimensions required).
 func (c *CountMinSketch) Merge(other *CountMinSketch) error {
 	if c.width != other.width || c.depth != other.depth {
-		return errors.New("countminsketch: cannot merge sketches with different dimensions")
+		return errors.New("dimension mismatch")
 	}
-	for i := range c.table {
-		for j := range c.table[i] {
-			c.table[i][j] += other.table[i][j]
+	c.total += other.total
+	for i := range c.matrix {
+		for j := range c.matrix[i] {
+			c.matrix[i][j] += other.matrix[i][j]
 		}
 	}
-	c.count += other.count
 	return nil
 }
