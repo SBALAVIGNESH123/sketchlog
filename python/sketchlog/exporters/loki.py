@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -28,7 +28,7 @@ class LokiConfig:
     username: Optional[str] = None
     password: Optional[str] = None
     bearer_token: Optional[str] = None
-    extra_headers: dict[str, str] = field(default_factory=dict)
+    extra_headers: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.url:
@@ -51,12 +51,12 @@ class LokiStream:
         timestamps_ns: Optional list of nanosecond timestamps (one per line).
     """
 
-    labels: dict[str, str]
+    labels: Dict[str, str]
     lines: List[str]
     timestamps_ns: Optional[List[int]] = None
 
-    def to_payload(self) -> dict[str, Any]:
-        label_str = "{" + ",".join(f'{k}="{v}"' for k, v in self.labels.items()) + "}"
+    def to_payload(self) -> Dict[str, Any]:
+        """Serialize this stream to a Loki push payload dict."""
         values: List[List[str]] = []
         for i, line in enumerate(self.lines):
             if self.timestamps_ns and i < len(self.timestamps_ns):
@@ -64,7 +64,7 @@ class LokiStream:
             else:
                 ts = str(time.time_ns())
             values.append([ts, line])
-        return {"stream": {k: v for k, v in self.labels.items()}, "values": values}
+        return {"stream": dict(self.labels), "values": values}
 
 
 class LokiExporter:
@@ -87,10 +87,10 @@ class LokiExporter:
 
     def _make_client(self) -> httpx.Client:
         cfg = self._config
-        auth = None
+        auth: Optional[Tuple[str, str]] = None
         if cfg.username and cfg.password:
             auth = (cfg.username, cfg.password)
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
         if cfg.bearer_token:
             headers["Authorization"] = f"Bearer {cfg.bearer_token}"
         headers.update(cfg.extra_headers)
@@ -117,11 +117,14 @@ class LokiExporter:
     def __exit__(self, *_: Any) -> None:
         self.close()
 
-    def _do_push(self, payload: dict[str, Any]) -> None:
+    def _do_push(self, payload: Dict[str, Any]) -> None:
+        # Use local variable so mypy can narrow Optional[httpx.Client] -> httpx.Client
         client = self._client
-        owned = client is None
-        if owned:
+        if client is None:
             client = self._make_client()
+            owned = True
+        else:
+            owned = False
         try:
             resp = client.post(self._endpoint(), json=payload)
             try:
@@ -141,7 +144,7 @@ class LokiExporter:
     def push(
         self,
         lines: List[str],
-        labels: Optional[dict[str, str]] = None,
+        labels: Optional[Dict[str, str]] = None,
         timestamps_ns: Optional[List[int]] = None,
     ) -> None:
         """Push log lines to Loki.
