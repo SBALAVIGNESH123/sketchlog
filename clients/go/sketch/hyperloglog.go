@@ -52,7 +52,7 @@ func (h *HyperLogLog) hash(data []byte) uint64 {
 func (h *HyperLogLog) Add(data []byte) {
 	x := h.hash(data)
 	j := x >> (64 - uint(h.p))
-	w := x<<uint(h.p) | (uint64(j) >> (64 - uint(h.p)))
+	w := x << uint(h.p)
 	rho := uint8(bits.LeadingZeros64(w)) + 1
 	if rho > h.registers[j] {
 		h.registers[j] = rho
@@ -70,26 +70,24 @@ func (h *HyperLogLog) Count() uint64 {
 
 	// Small range correction
 	if estimate <= 2.5*m {
-		var zeros float64
+		var zeros int
 		for _, v := range h.registers {
 			if v == 0 {
 				zeros++
 			}
 		}
 		if zeros > 0 {
-			estimate = m * math.Log(m/zeros)
+			estimate = m * math.Log(m/float64(zeros))
 		}
 	}
-	// Large range correction is omitted: hash space is 2^64, correction
-	// would only apply above ~6e17 which exceeds practical use.
 
 	return uint64(estimate)
 }
 
-// Merge combines another HyperLogLog into this one (same precision required).
+// Merge combines another HyperLogLog into this one (must have same precision).
 func (h *HyperLogLog) Merge(other *HyperLogLog) error {
 	if h.p != other.p {
-		return errors.New("precision mismatch")
+		return errors.New("cannot merge HyperLogLog sketches with different precision")
 	}
 	for i, v := range other.registers {
 		if v > h.registers[i] {
