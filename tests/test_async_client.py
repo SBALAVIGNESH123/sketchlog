@@ -72,7 +72,6 @@ def mock_response(status: int, body: dict) -> httpx.Response:
 # Lifecycle
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
 async def test_context_manager_opens_and_closes():
     client = make_client()
     async with client:
@@ -80,7 +79,6 @@ async def test_context_manager_opens_and_closes():
     assert client._client is None
 
 
-@pytest.mark.asyncio
 async def test_double_close_is_safe():
     client = make_client()
     await client.open()
@@ -92,7 +90,6 @@ async def test_double_close_is_safe():
 # Health check
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
 async def test_health_ok():
     client = make_client()
     async with client:
@@ -102,7 +99,6 @@ async def test_health_ok():
     assert result["status"] == "ok"
 
 
-@pytest.mark.asyncio
 async def test_health_auth_error():
     client = make_client()
     async with client:
@@ -112,7 +108,6 @@ async def test_health_auth_error():
                 await client.health()
 
 
-@pytest.mark.asyncio
 async def test_health_rate_limit():
     client = make_client()
     async with client:
@@ -122,7 +117,6 @@ async def test_health_rate_limit():
                 await client.health()
 
 
-@pytest.mark.asyncio
 async def test_health_server_error():
     client = make_client()
     async with client:
@@ -136,7 +130,6 @@ async def test_health_server_error():
 # Ingest
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
 async def test_ingest_ok():
     client = make_client()
     async with client:
@@ -146,7 +139,6 @@ async def test_ingest_ok():
     assert result["inserted"] == 1
 
 
-@pytest.mark.asyncio
 async def test_ingest_empty_raises():
     client = make_client()
     async with client:
@@ -158,7 +150,6 @@ async def test_ingest_empty_raises():
 # Query
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
 async def test_query_summary_ok():
     client = make_client()
     async with client:
@@ -168,7 +159,6 @@ async def test_query_summary_ok():
     assert result["p99"] == 9.9
 
 
-@pytest.mark.asyncio
 async def test_query_cdf_ok():
     client = make_client()
     async with client:
@@ -182,7 +172,6 @@ async def test_query_cdf_ok():
 # Namespace / Stream management
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
 async def test_create_namespace_ok():
     client = make_client()
     async with client:
@@ -192,7 +181,6 @@ async def test_create_namespace_ok():
     assert result["created"] is True
 
 
-@pytest.mark.asyncio
 async def test_list_namespaces_ok():
     client = make_client()
     async with client:
@@ -202,7 +190,6 @@ async def test_list_namespaces_ok():
     assert "namespaces" in result
 
 
-@pytest.mark.asyncio
 async def test_create_stream_ok():
     client = make_client()
     async with client:
@@ -212,7 +199,6 @@ async def test_create_stream_ok():
     assert result["created"] is True
 
 
-@pytest.mark.asyncio
 async def test_list_streams_ok():
     client = make_client()
     async with client:
@@ -226,7 +212,6 @@ async def test_list_streams_ok():
 # Retry logic
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
 async def test_retries_on_503():
     client = make_client()
     call_count = 0
@@ -246,7 +231,6 @@ async def test_retries_on_503():
     assert result["status"] == "ok"
 
 
-@pytest.mark.asyncio
 async def test_exhausted_retries_raises():
     client = make_client()
     async with client:
@@ -261,7 +245,6 @@ async def test_exhausted_retries_raises():
 # subscribe_stream error budget
 # ---------------------------------------------------------------------------
 
-@pytest.mark.asyncio
 async def test_subscribe_stream_exits_on_error_budget():
     client = make_client()
     async with client:
