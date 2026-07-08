@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 
@@ -60,7 +60,7 @@ class NewRelicEvent:
     """
 
     event_type: str
-    attributes: dict[str, Any] = field(default_factory=dict)
+    attributes: Dict[str, Any] = field(default_factory=dict)
     timestamp: Optional[int] = None
 
 
@@ -78,9 +78,9 @@ class NewRelicMetric:
     """
 
     name: str
-    value: Union[float, dict[str, float]]
+    value: Union[float, Dict[str, float]]
     metric_type: NewRelicMetricType = NewRelicMetricType.GAUGE
-    attributes: dict[str, Any] = field(default_factory=dict)
+    attributes: Dict[str, Any] = field(default_factory=dict)
     interval_ms: Optional[int] = None
 
 
@@ -92,7 +92,8 @@ class NewRelicExporter:
         cfg = NewRelicConfig(api_key="NRII-...", account_id="12345")
         with NewRelicExporter(cfg) as exp:
             exp.send_event(NewRelicEvent("PageView", {"url": "/home"}))
-            exp.send_metric(NewRelicMetric("cpu.usage", 0.72, NewRelicMetricType.GAUGE))
+            exp.send_metric(NewRelicMetric("cpu.usage", 0.72,
+                                           NewRelicMetricType.GAUGE))
     """
 
     def __init__(self, config: NewRelicConfig, client: Optional[httpx.Client] = None) -> None:
@@ -109,7 +110,10 @@ class NewRelicExporter:
     def _events_url(self) -> str:
         cfg = self._config
         if cfg.region == NewRelicRegion.EU:
-            return f"https://insights-collector.eu01.nr-data.net/v1/accounts/{cfg.account_id}/events"
+            return (
+                f"https://insights-collector.eu01.nr-data.net"
+                f"/v1/accounts/{cfg.account_id}/events"
+            )
         return f"https://insights-collector.newrelic.com/v1/accounts/{cfg.account_id}/events"
 
     def _metrics_url(self) -> str:
@@ -136,10 +140,13 @@ class NewRelicExporter:
         self.close()
 
     def _do_post(self, url: str, payload: Any) -> None:
+        # Use local variable so mypy can narrow Optional[httpx.Client] -> httpx.Client
         client = self._client
-        owned = client is None
-        if owned:
+        if client is None:
             client = self._make_client()
+            owned = True
+        else:
+            owned = False
         try:
             resp = client.post(url, json=payload)
             try:
@@ -156,15 +163,17 @@ class NewRelicExporter:
             if owned:
                 client.close()
 
-    def _build_event(self, event: NewRelicEvent) -> dict[str, Any]:
-        payload: dict[str, Any] = {"eventType": event.event_type}
+    def _build_event(self, event: NewRelicEvent) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"eventType": event.event_type}
         payload.update(event.attributes)
-        payload["timestamp"] = event.timestamp if event.timestamp is not None else int(time.time())
+        payload["timestamp"] = (
+            event.timestamp if event.timestamp is not None else int(time.time())
+        )
         return payload
 
-    def _build_metric(self, metric: NewRelicMetric) -> dict[str, Any]:
+    def _build_metric(self, metric: NewRelicMetric) -> Dict[str, Any]:
         ts_ms = int(time.time() * 1000)
-        m: dict[str, Any] = {
+        m: Dict[str, Any] = {
             "name": metric.name,
             "type": metric.metric_type.value,
             "value": metric.value,
@@ -193,4 +202,7 @@ class NewRelicExporter:
 
     def send_metrics(self, metrics: List[NewRelicMetric]) -> None:
         """Send multiple metrics in a single request."""
-        self._do_post(self._metrics_url(), [{"metrics": [self._build_metric(m) for m in metrics]}])
+        self._do_post(
+            self._metrics_url(),
+            [{"metrics": [self._build_metric(m) for m in metrics]}],
+        )
