@@ -18,13 +18,18 @@ from sketchlog.exporters.newrelic import (
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+# A single reusable dummy request — avoids constructing httpx.Request repeatedly.
+_DUMMY_REQ = httpx.Request("GET", "http://test.example.com")
+
+
 def _resp(status: int, body: Any = None) -> MagicMock:
+    """Create a mock httpx.Response with the given status code."""
     mock = MagicMock(spec=httpx.Response)
     mock.status_code = status
     if status >= 400:
         err = httpx.HTTPStatusError(
             f"HTTP {status}",
-            request=MagicMock(),
+            request=_DUMMY_REQ,
             response=MagicMock(status_code=status),
         )
         mock.raise_for_status.side_effect = err
@@ -36,14 +41,20 @@ def _resp(status: int, body: Any = None) -> MagicMock:
 
 
 def _client(status: int = 204, body: Any = None) -> MagicMock:
+    """Create a mock httpx.Client whose post() returns a mock response."""
     c = MagicMock(spec=httpx.Client)
     c.post.return_value = _resp(status, body)
     return c
 
 
-def _connect_error() -> httpx.ConnectError:
-    """Create httpx.ConnectError safely — requires request= in all httpx versions."""
-    return httpx.ConnectError("connection refused", request=MagicMock())
+def _timeout_exc(msg: str = "timed out") -> httpx.ReadTimeout:
+    """httpx.ReadTimeout is a concrete TimeoutException subclass — safe to construct."""
+    return httpx.ReadTimeout(msg, request=_DUMMY_REQ)
+
+
+def _connect_exc(msg: str = "connection refused") -> httpx.ConnectError:
+    """httpx.ConnectError requires request= in all httpx versions."""
+    return httpx.ConnectError(msg, request=_DUMMY_REQ)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -172,7 +183,7 @@ def test_loki_http_error() -> None:
 def test_loki_timeout_error() -> None:
     cfg = LokiConfig(url="http://loki:3100")
     c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = httpx.TimeoutException("timed out", request=MagicMock())
+    c.post.side_effect = _timeout_exc("timed out")
     exp = LokiExporter(cfg, client=c)
     with pytest.raises(ExporterError, match="timed out"):
         exp.push(["x"])
@@ -181,7 +192,7 @@ def test_loki_timeout_error() -> None:
 def test_loki_request_error() -> None:
     cfg = LokiConfig(url="http://loki:3100")
     c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _connect_error()
+    c.post.side_effect = _connect_exc()
     exp = LokiExporter(cfg, client=c)
     with pytest.raises(ExporterError, match="connection error"):
         exp.push(["x"])
@@ -310,7 +321,7 @@ def test_dd_http_error() -> None:
 def test_dd_timeout_error() -> None:
     cfg = DatadogConfig(api_key="k")
     c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = httpx.TimeoutException("timeout", request=MagicMock())
+    c.post.side_effect = _timeout_exc("timeout")
     exp = DatadogExporter(cfg, client=c)
     with pytest.raises(ExporterError, match="timed out"):
         exp.send_metric(DatadogMetric("m", 1.0))
@@ -319,7 +330,7 @@ def test_dd_timeout_error() -> None:
 def test_dd_request_error() -> None:
     cfg = DatadogConfig(api_key="k")
     c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _connect_error()
+    c.post.side_effect = _connect_exc()
     exp = DatadogExporter(cfg, client=c)
     with pytest.raises(ExporterError, match="connection error"):
         exp.send_metric(DatadogMetric("m", 1.0))
@@ -490,7 +501,7 @@ def test_nr_http_error() -> None:
 def test_nr_timeout_error() -> None:
     cfg = NewRelicConfig(api_key="k")
     c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = httpx.TimeoutException("timeout", request=MagicMock())
+    c.post.side_effect = _timeout_exc("timeout")
     exp = NewRelicExporter(cfg, client=c)
     with pytest.raises(ExporterError, match="timed out"):
         exp.send_metric(NewRelicMetric("m", 1.0))
@@ -499,7 +510,7 @@ def test_nr_timeout_error() -> None:
 def test_nr_request_error() -> None:
     cfg = NewRelicConfig(api_key="k")
     c = MagicMock(spec=httpx.Client)
-    c.post.side_effect = _connect_error()
+    c.post.side_effect = _connect_exc()
     exp = NewRelicExporter(cfg, client=c)
     with pytest.raises(ExporterError, match="connection error"):
         exp.send_metric(NewRelicMetric("m", 1.0))
