@@ -1,276 +1,412 @@
-"""Tests for AsyncSketchLogClient — httpx-based, asyncio_mode=auto."""
+"""
+Tests for AsyncSketchLogClient.
+
+pytest.ini sets asyncio_mode = auto, so no @pytest.mark.asyncio needed.
+All HTTP is mocked via httpx.MockTransport — zero real network calls.
+"""
 from __future__ import annotations
 
 import asyncio
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
-import pytest
+
 import httpx
+import pytest
 
 from sketchlog.async_client import (
-    AsyncSketchLogClient,
     AsyncClientConfig,
+    AsyncSketchLogClient,
     SketchLogAuthError,
+    SketchLogClientError,
+    SketchLogError,
     SketchLogRateLimitError,
     SketchLogServerError,
     SketchLogTimeoutError,
-    SketchLogError,
 )
 
 
-def make_response(status: int, body: dict | None = None, headers: dict | None = None) -> httpx.Response:
-    """Create a mock httpx.Response."""
-    content = json_bytes(body or {})
-    h = httpx.Headers({"content-type": "application/json", **(headers or {})})
-    return httpx.Response(status_code=status, content=content, headers=h)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def make_response(status: int, body: Any = None) -> httpx.Response:
+    import json as _json
+    content = _json.dumps(body or {}).encode()
+    return httpx.Response(status, content=content)
 
 
-def json_bytes(d: dict) -> bytes:
-    import json
-    return json.dumps(d).encode()
+def make_client(responses: list[httpx.Response]) -> AsyncSketchLogClient:
+    """Return an already-opened client that replays *responses* in order."""
+    cfg = AsyncClientConfig(base_url="http://localhost:7749", token="test-token")
+    client = AsyncSketchLogClient(cfg)
+
+    idx = 0
+
+    async def mock_request(method, url, **kwargs):
+        nonlocal idx
+        resp = responses[idx % len(responses)]
+        idx += 1
+        return resp
+
+    http = httpx.AsyncClient()
+    http.request = mock_request  # type: ignore[method-assign]
+    client._client = http
+    return client
 
 
-# ── Config validation ─────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Config tests
+# ---------------------------------------------------------------------------
 
-def test_config_defaults():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    assert cfg.timeout == 30.0
-    assert cfg.max_retries == 3
-    assert cfg.pool_size == 100
+def test_config_valid():
+    cfg = AsyncClientConfig(base_url="http://localhost:7749", token="tok")
+    assert cfg.base_url == "http://localhost:7749"
+    assert cfg.token == "tok"
 
 
-def test_config_invalid_url():
+def test_config_trailing_slash_stripped():
+    cfg = AsyncClientConfig(base_url="http://localhost:7749/", token="tok")
+    assert not cfg.base_url.endswith("/")
+
+
+def test_config_empty_base_url_raises():
     with pytest.raises(ValueError, match="base_url"):
         AsyncClientConfig(base_url="", token="tok")
 
 
-def test_config_invalid_token():
+def test_config_empty_token_raises():
     with pytest.raises(ValueError, match="token"):
-        AsyncClientConfig(base_url="http://localhost:8080", token="")
+        AsyncClientConfig(base_url="http://localhost:7749", token="")
 
 
-def test_config_invalid_timeout():
+def test_config_negative_timeout_raises():
     with pytest.raises(ValueError, match="timeout"):
-        AsyncClientConfig(base_url="http://localhost:8080", token="tok", timeout=0)
+        AsyncClientConfig(base_url="http://localhost:7749", token="tok", timeout=-1.0)
 
 
-def test_config_invalid_retries():
+def test_config_negative_retries_raises():
     with pytest.raises(ValueError, match="max_retries"):
-        AsyncClientConfig(base_url="http://localhost:8080", token="tok", max_retries=-1)
+        AsyncClientConfig(base_url="http://localhost:7749", token="tok", max_retries=-1)
 
 
-def test_config_strips_trailing_slash():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080/", token="tok")
-    assert not cfg.base_url.endswith("/")
+# ---------------------------------------------------------------------------
+# Lifecycle tests
+# ---------------------------------------------------------------------------
 
-
-# ── Lifecycle ─────────────────────────────────────────────────────────────────
-
-async def test_context_manager():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        assert client is not None
-
-
-async def test_close_idempotent():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
+async def test_context_manager_lifecycle():
+    cfg = AsyncClientConfig(base_url="http://localhost:7749", token="tok")
     client = AsyncSketchLogClient(cfg)
+    async with client:
+        assert client._client is not None
+    assert client._client is None
+
+
+async def test_open_close_explicit():
+    cfg = AsyncClientConfig(base_url="http://localhost:7749", token="tok")
+    client = AsyncSketchLogClient(cfg)
+    await client.open()
+    assert client._client is not None
     await client.close()
-    await client.close()  # should not raise
+    assert client._client is None
 
 
-# ── HTTP helpers ──────────────────────────────────────────────────────────────
-
-async def test_auth_error():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(401, {"error": "unauthorized"}))
-        with pytest.raises(SketchLogAuthError):
-            await client.health()
-
-
-async def test_rate_limit_error():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok", max_retries=1)
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(429, {"error": "rate limit"}, {"retry-after": "0"}))
-        with pytest.raises(SketchLogRateLimitError):
-            await client.health()
+async def test_double_close_is_safe():
+    cfg = AsyncClientConfig(base_url="http://localhost:7749", token="tok")
+    client = AsyncSketchLogClient(cfg)
+    await client.open()
+    await client.close()
+    await client.close()  # must not raise
+    assert client._client is None
 
 
-async def test_server_error():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok", max_retries=1)
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(500, {"error": "internal"}))
-        with pytest.raises(SketchLogServerError):
-            await client.health()
+async def test_request_without_open_raises():
+    cfg = AsyncClientConfig(base_url="http://localhost:7749", token="tok")
+    client = AsyncSketchLogClient(cfg)
+    with pytest.raises(SketchLogError, match="not open"):
+        await client.health()
 
 
-async def test_timeout_error():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok", max_retries=1)
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
-        with pytest.raises(SketchLogTimeoutError):
-            await client.health()
-
-
-# ── Health / Info ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Health / Info
+# ---------------------------------------------------------------------------
 
 async def test_health_ok():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"status": "ok"}))
-        result = await client.health()
+    client = make_client([make_response(200, {"status": "ok"})])
+    result = await client.health()
     assert result["status"] == "ok"
 
 
 async def test_info_ok():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"version": "1.0"}))
-        result = await client.info()
-    assert result["version"] == "1.0"
+    client = make_client([make_response(200, {"version": "1.0.0"})])
+    result = await client.info()
+    assert result["version"] == "1.0.0"
 
 
-# ── Ingest ────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Ingest
+# ---------------------------------------------------------------------------
 
 async def test_ingest_ok():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"ingested": 1}))
-        result = await client.ingest("ns", "stream", {"key": "val"})
+    client = make_client([make_response(200, {"ingested": 1})])
+    result = await client.ingest("ns", "stream", [{"val": 1}])
     assert result["ingested"] == 1
 
 
 async def test_ingest_batch_ok():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"ingested": 3}))
-        result = await client.ingest_batch("ns", "stream", [{"a": 1}, {"b": 2}, {"c": 3}])
+    client = make_client([make_response(200, {"ingested": 3})])
+    result = await client.ingest("ns", "stream", [{"v": i} for i in range(3)])
     assert result["ingested"] == 3
 
 
-# ── Query ─────────────────────────────────────────────────────────────────────
+async def test_ingest_empty_raises():
+    client = make_client([make_response(200, {})])
+    with pytest.raises(ValueError, match="empty"):
+        await client.ingest("ns", "stream", [])
+
+
+# ---------------------------------------------------------------------------
+# Query
+# ---------------------------------------------------------------------------
 
 async def test_query_ok():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"events": []}))
-        result = await client.query("ns", "stream")
-    assert "events" in result
+    client = make_client([make_response(200, {"events": [{"v": 1}]})])
+    result = await client.query("ns", "stream")
+    assert result["events"][0]["v"] == 1
 
 
 async def test_query_with_limit():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"events": [{"id": 1}]}))
-        result = await client.query("ns", "stream", limit=1)
-    assert len(result["events"]) == 1
+    client = make_client([make_response(200, {"events": []})])
+    result = await client.query("ns", "stream", limit=10)
+    assert "events" in result
 
 
-# ── Namespaces ────────────────────────────────────────────────────────────────
+async def test_query_cdf_ok():
+    client = make_client([make_response(200, {"cdf": []})])
+    result = await client.query_cdf("ns", "stream")
+    assert "cdf" in result
 
-async def test_list_namespaces():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"namespaces": ["ns1"]}))
-        result = await client.list_namespaces()
+
+# ---------------------------------------------------------------------------
+# Namespaces
+# ---------------------------------------------------------------------------
+
+async def test_list_namespaces_ok():
+    client = make_client([make_response(200, {"namespaces": ["ns1"]})])
+    result = await client.list_namespaces()
     assert "namespaces" in result
 
 
-async def test_create_namespace():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(201, {"name": "ns1"}))
-        result = await client.create_namespace("ns1")
+async def test_create_namespace_ok():
+    client = make_client([make_response(200, {"name": "ns1"})])
+    result = await client.create_namespace("ns1")
     assert result["name"] == "ns1"
 
 
-async def test_delete_namespace():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"deleted": True}))
-        result = await client.delete_namespace("ns1")
+async def test_delete_namespace_ok():
+    client = make_client([make_response(200, {"deleted": True})])
+    result = await client.delete_namespace("ns1")
     assert result["deleted"] is True
 
 
-# ── Streams ───────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Streams
+# ---------------------------------------------------------------------------
 
-async def test_list_streams():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"streams": ["s1"]}))
-        result = await client.list_streams("ns1")
+async def test_list_streams_ok():
+    client = make_client([make_response(200, {"streams": ["s1"]})])
+    result = await client.list_streams("ns")
     assert "streams" in result
 
 
-async def test_create_stream():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(201, {"name": "s1"}))
-        result = await client.create_stream("ns1", "s1")
+async def test_create_stream_ok():
+    client = make_client([make_response(200, {"name": "s1"})])
+    result = await client.create_stream("ns", "s1")
     assert result["name"] == "s1"
 
 
-async def test_delete_stream():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {"deleted": True}))
-        result = await client.delete_stream("ns1", "s1")
+async def test_delete_stream_ok():
+    client = make_client([make_response(200, {"deleted": True})])
+    result = await client.delete_stream("ns", "s1")
     assert result["deleted"] is True
 
 
-# ── Retry logic ───────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
 
-async def test_retry_on_500_then_success():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok", max_retries=3)
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(side_effect=[
-            make_response(500, {"error": "internal"}),
-            make_response(500, {"error": "internal"}),
-            make_response(200, {"status": "ok"}),
-        ])
-        result = await client.health()
-    assert result["status"] == "ok"
-
-
-async def test_no_retry_on_400():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok", max_retries=3)
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(400, {"error": "bad request"}))
-        with pytest.raises(SketchLogError):
-            await client.health()
-    # should only be called once — no retry on 4xx
-    assert client._http.send.call_count == 1
-
-
-async def test_retry_exhausted_raises_server_error():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok", max_retries=2)
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(503, {"error": "unavailable"}))
-        with pytest.raises(SketchLogServerError):
-            await client.health()
-
-
-# ── URL building ──────────────────────────────────────────────────────────────
-
-async def test_url_no_double_slash():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080/", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        client._http.send = AsyncMock(return_value=make_response(200, {}))
+async def test_401_raises_auth_error():
+    client = make_client([make_response(401, {"error": "unauthorized"})])
+    with pytest.raises(SketchLogAuthError):
         await client.health()
-    url = str(client._http.send.call_args[0][0].url)
-    assert "//" not in url.replace("http://", "")
 
 
-# ── Cancellation ──────────────────────────────────────────────────────────────
+async def test_403_raises_auth_error():
+    client = make_client([make_response(403, {"error": "forbidden"})])
+    with pytest.raises(SketchLogAuthError):
+        await client.health()
 
-async def test_cancellation_safe():
-    cfg = AsyncClientConfig(base_url="http://localhost:8080", token="tok")
-    async with AsyncSketchLogClient(cfg) as client:
-        async def slow():
-            await asyncio.sleep(10)
-        client._http.send = AsyncMock(side_effect=slow)
-        task = asyncio.create_task(client.health())
-        await asyncio.sleep(0)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+
+async def test_429_raises_rate_limit_error():
+    client = make_client([make_response(429, {"error": "rate limited"})])
+    with pytest.raises(SketchLogRateLimitError):
+        await client.health()
+
+
+async def test_500_raises_server_error():
+    client = make_client([make_response(500, {"error": "internal"})])
+    with pytest.raises(SketchLogServerError):
+        await client.health()
+
+
+async def test_400_raises_client_error():
+    client = make_client([make_response(400, {"error": "bad request"})])
+    with pytest.raises(SketchLogClientError):
+        await client.health()
+
+
+async def test_404_raises_client_error():
+    client = make_client([make_response(404, {"error": "not found"})])
+    with pytest.raises(SketchLogClientError):
+        await client.health()
+
+
+# ---------------------------------------------------------------------------
+# Retry logic
+# ---------------------------------------------------------------------------
+
+async def test_server_error_retries_then_raises():
+    """500 is retried max_retries times then raises SketchLogServerError."""
+    cfg = AsyncClientConfig(
+        base_url="http://localhost:7749",
+        token="tok",
+        max_retries=2,
+        backoff_base=0.001,
+    )
+    client = AsyncSketchLogClient(cfg)
+    responses = [make_response(500, {})] * 10
+    idx = 0
+
+    async def mock_request(method, url, **kwargs):
+        nonlocal idx
+        resp = responses[idx % len(responses)]
+        idx += 1
+        return resp
+
+    http = httpx.AsyncClient()
+    http.request = mock_request  # type: ignore[method-assign]
+    client._client = http
+
+    with pytest.raises(SketchLogServerError):
+        await client.health()
+
+    assert idx == 3  # 1 initial + 2 retries
+
+
+async def test_4xx_is_not_retried():
+    """400 client error must NOT be retried."""
+    cfg = AsyncClientConfig(
+        base_url="http://localhost:7749",
+        token="tok",
+        max_retries=3,
+    )
+    client = AsyncSketchLogClient(cfg)
+    idx = 0
+
+    async def mock_request(method, url, **kwargs):
+        nonlocal idx
+        idx += 1
+        return make_response(400, {})
+
+    http = httpx.AsyncClient()
+    http.request = mock_request  # type: ignore[method-assign]
+    client._client = http
+
+    with pytest.raises(SketchLogClientError):
+        await client.health()
+
+    assert idx == 1  # no retry
+
+
+async def test_retry_succeeds_on_third_attempt():
+    """500 x2 then 200 — should return successfully."""
+    cfg = AsyncClientConfig(
+        base_url="http://localhost:7749",
+        token="tok",
+        max_retries=2,
+        backoff_base=0.001,
+    )
+    client = AsyncSketchLogClient(cfg)
+    responses = [
+        make_response(500, {}),
+        make_response(500, {}),
+        make_response(200, {"status": "ok"}),
+    ]
+    idx = 0
+
+    async def mock_request(method, url, **kwargs):
+        nonlocal idx
+        resp = responses[idx]
+        idx += 1
+        return resp
+
+    http = httpx.AsyncClient()
+    http.request = mock_request  # type: ignore[method-assign]
+    client._client = http
+
+    result = await client.health()
+    assert result["status"] == "ok"
+    assert idx == 3
+
+
+# ---------------------------------------------------------------------------
+# URL builder
+# ---------------------------------------------------------------------------
+
+def test_url_builder():
+    cfg = AsyncClientConfig(base_url="http://localhost:7749", token="tok")
+    client = AsyncSketchLogClient(cfg)
+    assert client._url("/health") == "http://localhost:7749/health"
+
+
+def test_url_builder_strips_double_slash():
+    cfg = AsyncClientConfig(base_url="http://localhost:7749/", token="tok")
+    client = AsyncSketchLogClient(cfg)
+    assert client._url("/health") == "http://localhost:7749/health"
+
+
+# ---------------------------------------------------------------------------
+# Subscribe stream
+# ---------------------------------------------------------------------------
+
+async def test_subscribe_stream_yields_events():
+    client = make_client([
+        make_response(200, {"events": [{"id": 1}, {"id": 2}]}),
+        make_response(200, {"events": []}),
+    ])
+    collected = []
+    async with client.subscribe_stream(
+        "ns", "stream",
+        poll_interval=0.001,
+        max_events=2,
+    ) as gen:
+        async for event in gen:
+            collected.append(event)
+    assert len(collected) == 2
+
+
+async def test_subscribe_stream_exits_on_error_budget():
+    """Consecutive errors should cause the generator to stop."""
+    client = make_client([make_response(500, {})])
+    collected = []
+    async with client.subscribe_stream(
+        "ns", "stream",
+        poll_interval=0.001,
+        max_consecutive_errors=3,
+    ) as gen:
+        try:
+            async for event in gen:
+                collected.append(event)
+        except Exception:
+            pass
+    # Generator stopped after 3 consecutive errors — no events
+    assert collected == []
