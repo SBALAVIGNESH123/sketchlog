@@ -1,5 +1,5 @@
 // Package sketch provides native Go implementations of probabilistic data
-// structures for embedded use — no network connection required.
+// structures for embedded use - no network connection required.
 package sketch
 
 import (
@@ -8,19 +8,16 @@ import (
 )
 
 // CountMinSketch estimates the frequency of elements in a data stream using
-// O(width * depth) counters with guaranteed over-counting error ≤ ε * N
-// with probability ≥ 1 - δ, where width = ⌈e/ε⌉ and depth = ⌈ln(1/δ)⌉.
+// O(width * depth) counters.
 type CountMinSketch struct {
-	width  uint32
-	depth  uint32
-	table  [][]uint64
-	count  uint64
+	width uint32
+	depth uint32
+	table [][]uint64
+	count uint64
 }
 
 // NewCountMinSketch creates a CountMinSketch with error rate epsilon and
 // failure probability delta (both in (0, 1)).
-//
-// A typical choice is epsilon=0.001, delta=0.01 giving width=2719, depth=5.
 func NewCountMinSketch(epsilon, delta float64) (*CountMinSketch, error) {
 	if epsilon <= 0 || epsilon >= 1 {
 		return nil, errors.New("countminsketch: epsilon must be in (0, 1)")
@@ -30,27 +27,16 @@ func NewCountMinSketch(epsilon, delta float64) (*CountMinSketch, error) {
 	}
 	wf := math.Ceil(math.E / epsilon)
 	if wf > float64(math.MaxUint32) {
-		return nil, errors.New("countminsketch: epsilon too small — resulting width overflows uint32")
+		return nil, errors.New("countminsketch: epsilon too small")
 	}
 	df := math.Ceil(math.Log(1.0 / delta))
 	if df > float64(math.MaxUint32) {
-		return nil, errors.New("countminsketch: delta too small — resulting depth overflows uint32")
+		return nil, errors.New("countminsketch: delta too small")
 	}
-	width := uint32(wf)
-	depth := uint32(df)
-	table := make([][]uint64, depth)
-	for i := range table {
-		table[i] = make([]uint64, width)
-	}
-	return &CountMinSketch{
-		width: width,
-		depth: depth,
-		table: table,
-	}, nil
+	return newCMS(uint32(wf), uint32(df))
 }
 
-// NewCountMinSketchFromDimensions creates a CountMinSketch with explicit
-// width and depth dimensions.
+// NewCountMinSketchFromDimensions creates a CountMinSketch with explicit dimensions.
 func NewCountMinSketchFromDimensions(width, depth uint32) (*CountMinSketch, error) {
 	if width == 0 {
 		return nil, errors.New("countminsketch: width must be > 0")
@@ -58,6 +44,10 @@ func NewCountMinSketchFromDimensions(width, depth uint32) (*CountMinSketch, erro
 	if depth == 0 {
 		return nil, errors.New("countminsketch: depth must be > 0")
 	}
+	return newCMS(width, depth)
+}
+
+func newCMS(width, depth uint32) (*CountMinSketch, error) {
 	table := make([][]uint64, depth)
 	for i := range table {
 		table[i] = make([]uint64, width)
@@ -65,7 +55,6 @@ func NewCountMinSketchFromDimensions(width, depth uint32) (*CountMinSketch, erro
 	return &CountMinSketch{width: width, depth: depth, table: table}, nil
 }
 
-// cmsHash computes the j-th hash for data using FNV-1a mixed with row seed.
 func cmsHash(data []byte, seed uint32) uint64 {
 	const (
 		offset64 uint64 = 14695981039346656037
@@ -89,7 +78,6 @@ func (c *CountMinSketch) Add(data []byte, delta uint64) {
 }
 
 // Count returns the estimated frequency of data.
-// The result is always ≥ the true frequency.
 func (c *CountMinSketch) Count(data []byte) uint64 {
 	var min uint64 = math.MaxUint64
 	for i := uint32(0); i < c.depth; i++ {
