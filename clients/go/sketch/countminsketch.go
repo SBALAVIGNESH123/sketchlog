@@ -42,6 +42,9 @@ func NewCountMinSketchFromDimensions(width, depth uint32) (*CountMinSketch, erro
 	if width > maxCMSDimension || depth > maxCMSDimension {
 		return nil, errors.New("dimensions exceed maximum allowed limit")
 	}
+	if width > maxCMSDimension || depth > maxCMSDimension {
+		return nil, errors.New("dimensions exceed maximum allowed limit")
+	}
 	matrix := make([][]uint64, depth)
 	for i := range matrix {
 		matrix[i] = make([]uint64, width)
