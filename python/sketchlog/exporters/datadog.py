@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -111,12 +111,12 @@ class DatadogExporter:
     def __exit__(self, *_: Any) -> None:
         self.close()
 
-    def _build_series(self, metric: DatadogMetric) -> dict[str, Any]:
+    def _build_series(self, metric: DatadogMetric) -> Dict[str, Any]:
         cfg = self._config
         name = f"{cfg.metric_prefix}{metric.name}" if cfg.metric_prefix else metric.name
         ts = metric.timestamp if metric.timestamp is not None else int(time.time())
         tags = list(cfg.default_tags) + list(metric.tags)
-        series: dict[str, Any] = {
+        series: Dict[str, Any] = {
             "metric": name,
             "type": self._DD_METRIC_TYPES[metric.metric_type],
             "points": [{"timestamp": ts, "value": metric.value}],
@@ -126,11 +126,14 @@ class DatadogExporter:
             series["resources"] = [{"name": metric.host, "type": "host"}]
         return series
 
-    def _do_send(self, payload: dict[str, Any]) -> None:
+    def _do_send(self, payload: Dict[str, Any]) -> None:
+        # Use local variable so mypy can narrow Optional[httpx.Client] -> httpx.Client
         client = self._client
-        owned = client is None
-        if owned:
+        if client is None:
             client = self._make_client()
+            owned = True
+        else:
+            owned = False
         try:
             resp = client.post(self._endpoint(), json=payload)
             try:
