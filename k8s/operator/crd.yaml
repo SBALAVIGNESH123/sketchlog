@@ -1,0 +1,106 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: sketchlogclusters.sketchlog.io
+  labels:
+    app.kubernetes.io/managed-by: sketchlog-operator
+spec:
+  group: sketchlog.io
+  names:
+    kind: SketchLogCluster
+    listKind: SketchLogClusterList
+    plural: sketchlogclusters
+    singular: sketchlogcluster
+    shortNames:
+      - slc
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              properties:
+                replicas:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                  description: Number of SketchLog server replicas.
+                image:
+                  type: string
+                  default: "sketchlog/sketchlog:latest"
+                  description: Docker image for the SketchLog server container.
+                maxStreams:
+                  type: integer
+                  minimum: 1
+                  default: 1000
+                  description: Maximum number of concurrent streams.
+                retentionDays:
+                  type: integer
+                  minimum: 1
+                  default: 7
+                  description: Data retention period in days.
+                sketchType:
+                  type: string
+                  enum: [ddsketch, hll, countmin]
+                  default: ddsketch
+                  description: Sketch algorithm to use.
+                alpha:
+                  type: number
+                  minimum: 0.0001
+                  maximum: 0.1
+                  default: 0.01
+                  description: DDSketch relative accuracy parameter.
+                serviceType:
+                  type: string
+                  enum: [ClusterIP, NodePort, LoadBalancer]
+                  default: ClusterIP
+                  description: Kubernetes Service type.
+                resources:
+                  type: object
+                  description: Container resource requests and limits.
+                  properties:
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  description: "Current phase: Ready, Error, or Pending."
+                message:
+                  type: string
+                  description: Human-readable status message.
+                lastReconcileTime:
+                  type: string
+                  format: date-time
+                  description: Timestamp of last successful reconciliation.
