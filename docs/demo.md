@@ -2,7 +2,9 @@
 
 SketchLog ships with a zero-dependency interactive playground that lets you explore core features in any browser — no installation required.
 
-👉 **Open the Playground**
+👉 **Open the Playground**: [https://sbalavignesh123.github.io/sketchlog/demo/](https://sbalavignesh123.github.io/sketchlog/demo/)
+
+> You can also open `demo/index.html` directly in any browser — no server required.
 
 ---
 
@@ -127,4 +129,4 @@ This is the same algorithm used in the Python `sketchlog` package — the browse
 - No external CDN dependencies
 - No API keys or secrets in the frontend
 - No cookies or tracking
-- Content-Security-Policy compatible (no inline eval)
+- No `eval()` or dynamic code execution
