@@ -71,6 +71,67 @@ def check_commit_size():
     print("Checking commit sizes...")
     return False
 
+def check_docs_navigation():
+    print("Checking documentation navigation...")
+    required_nav_entries = [
+        "async_client.md",
+        "exporters.md",
+        "kubernetes-operator.md",
+        "rbac.md",
+    ]
+
+    failed = False
+    try:
+        with open("mkdocs.yml", "r", encoding="utf-8") as file:
+            mkdocs = file.read()
+    except OSError as exc:
+        print(f"ERROR: Could not read mkdocs.yml: {exc}")
+        return True
+
+    for entry in required_nav_entries:
+        if entry not in mkdocs:
+            print(f"ERROR: Important documentation page is missing from mkdocs nav: {entry}")
+            failed = True
+    return failed
+
+def check_makefile_wiring():
+    print("Checking Makefile target wiring...")
+    failed = False
+    try:
+        with open("Makefile", "r", encoding="utf-8") as file:
+            makefile = file.read()
+    except OSError as exc:
+        print(f"ERROR: Could not read Makefile: {exc}")
+        return True
+
+    stale_references = [
+        "clients/node",
+        "bindings/wasm",
+        "bindings/cpp",
+        "python -m build python/",
+    ]
+    for reference in stale_references:
+        if reference in makefile:
+            print(f"ERROR: Makefile contains stale path or command: {reference}")
+            failed = True
+
+    required_references = [
+        "cd clients/typescript && npm test",
+        "cd wasm && npm run build",
+        "cmake -B build -S .",
+        "python -m build",
+    ]
+    for reference in required_references:
+        if reference not in makefile:
+            print(f"ERROR: Makefile is missing expected command: {reference}")
+            failed = True
+
+    for path in ["clients/typescript", "wasm", "CMakeLists.txt"]:
+        if not os.path.exists(path):
+            print(f"ERROR: Makefile target dependency does not exist: {path}")
+            failed = True
+    return failed
+
 if __name__ == "__main__":
     git_files = get_git_files()
     if not git_files:
@@ -79,8 +140,10 @@ if __name__ == "__main__":
 
     generated_failed = check_generated_files(git_files)
     whitespace_failed = check_encoding_and_whitespace(git_files)
+    docs_nav_failed = check_docs_navigation()
+    makefile_failed = check_makefile_wiring()
 
-    if generated_failed or whitespace_failed:
+    if generated_failed or whitespace_failed or docs_nav_failed or makefile_failed:
         print("Hygiene checks failed!")
         sys.exit(1)
     else:

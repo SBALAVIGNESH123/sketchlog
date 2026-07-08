@@ -1,54 +1,57 @@
-# Hosted Demo & Interactive Playground
+# Hosted Demo and Interactive Playground
 
-SketchLog ships with a zero-dependency interactive playground that lets you explore core features in any browser — no installation required.
+SketchLog ships with a zero-dependency interactive playground that lets visitors
+explore core features in any browser with no installation required.
 
-👉 **Open the Playground**: [https://sbalavignesh123.github.io/sketchlog/demo/](https://sbalavignesh123.github.io/sketchlog/demo/)
+Open the playground:
+[https://sbalavignesh123.github.io/sketchlog/demo/](https://sbalavignesh123.github.io/sketchlog/demo/)
 
-> You can also open `demo/index.html` directly in any browser — no server required.
-
----
+You can also open `demo/index.html` directly in a browser. The playground is a
+single-page static app and does not require a server.
 
 ## Features
 
-### DDSketch Quantile Estimation
-- Add arbitrary positive values (latencies, request sizes, durations)
-- See **p50 / p95 / p99** estimates update in real time
-- Adjust the relative accuracy parameter (α) and see the accuracy guarantee change
-- Visual bucket distribution chart
+### DDSketch quantile estimation
 
-### Stream Operations
-- Simulate writing JSON records to any stream path
-- Read them back and see the log output
-- Demonstrates the core SketchLog stream abstraction
+- Add arbitrary positive values such as latencies, request sizes, and durations.
+- See p50, p95, and p99 estimates update in real time.
+- Adjust the relative accuracy parameter and see the accuracy guarantee change.
+- Inspect the visual bucket distribution chart.
 
-### Export Payload Preview
-- **Loki** — Preview the JSON body sent to `/loki/api/v1/push`
-- **Datadog** — Preview the Metrics API v2 `series` payload
-- **New Relic** — Preview the Insights Events API payload (US and EU regions)
+### Stream operations
 
-### Python API Cheatsheet
-- Copyable code snippets for basic sketch, stream write, agent config, and Loki export
+- Simulate writing JSON records to any stream path.
+- Read the records back and inspect the log output.
+- Demonstrate the core SketchLog stream abstraction without running a backend.
 
----
+### Export payload preview
 
-## Running Locally
+- Loki: preview the JSON body sent to `/loki/api/v1/push`.
+- Datadog: preview the Metrics API v2 `series` payload.
+- New Relic: preview the Insights Events API payload for US and EU regions.
 
-The playground is a single-page static site — no build step required.
+### Python API cheatsheet
+
+- Copy snippets for basic sketch usage.
+- Copy stream write examples.
+- Copy agent configuration examples.
+- Copy Loki export examples.
+
+## Running locally
+
+The playground is pure HTML, CSS, and JavaScript.
 
 ```bash
-# From the repo root
 python -m http.server 8080 --directory demo
-# Then open http://localhost:8080
 ```
 
-Or simply open `demo/index.html` directly in your browser.
+Then open <http://localhost:8080>.
 
----
+You can also open `demo/index.html` directly from the filesystem.
 
 ## Deploying to GitHub Pages
 
 ```yaml
-# .github/workflows/deploy-demo.yml
 name: Deploy Demo
 on:
   push:
@@ -70,19 +73,14 @@ jobs:
       - uses: actions/deploy-pages@v4
 ```
 
----
-
 ## Deploying to Netlify
 
 ```toml
-# netlify.toml
 [build]
   publish = "demo/"
 ```
 
-No build command needed — the site is pure HTML/CSS/JS.
-
----
+No build command is required.
 
 ## Deploying to Vercel
 
@@ -93,40 +91,34 @@ No build command needed — the site is pure HTML/CSS/JS.
 }
 ```
 
----
-
 ## Architecture
 
-The playground is intentionally minimal:
-
 | File | Role |
-|---|---|
-| `demo/index.html` | Single-page app — Nav, Hero, 4 interactive sections, CTA, Footer |
-| `demo/assets/demo.css` | Full dark design system, CSS custom properties, responsive |
-| `demo/assets/demo.js` | DDSketch implementation, stream simulation, export preview, snippets |
+| --- | --- |
+| `demo/index.html` | Single-page app with navigation, hero, interactive sections, call to action, and footer |
+| `demo/assets/demo.css` | Dark design system, CSS custom properties, and responsive layout |
+| `demo/assets/demo.js` | DDSketch implementation, stream simulation, export preview, and snippets |
 
-**Zero external dependencies.** Zero JS frameworks. Zero build step. Works offline.
+The playground has zero external dependencies, zero JavaScript frameworks, zero
+build step, and works offline.
 
----
+## DDSketch in the browser
 
-## DDSketch in the Browser
-
-The playground includes a faithful browser implementation of DDSketch:
+The playground includes a browser implementation of DDSketch:
 
 ```javascript
 const sketch = new DDSketch(0.01); // 1% relative accuracy
 sketch.add(42.5);
 sketch.add(150.0);
-const p95 = sketch.quantile(0.95); // guaranteed ±1% relative error
+const p95 = sketch.quantile(0.95); // guaranteed +/-1% relative error
 ```
 
-This is the same algorithm used in the Python `sketchlog` package — the browser version demonstrates the same accuracy guarantees interactively.
-
----
+This demonstrates the same accuracy model used by the Python `sketchlog`
+package.
 
 ## Security
 
-- No external CDN dependencies
-- No API keys or secrets in the frontend
-- No cookies or tracking
-- No `eval()` or dynamic code execution
+- No external CDN dependencies.
+- No API keys or secrets in the frontend.
+- No cookies or tracking.
+- No `eval()` or dynamic code execution.

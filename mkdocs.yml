@@ -61,12 +61,15 @@ nav:
       - Multi-Tenancy: features/multi_tenancy.md
   - Guides:
       - Client SDKs: sdks.md
+      - Async Python Client: async_client.md
       - Integrations: integrations.md
+      - Export Integrations: exporters.md
       - SketchLog Agent: agent.md
       - Cost Savings Calculator: cost-estimate.md
       - Benchmark Lab: bench-lab.md
       - Developer Experience: developer-experience.md
       - Rate Limiting: rate_limiting.md
+      - Role-Based Access Control: rbac.md
       - TLS & mTLS Hardening: tls-mtls.md
       - CI Regression Action: ci-regression.md
       - Grafana Dashboard: grafana.md
@@ -75,6 +78,7 @@ nav:
       - Canary Analysis: canary-analysis.md
       - Standalone Server: server.md
   - Operations:
+      - Kubernetes Operator: kubernetes-operator.md
       - Production Readiness Checker: doctor.md
       - Production Database Hardening: db-hardening.md
       - Mesh Visualizer: mesh-visualizer.md

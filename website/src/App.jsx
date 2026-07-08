@@ -11,7 +11,7 @@ function App() {
       <header className="navbar glass-panel">
         <div className="container nav-content">
           <div className="logo">
-            <span className="logo-icon">📊</span>
+            <span className="logo-icon">SL</span>
             <span className="logo-text">SketchLog</span>
           </div>
           <nav>
@@ -29,7 +29,7 @@ function App() {
 
       <footer className="footer section">
         <div className="container text-center">
-          <p className="subtitle">© {new Date().getFullYear()} SketchLog. Open-source observability engine.</p>
+          <p className="subtitle">(c) {new Date().getFullYear()} SketchLog. Open-source observability engine.</p>
         </div>
       </footer>
 

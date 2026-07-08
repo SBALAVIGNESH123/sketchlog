@@ -61,6 +61,10 @@ def test_hero_section(html_src):
 def test_features_section(html_src):
     assert 'id="features"' in html_src
 
+def test_playground_section(html_src):
+    assert 'id="playground"' in html_src
+    assert "Open the playground" in html_src
+
 def test_how_it_works_section(html_src):
     assert 'id="how-it-works"' in html_src
 
