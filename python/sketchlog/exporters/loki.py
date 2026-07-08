@@ -108,11 +108,13 @@ class LokiExporter:
         now_ns = str(time.time_ns())
         payload: Dict[str, object] = {"streams": []}
         for s in streams:
-            ts_list = s.timestamps_ns or [None] * len(s.lines)
-            values = [
-                [str(ts) if ts is not None else now_ns, line]
-                for ts, line in zip(ts_list, s.lines)
-            ]
+            if s.timestamps_ns is not None:
+                values: List[List[str]] = [
+                    [str(ts), line]
+                    for ts, line in zip(s.timestamps_ns, s.lines)
+                ]
+            else:
+                values = [[now_ns, line] for line in s.lines]
             stream_entry: Dict[str, object] = {"stream": s.labels, "values": values}
             assert isinstance(payload["streams"], list)
             payload["streams"].append(stream_entry)
