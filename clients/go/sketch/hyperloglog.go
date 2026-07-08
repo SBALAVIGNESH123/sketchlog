@@ -1,5 +1,5 @@
 // Package sketch provides native Go implementations of probabilistic data
-// structures for embedded use — no network connection required.
+// structures for embedded use - no network connection required.
 package sketch
 
 import (
@@ -11,27 +11,26 @@ import (
 // HyperLogLog estimates the cardinality (number of distinct elements) of a
 // multiset using O(2^precision) bytes of memory.
 //
-// For precision p (4 ≤ p ≤ 18) the standard error is ≈ 1.04/√(2^p).
+// For precision p (4 <= p <= 18) the standard error is ~1.04/sqrt(2^p).
 // A typical value is p=14, giving ~0.81% error with 16 KiB of memory.
 type HyperLogLog struct {
 	precision uint8
-	m         uint32 // number of registers = 2^precision
+	m         uint32
 	registers []uint8
 	alpha     float64
 }
 
-// NewHyperLogLog creates a HyperLogLog with the given precision (4 ≤ p ≤ 18).
+// NewHyperLogLog creates a HyperLogLog with the given precision (4 <= p <= 18).
 func NewHyperLogLog(precision uint8) (*HyperLogLog, error) {
 	if precision < 4 || precision > 18 {
 		return nil, errors.New("hyperloglog: precision must be in [4, 18]")
 	}
 	m := uint32(1) << precision
-	alpha := hllAlpha(m)
 	return &HyperLogLog{
 		precision: precision,
 		m:         m,
 		registers: make([]uint8, m),
-		alpha:     alpha,
+		alpha:     hllAlpha(m),
 	}, nil
 }
 
@@ -65,8 +64,7 @@ func fnv64a(data []byte) uint64 {
 // Add adds a byte slice to the sketch.
 func (h *HyperLogLog) Add(data []byte) {
 	x := fnv64a(data)
-	j := x >> (64 - uint(h.precision)) // top p bits → register index
-	// leading zeros of the remaining (64-p) bits + 1
+	j := x >> (64 - uint(h.precision))
 	rho := uint8(bits.LeadingZeros64(x<<uint(h.precision))) + 1
 	if rho > h.registers[j] {
 		h.registers[j] = rho
@@ -81,9 +79,6 @@ func (h *HyperLogLog) Count() uint64 {
 		sum += math.Pow(2, -float64(v))
 	}
 	estimate := h.alpha * m * m / sum
-
-	// Small range correction: use linear counting when estimate is low
-	// and there are empty registers.
 	if estimate <= 2.5*m {
 		zeros := 0
 		for _, v := range h.registers {
@@ -95,9 +90,6 @@ func (h *HyperLogLog) Count() uint64 {
 			estimate = m * math.Log(m/float64(zeros))
 		}
 	}
-	// Large range correction is omitted: FNV-1a produces 64-bit hashes,
-	// so the collision threshold (~2^64/30) is unreachable in practice.
-
 	return uint64(estimate)
 }
 
