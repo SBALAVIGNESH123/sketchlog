@@ -303,7 +303,7 @@ except ExporterError as e:
 
 ### `ExporterError`
 
-```
+```python
 ExporterError(message: str, *, status_code: int | None = None)
 ```
 
