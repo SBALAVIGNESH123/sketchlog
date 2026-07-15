@@ -25,7 +25,11 @@ explicit externally reachable host.
 | `SKETCHLOG_AUTH_TOKEN` | unset | Administrator token for every `/v1/*` endpoint |
 | `SKETCHLOG_NAMESPACE_TOKENS` | unset | JSON token-to-namespace-list authorization map |
 | `SKETCHLOG_TLS_CERT`, `SKETCHLOG_TLS_KEY` | unset | Both are required to enable direct TLS |
+| `SKETCHLOG_STORAGE_BACKEND` | inferred | `sqlalchemy`, `omnikv`, `memory`, or `none` |
 | `SKETCHLOG_DB_URI` | unset | SQLAlchemy async URI; enables durable save/load |
+| `SKETCHLOG_OMNIKV_DATA_DIR` | unset | OmniKV embedded data directory; enables OmniKV storage when selected |
+| `SKETCHLOG_OMNIKV_NAMESPACE` | `sketchlog` | OmniKV embedded namespace for SketchLog state |
+| `SKETCHLOG_OMNIKV_MODULE` | `omnikv` | Python/native bridge module exposing OmniKV embedded operations |
 | `SKETCHLOG_MEMORY_THRESHOLD` | `90` | Readiness failure percentage, in `(0,100]` |
 | `SKETCHLOG_MEMORY_LIMIT_BYTES` | auto | Explicit readiness memory limit; cgroup v2 is auto-detected |
 | `SKETCHLOG_ANOMALY_SENSITIVITY` | `0.2` | Default KS anomaly threshold in `(0,1]` |
@@ -40,6 +44,10 @@ With storage enabled, eviction applies backpressure and removes a stream only
 after its durable save succeeds. Without storage, eviction is intentionally
 ephemeral. File checkpoints and restored database payloads are validated as
 untrusted data before native allocation.
+
+For SQLAlchemy storage, set `SKETCHLOG_DB_URI`. For OmniKV-backed storage, set
+`SKETCHLOG_STORAGE_BACKEND=omnikv` and `SKETCHLOG_OMNIKV_DATA_DIR`; see
+[OmniKV storage backend](omnikv-storage.md) for the required bridge contract.
 
 `GET /health` is process liveness. `GET /ready` checks the effective memory
 limit and configured storage dependency. `GET /metrics` exports bounded route

@@ -609,19 +609,78 @@ class StreamRegistry:
             return []
 
 SYNC_INTERVAL = float(os.environ.get("SKETCHLOG_SYNC_INTERVAL", "5.0"))
-DB_URI = os.environ.get("SKETCHLOG_DB_URI")
-storage_backend = None
-if DB_URI:
+
+
+def _configure_storage_backend() -> Optional[Any]:
+    """Build the configured durable storage backend.
+
+    Defaults remain unchanged: no durable backend unless SKETCHLOG_DB_URI or an
+    explicit storage backend is configured.
+    """
+    backend = os.environ.get("SKETCHLOG_STORAGE_BACKEND", "").strip().lower()
+    db_uri = os.environ.get("SKETCHLOG_DB_URI")
+    omnikv_data_dir = os.environ.get("SKETCHLOG_OMNIKV_DATA_DIR")
+
+    if not backend:
+        backend = "omnikv" if omnikv_data_dir else ("sqlalchemy" if db_uri else "")
+
     try:
-        from sketchlog.storage import SQLAlchemyStorage
-        from sqlalchemy.engine.url import make_url
-        storage_backend = SQLAlchemyStorage(DB_URI)
-        redacted = make_url(DB_URI).render_as_string(hide_password=True)
-        logger.info("storage_backend_configured", uri=redacted)
+        if backend in ("", "memory", "none"):
+            if db_uri or omnikv_data_dir:
+                raise ValueError(
+                    "storage backend is disabled but durable storage settings "
+                    "were provided")
+            return None
+
+        if backend in ("sqlalchemy", "sql"):
+            if not db_uri:
+                raise ValueError(
+                    "SKETCHLOG_DB_URI is required for SQLAlchemy storage")
+            if omnikv_data_dir:
+                raise ValueError(
+                    "SKETCHLOG_DB_URI and SKETCHLOG_OMNIKV_DATA_DIR cannot be "
+                    "used by the same storage backend")
+            from sketchlog.storage import SQLAlchemyStorage
+            from sqlalchemy.engine.url import make_url
+            configured_sqlalchemy = SQLAlchemyStorage(db_uri)
+            redacted = make_url(db_uri).render_as_string(hide_password=True)
+            logger.info("storage_backend_configured",
+                        backend="sqlalchemy", uri=redacted)
+            return configured_sqlalchemy
+
+        if backend == "omnikv":
+            if db_uri:
+                raise ValueError(
+                    "SKETCHLOG_DB_URI cannot be combined with "
+                    "SKETCHLOG_STORAGE_BACKEND=omnikv")
+            if not omnikv_data_dir:
+                raise ValueError(
+                    "SKETCHLOG_OMNIKV_DATA_DIR is required for OmniKV storage")
+            from sketchlog.storage import OmniKVEmbeddedStorage
+            configured_omnikv = OmniKVEmbeddedStorage(
+                data_dir=omnikv_data_dir,
+                namespace=os.environ.get(
+                    "SKETCHLOG_OMNIKV_NAMESPACE", "sketchlog"),
+                module_name=os.environ.get(
+                    "SKETCHLOG_OMNIKV_MODULE", "omnikv"),
+            )
+            logger.info(
+                "storage_backend_configured",
+                backend="omnikv",
+                data_dir=omnikv_data_dir,
+            )
+            return configured_omnikv
+
+        raise ValueError(
+            "SKETCHLOG_STORAGE_BACKEND must be one of: sqlalchemy, omnikv, "
+            "memory, none")
     except Exception as e:
         logger.error("storage_backend_failed", error=str(e))
         import sys
         sys.exit(1)
+
+
+storage_backend = _configure_storage_backend()
 
 registry = StreamRegistry(
     max_streams_per_namespace=MAX_STREAMS_PER_NAMESPACE,
