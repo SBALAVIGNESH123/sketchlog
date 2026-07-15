@@ -225,6 +225,24 @@ helm upgrade --install sketchlog ./charts/sketchlog \
 SketchLog also includes Kubernetes Operator manifests and documentation for
 declarative cluster management.
 
+### Optional OmniKV-backed storage
+
+SketchLog can persist compact stream checkpoints and mesh tombstones into an
+OmniKV embedded database when the OmniKV Python/native bridge is installed:
+
+```bash
+export SKETCHLOG_STORAGE_BACKEND=omnikv
+export SKETCHLOG_OMNIKV_DATA_DIR=/var/lib/sketchlog/omnikv
+export SKETCHLOG_OMNIKV_NAMESPACE=sketchlog
+
+sketchlog-server --host 0.0.0.0 --port 8000
+```
+
+This is opt-in. Existing in-memory and SQLAlchemy storage paths remain
+unchanged. See the
+[OmniKV storage backend guide](https://sbalavignesh123.github.io/sketchlog/docs/omnikv-storage/)
+for the bridge contract and operational notes.
+
 ## Documentation
 
 The full documentation is published at
@@ -237,6 +255,7 @@ Important sections:
 - [Formal guarantees](https://sbalavignesh123.github.io/sketchlog/docs/guarantees/)
 - [Client SDKs](https://sbalavignesh123.github.io/sketchlog/docs/sdks/)
 - [Async Python client](https://sbalavignesh123.github.io/sketchlog/docs/async_client/)
+- [OmniKV storage backend](https://sbalavignesh123.github.io/sketchlog/docs/omnikv-storage/)
 - [Export integrations](https://sbalavignesh123.github.io/sketchlog/docs/exporters/)
 - [Kubernetes Operator](https://sbalavignesh123.github.io/sketchlog/docs/kubernetes-operator/)
 - [RBAC](https://sbalavignesh123.github.io/sketchlog/docs/rbac/)
