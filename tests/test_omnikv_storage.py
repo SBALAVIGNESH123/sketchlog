@@ -14,6 +14,7 @@ from sketchlog.storage import (
     _parse_state_envelope,
     _state_envelope,
     _state_key,
+    _tombstone_key,
 )
 
 
@@ -25,16 +26,20 @@ class _FakeOmniKVClient:
         self.namespace = namespace
         self.closed = False
         self.synced = False
+        self.operations: List[str] = []
         self.store = self._stores.setdefault((self.data_dir, namespace), {})
 
     def put(self, key: str, value: str) -> int:
+        self.operations.append(f"put:{key}")
         self.store[key] = value
         return len(self.store)
 
     def get(self, key: str) -> Optional[str]:
+        self.operations.append(f"get:{key}")
         return self.store.get(key)
 
     def delete(self, key: str) -> int:
+        self.operations.append(f"delete:{key}")
         self.store.pop(key, None)
         return len(self.store)
 
@@ -48,9 +53,11 @@ class _FakeOmniKVClient:
         return rows if limit is None else rows[:limit]
 
     def sync(self) -> None:
+        self.operations.append("sync")
         self.synced = True
 
     def close(self) -> None:
+        self.operations.append("close")
         self.closed = True
 
     def stats(self) -> Dict[str, int]:
@@ -75,6 +82,12 @@ class _ObjectRow:
 
 class _NoStatsClient(_FakeOmniKVClient):
     stats = None
+
+
+class _SyncFailingClient(_FakeOmniKVClient):
+    def sync(self) -> None:
+        super().sync()
+        raise RuntimeError("sync failed")
 
 
 class _MissingScanClient:
@@ -180,6 +193,34 @@ async def test_omnikv_storage_delete_and_tombstones(
         '["default","gone"]': 13.0
     }
     await storage.close()
+
+
+@pytest.mark.asyncio
+async def test_omnikv_close_closes_native_client_when_sync_fails(
+        tmp_path: Path) -> None:
+    module_name = "_sketchlog_fake_omnikv_sync_fails"
+    module = ModuleType(module_name)
+
+    def open_embedded(
+            data_dir: str, namespace: str = "sketchlog"
+    ) -> _SyncFailingClient:
+        return _SyncFailingClient(data_dir, namespace)
+
+    module.open_embedded = open_embedded  # type: ignore[attr-defined]
+    sys.modules[module_name] = module
+    try:
+        storage = OmniKVEmbeddedStorage(tmp_path / "db", module_name=module_name)
+        await storage.initialize()
+        client = storage._require_client()
+
+        with pytest.raises(RuntimeError, match="sync failed"):
+            await storage.close()
+
+        assert client.closed is True
+        assert storage._client is None
+        assert client.operations[-2:] == ["sync", "close"]
+    finally:
+        sys.modules.pop(module_name, None)
 
 
 @pytest.mark.asyncio
@@ -366,6 +407,33 @@ async def test_omnikv_tombstone_invalid_rows_and_existing_versions(
         ("bad-tuple", "{}"),
     ]
     assert await storage.load_tombstones("node-a") == {}
+    await storage.close()
+
+
+@pytest.mark.asyncio
+async def test_omnikv_delete_with_tombstone_syncs_tombstone_before_state_delete(
+        tmp_path: Path, fake_omnikv_module: str) -> None:
+    storage = OmniKVEmbeddedStorage(
+        tmp_path / "omnikv", module_name=fake_omnikv_module)
+    await storage.initialize()
+    client = storage._require_client()
+
+    log = StreamLog()
+    log.add_latency(99.0)
+    await storage.save("default", "checkout", log)
+    client.operations.clear()
+
+    deleted = await storage.delete_with_tombstone(
+        "default", "checkout", "node-a", "stream-a", 20.0)
+
+    state_key = _state_key("default", "checkout")
+    tombstone_key = _tombstone_key("node-a", "stream-a")
+    assert deleted is True
+    tombstone_write_index = client.operations.index(f"put:{tombstone_key}")
+    state_delete_index = client.operations.index(f"delete:{state_key}")
+    assert tombstone_write_index < state_delete_index
+    assert client.operations.index("sync") < state_delete_index
+    assert client.operations[-1] == "sync"
     await storage.close()
 
 

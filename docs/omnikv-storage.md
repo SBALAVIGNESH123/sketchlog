@@ -97,6 +97,12 @@ The backend preserves SQLAlchemy-compatible semantics:
 - delete returns whether a checkpoint existed;
 - mesh tombstones retain the highest observed version per stream key.
 
+For mesh deletes, the embedded backend writes and syncs the tombstone before it
+removes the stream checkpoint. The OmniKV bridge contract does not require a
+cross-key transaction primitive, so this ordering is intentionally recoverable:
+after an interrupted delete, cleanup can be retried, but a durable tombstone is
+not lost after the stream checkpoint has been removed.
+
 ## Operational notes
 
 - Keep `SKETCHLOG_OMNIKV_DATA_DIR` on durable local storage.

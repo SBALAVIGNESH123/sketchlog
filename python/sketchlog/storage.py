@@ -5,9 +5,20 @@ import json
 import time
 import zlib
 from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import Optional, List, Any, Dict, Union, Protocol, runtime_checkable, cast
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Union,
+    cast,
+    runtime_checkable,
+)
 import structlog
 
 logger = structlog.get_logger("sketchlog.storage")
@@ -84,6 +95,23 @@ def _tombstone_prefix(node_id: str) -> str:
 
 def _tombstone_key(node_id: str, stream_key: str) -> str:
     return f"{_tombstone_prefix(node_id)}{_encode_key_part(stream_key)}"
+
+
+def _tombstone_envelope(stream_key: str, version: float) -> str:
+    return json.dumps(
+        {"schema": 1, "stream_key": stream_key, "version": version},
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _tombstone_version(value: Optional[str]) -> float:
+    if value is None:
+        return float("-inf")
+    try:
+        return float(json.loads(value)["version"])
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return float("-inf")
 
 
 def _row_key(row: Any) -> str:
@@ -394,8 +422,31 @@ class OmniKVEmbeddedStorage(StorageBackend):
         self._client: Optional[_OmniKVEmbeddedClient] = None
         self._locks = tuple(asyncio.Lock() for _ in range(64))
 
+    def _lock_index_for(self, key_a: str, key_b: str) -> int:
+        return hash((key_a, key_b)) % len(self._locks)
+
     def _lock_for(self, key_a: str, key_b: str) -> asyncio.Lock:
-        return self._locks[hash((key_a, key_b)) % len(self._locks)]
+        return self._locks[self._lock_index_for(key_a, key_b)]
+
+    @asynccontextmanager
+    async def _lock_pair_for(
+        self,
+        first_key_a: str,
+        first_key_b: str,
+        second_key_a: str,
+        second_key_b: str,
+    ) -> AsyncIterator[None]:
+        first_index = self._lock_index_for(first_key_a, first_key_b)
+        second_index = self._lock_index_for(second_key_a, second_key_b)
+        if first_index == second_index:
+            async with self._locks[first_index]:
+                yield
+            return
+
+        lower_index, higher_index = sorted((first_index, second_index))
+        async with self._locks[lower_index]:
+            async with self._locks[higher_index]:
+                yield
 
     async def initialize(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -474,6 +525,28 @@ class OmniKVEmbeddedStorage(StorageBackend):
             raise RuntimeError("OmniKVEmbeddedStorage is not initialized")
         return self._client
 
+    async def _sync_client(self, client: _OmniKVEmbeddedClient) -> None:
+        sync = getattr(client, "sync", None)
+        if callable(sync):
+            await asyncio.to_thread(sync)
+
+    async def _put_tombstone_if_newer(
+        self,
+        client: _OmniKVEmbeddedClient,
+        key: str,
+        stream_key: str,
+        version: float,
+    ) -> bool:
+        current = _tombstone_version(await asyncio.to_thread(client.get, key))
+        if current >= version:
+            return False
+        await asyncio.to_thread(
+            client.put,
+            key,
+            _tombstone_envelope(stream_key, version),
+        )
+        return True
+
     async def save(
             self, namespace: str, stream_id: str,
             log: Union[StreamLog, ThreadSafeStreamLog]) -> None:
@@ -537,15 +610,21 @@ class OmniKVEmbeddedStorage(StorageBackend):
 
     async def close(self) -> None:
         client = self._client
-        self._client = None
         if client is None:
             return
-        sync = getattr(client, "sync", None)
-        if callable(sync):
-            await asyncio.to_thread(sync)
+        sync_error: Optional[BaseException] = None
+        try:
+            await self._sync_client(client)
+        except BaseException as exc:
+            sync_error = exc
         close = getattr(client, "close", None)
         if callable(close):
             await asyncio.to_thread(close)
+            self._client = None
+        elif sync_error is None:
+            self._client = None
+        if sync_error is not None:
+            raise sync_error
 
     async def healthcheck(self) -> bool:
         try:
@@ -569,23 +648,10 @@ class OmniKVEmbeddedStorage(StorageBackend):
         client = self._require_client()
         key = _tombstone_key(node_id, stream_key)
         async with self._lock_for(node_id, stream_key):
-            existing = await asyncio.to_thread(client.get, key)
-            if existing is not None:
-                try:
-                    current = float(json.loads(existing)["version"])
-                except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-                    current = float("-inf")
-                if current >= version:
-                    return
-            await asyncio.to_thread(
-                client.put,
-                key,
-                json.dumps(
-                    {"schema": 1, "stream_key": stream_key, "version": version},
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ),
-            )
+            updated = await self._put_tombstone_if_newer(
+                client, key, stream_key, version)
+            if updated:
+                await self._sync_client(client)
 
     async def load_tombstones(self, node_id: str) -> Dict[str, float]:
         client = self._require_client()
@@ -611,32 +677,25 @@ class OmniKVEmbeddedStorage(StorageBackend):
         self, namespace: str, stream_id: str, node_id: str,
         stream_key: str, version: float
     ) -> bool:
-        """Delete state and persist the mesh tombstone under one process lock."""
+        """Durably persist the mesh tombstone before deleting state.
+
+        The embedded bridge contract does not require cross-key transactions, so
+        the recoverable ordering is tombstone-first: after a crash, stale state
+        may still be retried/deleted, but a missing tombstone cannot resurrect a
+        locally deleted mesh stream.
+        """
         client = self._require_client()
         state_key = _state_key(namespace, stream_id)
         tombstone_key = _tombstone_key(node_id, stream_key)
-        async with self._lock_for(namespace, stream_id):
+        async with self._lock_pair_for(namespace, stream_id, node_id, stream_key):
+            tombstone_updated = await self._put_tombstone_if_newer(
+                client, tombstone_key, stream_key, version)
+            if tombstone_updated:
+                await self._sync_client(client)
+
             existing_state = await asyncio.to_thread(client.get, state_key)
             deleted = existing_state is not None
             if deleted:
                 await asyncio.to_thread(client.delete, state_key)
-
-            existing_tombstone = await asyncio.to_thread(
-                client.get, tombstone_key)
-            if existing_tombstone is not None:
-                try:
-                    current = float(json.loads(existing_tombstone)["version"])
-                except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-                    current = float("-inf")
-                if current >= version:
-                    return deleted
-            await asyncio.to_thread(
-                client.put,
-                tombstone_key,
-                json.dumps(
-                    {"schema": 1, "stream_key": stream_key, "version": version},
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ),
-            )
+                await self._sync_client(client)
             return deleted
