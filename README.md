@@ -243,6 +243,19 @@ unchanged. See the
 [OmniKV storage backend guide](https://sbalavignesh123.github.io/sketchlog/docs/omnikv-storage/)
 for the bridge contract and operational notes.
 
+Run the unified storage proof CLI when you want one reproducible command for
+screenshots, launch videos, or local confidence checks:
+
+```bash
+python scripts/storage_proof.py --backend memory
+python scripts/storage_proof.py --backend omnikv
+python scripts/storage_proof.py --backend postgres --postgres-start --postgres-stop
+```
+
+The runner emits a human-readable summary and a JSON evidence report covering
+write, query, restart/reopen, delete, and durable tombstone behavior where the
+selected backend supports it.
+
 ## Documentation
 
 The full documentation is published at

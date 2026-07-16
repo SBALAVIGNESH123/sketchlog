@@ -145,6 +145,23 @@ not installed:
 python -m pytest tests/test_omnikv_e2e_smoke.py -m omnikv_real -v
 ```
 
+## Unified storage proof runner
+
+For launch screenshots, demos, and local confidence checks, use the unified
+storage proof runner:
+
+```bash
+python scripts/storage_proof.py --backend memory
+python scripts/storage_proof.py --backend omnikv
+python scripts/storage_proof.py --backend postgres --postgres-start --postgres-stop
+```
+
+The runner prints a human-readable status table plus a JSON evidence report
+with environment metadata, timings, restart behavior, delete verification, and
+tombstone status for each selected backend. Use `--backend all
+--allow-missing-optional` when you want one command that records unavailable
+optional backends as skipped instead of failing.
+
 ## Durability behavior
 
 The backend persists complete compressed `StreamLog` snapshots. On restart,

@@ -250,6 +250,18 @@ The proof writes telemetry, restarts SketchLog, verifies restored metrics,
 deletes the stream, checks the durable mesh tombstone in PostgreSQL, restarts
 again, and confirms the deleted stream is not resurrected.
 
+The same scenario is also available through the unified storage proof runner:
+
+```bash
+python scripts/storage_proof.py --backend memory
+python scripts/storage_proof.py --backend postgres --postgres-start --postgres-stop
+python scripts/storage_proof.py --backend omnikv
+```
+
+The unified runner emits both a readable summary and JSON evidence with timings
+and environment metadata, making it suitable for reproducible screenshots and
+launch-video proof clips.
+
 ```yaml
 version: "3.9"
 
