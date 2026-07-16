@@ -272,6 +272,12 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (ProofFailure, subprocess.CalledProcessError) as exc:
+    except subprocess.CalledProcessError as exc:
+        message = f"FAIL PostgreSQL durability proof: {exc}"
+        if exc.output:
+            message += f"\nOutput:\n{exc.output}"
+        print(message, file=sys.stderr)
+        raise SystemExit(1)
+    except ProofFailure as exc:
         print(f"FAIL PostgreSQL durability proof: {exc}", file=sys.stderr)
         raise SystemExit(1)
