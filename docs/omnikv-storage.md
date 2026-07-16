@@ -21,12 +21,21 @@ SketchLog stores compact sketch checkpoints, not raw event arrays:
 
 ## Configuration
 
+Install SketchLog and the OmniKV Python/native bridge into the same Python
+environment:
+
+```bash
+python -m pip install sketchlog
+python -m pip install "git+https://github.com/SBALAVIGNESH123/OmniKV.git#subdirectory=bindings/python"
+```
+
 Set the backend explicitly:
 
 ```bash
 export SKETCHLOG_STORAGE_BACKEND=omnikv
 export SKETCHLOG_OMNIKV_DATA_DIR=/var/lib/sketchlog/omnikv
 export SKETCHLOG_OMNIKV_NAMESPACE=sketchlog
+export SKETCHLOG_OMNIKV_MODULE=omnikv
 
 sketchlog-server --host 0.0.0.0 --port 8000
 ```
@@ -84,6 +93,25 @@ client.stats()
 
 If the bridge is missing or incomplete, SketchLog fails closed during storage
 initialization instead of silently falling back to another durable backend.
+
+## Real bridge smoke proof
+
+After installing the OmniKV bridge, run the SketchLog smoke proof:
+
+```bash
+python scripts/omnikv_bridge_smoke.py
+```
+
+Expected final output:
+
+```text
+PASS SketchLog OmniKV bridge smoke
+```
+
+The smoke writes a real `StreamLog` through the installed `omnikv` module,
+closes the backend, reopens it, verifies the stream survived, deletes the
+stream with a mesh tombstone, reopens again, verifies the stream did not
+resurrect, and verifies the tombstone survived.
 
 ## Durability behavior
 
