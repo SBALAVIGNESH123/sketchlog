@@ -238,6 +238,18 @@ backup management itself — delegate to your cloud provider or DBA tooling.
 
 ## Docker Compose example (PostgreSQL)
 
+For a reproducible end-to-end proof, use the checked-in PostgreSQL durability
+stack:
+
+```bash
+docker compose -f demo/postgres/compose.yml up --build -d --wait
+python scripts/postgres_durability_proof.py
+```
+
+The proof writes telemetry, restarts SketchLog, verifies restored metrics,
+deletes the stream, checks the durable mesh tombstone in PostgreSQL, restarts
+again, and confirms the deleted stream is not resurrected.
+
 ```yaml
 version: "3.9"
 

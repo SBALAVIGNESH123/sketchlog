@@ -99,6 +99,7 @@ server = [
     "asgi-correlation-id>=4.2.0",
     "psutil",
     "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.30.0,<1",
     "aiosqlite"
 ]
 

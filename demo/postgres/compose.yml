@@ -1,0 +1,49 @@
+name: sketchlog-postgres-proof
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sketchlog
+      POSTGRES_USER: sketchlog
+      POSTGRES_PASSWORD: sketchlog
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sketchlog -d sketchlog"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  server:
+    image: sketchlog-postgres-proof-server:local
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SKETCHLOG_DB_URI: postgresql+asyncpg://sketchlog:sketchlog@postgres:5432/sketchlog
+      SKETCHLOG_NODE_ID: postgres-proof-node
+      SKETCHLOG_ADVERTISED_ADDRESS: http://server:8000
+      SKETCHLOG_CLUSTER_SECRET: postgres-proof-cluster-secret
+      SKETCHLOG_MAX_STREAMS: "100"
+      SKETCHLOG_MEMORY_THRESHOLD: "95"
+    ports:
+      - "127.0.0.1:${SKETCHLOG_POSTGRES_PROOF_PORT:-4180}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=4).read()"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 30
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pg_data:
