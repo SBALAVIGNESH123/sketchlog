@@ -113,6 +113,38 @@ closes the backend, reopens it, verifies the stream survived, deletes the
 stream with a mesh tombstone, reopens again, verifies the stream did not
 resurrect, and verifies the tombstone survived.
 
+## End-to-end HTTP smoke proof
+
+To prove the full server path, run the end-to-end smoke:
+
+```bash
+python scripts/omnikv_e2e_smoke.py
+```
+
+Expected final output:
+
+```text
+PASS SketchLog OmniKV E2E smoke
+```
+
+This proof starts a real SketchLog HTTP server with:
+
+- `SKETCHLOG_STORAGE_BACKEND=omnikv`;
+- a real installed `omnikv` Python/native bridge;
+- Sketch Mesh enabled for durable deletion tombstones.
+
+It then writes telemetry through the HTTP ingest endpoint, gracefully restarts
+the server, verifies metrics are still readable from OmniKV, deletes the stream
+in mesh mode, verifies the tombstone exists in the embedded backend, restarts
+again, and verifies stale stream state does not resurrect.
+
+The pytest wrapper is marked `omnikv_real` and skips clearly when the bridge is
+not installed:
+
+```bash
+python -m pytest tests/test_omnikv_e2e_smoke.py -m omnikv_real -v
+```
+
 ## Durability behavior
 
 The backend persists complete compressed `StreamLog` snapshots. On restart,
