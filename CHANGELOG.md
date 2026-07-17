@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 1.2.5
+
+### Changed
+
+- Upgrade the hosted playground into a launch-ready product evaluation hub with
+  guided tour, synthetic dashboard, Streaming SQL examples, exporter previews,
+  proof commands, and an explicit browser-demo versus local-proof boundary.
+- Clarify README positioning around why teams may use SketchLog, how it
+  complements full time-series databases, and where optional OmniKV embedded
+  storage fits beside in-memory and PostgreSQL deployments.
+- Refresh release-coupled package, chart, OpenAPI, Docker, Helm, TypeScript,
+  WASM, React, and Go installation references for v1.2.5.
+
 ## 1.2.4
 
 ### Changed

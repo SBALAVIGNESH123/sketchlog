@@ -21,20 +21,34 @@ SketchLog compresses high-throughput telemetry streams into bounded-memory,
 mergeable statistical summaries. It combines DDSketch for latency percentiles,
 HyperLogLog for cardinality, and Count-Min Sketch for event frequencies, then
 adds production surfaces for APIs, dashboards, alerts, exporters, Kubernetes,
-and multi-language SDKs.
+multi-language SDKs, PostgreSQL-backed durability, and optional OmniKV embedded
+storage.
 
 The goal is simple: keep the operational signal without retaining every raw
 event.
 
-## Why SketchLog
+## Why teams may use SketchLog
 
-- Bounded memory per stream instead of unbounded raw-event storage.
-- Explicit approximation guarantees for percentiles, cardinality, and frequency.
-- Mergeable sketch state for distributed systems and edge deployments.
-- Live query, dashboard, SLO, anomaly, and export workflows built on the same
-  compact telemetry model.
-- Production-minded release engineering with CI, coverage, security scanning,
-  docs, Helm packaging, container checks, and public demo verification.
+SketchLog is useful when you want fast operational answers from compact
+telemetry summaries instead of storing every raw event forever.
+
+- **Lower storage pressure**: keep percentiles, cardinality, frequency, SLO,
+  anomaly, and canary signals in bounded-memory summaries.
+- **Fast tail-latency answers**: query p50, p95, and p99 without scanning large
+  raw history.
+- **Streaming analytics**: combine sketches with Streaming SQL, dashboards,
+  anomaly comparison, Smart SLO workflows, and exporter payloads.
+- **Distributed and edge-friendly state**: merge compact sketch state across
+  nodes, tenants, and namespaces.
+- **Flexible durability**: run ephemeral in memory, durable with PostgreSQL for
+  server deployments, or embedded with OmniKV for local-first, edge, or
+  single-node deployments.
+- **Proof-first evaluation**: use the hosted playground, Docker smoke verifier,
+  PostgreSQL durability proof, OmniKV storage proof, telemetry load proof, and
+  public CI gates before trusting it with real workloads.
+- **Fits beside existing observability stacks**: complement Prometheus, Mimir,
+  Thanos, VictoriaMetrics, InfluxDB, TimescaleDB, Grafana, OpenTelemetry, Loki,
+  Datadog, and New Relic instead of pretending to replace all of them.
 
 SketchLog is currently a production-minded open-source beta. The core data
 structures and release pipeline are heavily tested, while some higher-level
@@ -78,6 +92,7 @@ ports, cleanup, verification, and recording guidance.
 | Deployment | Docker image, Docker Compose demo, Helm chart, Kubernetes Operator manifests |
 | Operations | Doctor checks, alert manager, rate limiting, TLS/mTLS helpers, DB hardening, benchmark lab |
 | Runtime targets | Python, C++, TypeScript, Go, WebAssembly, Linux eBPF collector |
+| Storage | In-memory, PostgreSQL/SQLAlchemy, optional OmniKV embedded backend |
 
 ## Architecture
 
@@ -137,7 +152,7 @@ npm install @sketchlog/client
 Install the Go client:
 
 ```bash
-go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.4
+go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.5
 ```
 
 ## Quickstart
@@ -208,14 +223,14 @@ err := client.IngestEvents(ctx, "production_api", batch)
 Run the server with Docker:
 
 ```bash
-docker run --rm -p 8000:8000 ghcr.io/sbalavignesh123/sketchlog:1.2.4
+docker run --rm -p 8000:8000 ghcr.io/sbalavignesh123/sketchlog:1.2.5
 ```
 
 Install with Helm:
 
 ```bash
 helm upgrade --install sketchlog oci://ghcr.io/sbalavignesh123/charts/sketchlog \
-  --version 1.2.4
+  --version 1.2.5
 ```
 
 Run mesh mode on Kubernetes:
@@ -342,12 +357,18 @@ make demo
 
 ## What SketchLog is not
 
-SketchLog is a streaming metrics compression layer. It is deliberately not:
+SketchLog is a bounded-memory telemetry analytics layer. It is deliberately not:
 
 - A tracing system. It does not store request paths, spans, correlation IDs, or causal chains.
-- A time-series database. It does not provide raw historical drill-down or full label indexing.
+- A full time-series database. It does not store every raw sample, provide full
+  historical drill-down, or implement complete label indexing like Prometheus,
+  Mimir, Thanos, VictoriaMetrics, InfluxDB, or TimescaleDB.
 - A raw log storage system. It keeps compact summaries, not every event payload.
 - An exact analytics engine. Results are probabilistic with documented error bounds.
+
+The intended positioning is complementary: use a TSDB when you need full raw
+history and label indexing; use SketchLog when you want compact streaming
+summaries, bounded-memory analytics, and proof-friendly operational signals.
 
 ## Community
 
