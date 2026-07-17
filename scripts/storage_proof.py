@@ -408,6 +408,7 @@ def run_omnikv_proof(
         {
             "backend": "omnikv",
             "status": "pass",
+            "data_dir": Path(str(summary.get("data_dir", selected_data_dir))).name,
             "restart_behavior": "durable_state_recovered",
             "delete_verified": True,
             "tombstone": {
@@ -441,17 +442,22 @@ def run_postgres_proof(
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            timeout=15,
         )
     except subprocess.CalledProcessError as exc:
         output = concise_output(exc.stdout or "")
         detail = f": {output}" if output else ""
         raise BackendUnavailable(f"Docker daemon is not available{detail}") from exc
+    except subprocess.TimeoutExpired as exc:
+        output = concise_output(str(exc))
+        detail = f": {output}" if output else ""
+        raise BackendUnavailable(f"Docker daemon probe timed out{detail}") from exc
     from postgres_durability_proof import compose, run_proof
 
     started = time.perf_counter()
-    if start:
-        compose(compose_file, "up", "--build", "-d", "--wait")
     try:
+        if start:
+            compose(compose_file, "up", "--build", "-d", "--wait")
         summary = run_proof(compose_file, server_url.rstrip("/"))
     except subprocess.CalledProcessError:
         raise
@@ -463,7 +469,7 @@ def run_postgres_proof(
 
     summary.update(
         {
-            "backend": "postgresql",
+            "backend": "postgres",
             "status": "pass",
             "restart_behavior": "durable_state_recovered",
             "delete_verified": True,
@@ -502,7 +508,7 @@ def environment_metadata() -> dict[str, Any]:
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "machine": platform.machine(),
-        "repo_root": str(ROOT),
+        "repo": ROOT.name,
         "git_commit": git_commit(),
     }
 
@@ -570,10 +576,12 @@ def run_selected_backends(args: argparse.Namespace) -> dict[str, Any]:
             )
             if not args.continue_on_error:
                 break
-        except (StorageProofFailure, subprocess.CalledProcessError) as exc:
+        except Exception as exc:
             error = str(exc)
-            if isinstance(exc, subprocess.CalledProcessError) and exc.output:
-                error = f"{error}\nOutput:\n{exc.output}"
+            if isinstance(exc, subprocess.CalledProcessError):
+                output = getattr(exc, "output", None) or getattr(exc, "stdout", None)
+                if output:
+                    error = f"{error}\nOutput:\n{concise_output(str(output))}"
             results.append(
                 {
                     "backend": backend,
@@ -602,7 +610,7 @@ def run_selected_backends(args: argparse.Namespace) -> dict[str, Any]:
             "unique_samples": len(UNIQUES),
             "event_counts": EVENTS,
         },
-        "proof_root": str(proof_root),
+        "proof_root": proof_root.name,
         "selected_backends": selected,
         "passed": len(passed),
         "failed": len(failed),
