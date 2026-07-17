@@ -1,0 +1,3051 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Streaming metrics compression engine">
+      
+      
+        <meta name="author" content="Bala Vignesh S">
+      
+      
+      
+        <link rel="prev" href="../threat_model/">
+      
+      
+        <link rel="next" href="../compatibility/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Formal Guarantees - SketchLog</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#formal-error-guarantees" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="SketchLog" class="md-header__button md-logo" aria-label="SketchLog" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            SketchLog
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Formal Guarantees
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SBALAVIGNESH123/sketchlog" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SBALAVIGNESH123/sketchlog
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href=".." class="md-tabs__link">
+          
+  
+  
+  Overview
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../features/anomaly_auto_pilot/" class="md-tabs__link">
+          
+  
+  
+  10x Features
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../sdks/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../kubernetes-operator/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../api/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../website/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Website
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../demo/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Demo & Playground
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="SketchLog" class="md-nav__button md-logo" aria-label="SketchLog" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    SketchLog
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SBALAVIGNESH123/sketchlog" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    SBALAVIGNESH123/sketchlog
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Overview
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture & Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10x Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    10x Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/anomaly_auto_pilot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anomaly Auto-Pilot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/streaming_sql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming SQL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/universal_collector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Universal Collector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/sketch_mesh/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sketch Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/smart_slo_engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Smart SLO Engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/sketch_diffing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sketch Diffing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/wasm_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WASM Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/live_dashboard_sdk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live Dashboard SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../features/multi_tenancy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-Tenancy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sdks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client SDKs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../async_client/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Async Python Client
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../exporters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SketchLog Agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Backends & Proofs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../omnikv-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OmniKV Storage Backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cost-estimate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cost Savings Calculator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bench-lab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Lab
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../developer-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rate_limiting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rate Limiting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rbac/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Role-Based Access Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tls-mtls/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS & mTLS Hardening
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ci-regression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CI Regression Action
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../grafana/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grafana Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../grafana-datasource-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grafana Data Source Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../otel-collector/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenTelemetry Collector
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../canary-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Canary Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standalone Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kubernetes-operator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes Operator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../doctor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Readiness Checker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../db-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Database Hardening
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mesh-visualizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mesh Visualizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../namespace-admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Namespace Admin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../query-builder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Query Builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../alert-manager/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Alert Management Center
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threat_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Threat Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formal Guarantees
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formal Guarantees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#ddsketch-percentile-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DDSketch — Percentile Estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hyperloglog-cardinality-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HyperLogLog — Cardinality Estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#count-min-sketch-frequency-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count-Min Sketch — Frequency Estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combined-memory-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combined Memory Budget
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merge-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge Safety
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merge-algebra-commutative-monoid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge Algebra (Commutative Monoid)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-bias-and-edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Bias and Edge Cases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Known Bias and Edge Cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ddsketch-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DDSketch Bias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hyperloglog-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HyperLogLog Bias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#count-min-sketch-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count-Min Sketch Bias
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windowed-correctness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windowed Correctness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Windowed Correctness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-expiry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time Expiry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-bound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Bound
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merge-correctness-across-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge Correctness Across Windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#thread-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Thread Safety
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driftsketch-anomaly-drift-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DriftSketch — Anomaly Drift Detection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DriftSketch — Anomaly Drift Detection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-detects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it detects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-guarantees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it guarantees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-does-not-guarantee" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does NOT guarantee
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#correct-positioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correct positioning
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility Guarantees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../website/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Demo & Playground
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#ddsketch-percentile-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DDSketch — Percentile Estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hyperloglog-cardinality-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HyperLogLog — Cardinality Estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#count-min-sketch-frequency-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count-Min Sketch — Frequency Estimation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combined-memory-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combined Memory Budget
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merge-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge Safety
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merge-algebra-commutative-monoid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge Algebra (Commutative Monoid)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-bias-and-edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Bias and Edge Cases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Known Bias and Edge Cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ddsketch-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DDSketch Bias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hyperloglog-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HyperLogLog Bias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#count-min-sketch-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count-Min Sketch Bias
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windowed-correctness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windowed Correctness
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Windowed Correctness">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#time-expiry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time Expiry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-bound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Bound
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merge-correctness-across-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge Correctness Across Windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#thread-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Thread Safety
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driftsketch-anomaly-drift-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DriftSketch — Anomaly Drift Detection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DriftSketch — Anomaly Drift Detection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-detects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it detects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-guarantees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it guarantees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-it-does-not-guarantee" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does NOT guarantee
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#correct-positioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correct positioning
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="formal-error-guarantees">Formal Error Guarantees</h1>
+<p>SketchLog combines three algorithms with published mathematical bounds. Those
+bounds apply under the preconditions below; implementation limits, hash
+assumptions, and windowing semantics are part of the contract.</p>
+<hr />
+<h2 id="ddsketch-percentile-estimation">DDSketch — Percentile Estimation</h2>
+<p><strong>Guarantee:</strong> For any quantile q, the estimated value v' satisfies:</p>
+<p>$$|v' - v| \leq \alpha \cdot |v|$$</p>
+<p>where alpha is the <code>relative_accuracy</code> parameter (default 0.01 = 1%).</p>
+<p><strong>Source:</strong> Theorem 1 in <a href="https://arxiv.org/abs/1908.10693">Masson et al., 2019</a></p>
+<p><strong>Boundary conditions:</strong>
+- Holds for all distributions (no distributional assumptions)
+- Holds for any quantile q in (0, 1)
+- Does NOT hold for q = 0 (min) or q = 1 (max) — those are tracked exactly
+- Value must be nonzero (zero values stored separately)
+- Error is <em>relative</em>, not absolute — small values have small absolute error
+- Each positive and negative store accepts at most 1,024 occupied buckets.
+  Ingestion or merge fails transactionally rather than silently collapsing
+  buckets when that limit would be exceeded.</p>
+<p><strong>Memory:</strong> At most 1,024 positive and 1,024 negative bucket entries, plus
+constant metadata. Actual byte usage depends on the backend and allocator.</p>
+<p><strong>Merge:</strong> Bucket-wise addition preserves the relative error bound.
+Proven in Theorem 2 of the same paper. No accuracy degradation under merge.</p>
+<hr />
+<h2 id="hyperloglog-cardinality-estimation">HyperLogLog — Cardinality Estimation</h2>
+<p><strong>Guarantee:</strong> The estimated cardinality n' satisfies:</p>
+<p>$$\text{Standard Error} = \frac{1.04}{\sqrt{m}}$$</p>
+<p>where m = 2^p registers (p = precision parameter, default 10, so m = 1024).</p>
+<p><strong>Default configuration:</strong> SE = 1.04 / sqrt(1024) = 3.25%</p>
+<p><strong>Source:</strong> Theorem 1 in <a href="https://algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf">Flajolet et al., 2007</a></p>
+<p><strong>Boundary conditions:</strong>
+- Assumes hash function approximates uniform distribution (we use FNV-1a + murmur finalizer)
+- Small range correction (linear counting) applied when many registers are zero
+- Large range correction removed — not needed for 64-bit hashes (per HLL++ paper)
+- Error is <em>probabilistic</em>, not worst-case — ~68% of estimates fall within 1 SE</p>
+<p><strong>Memory:</strong> The register payload is exactly <code>m = 2^p</code> bytes (1,024 bytes by
+default). Container and object overhead is additional and backend-dependent.</p>
+<p><strong>Merge:</strong> Register-wise max. Standard HLL merge operation.
+Does not degrade accuracy — merged estimate has same SE as single-stream estimate.</p>
+<hr />
+<h2 id="count-min-sketch-frequency-estimation">Count-Min Sketch — Frequency Estimation</h2>
+<p><strong>Guarantee:</strong> For any item, the estimated frequency f' satisfies:</p>
+<p>$$f \leq f' \leq f + \varepsilon \cdot N$$</p>
+<p>where:
+- f = true frequency
+- N = total count of all items
+- epsilon = e / width (e = Euler's number)
+- This holds with probability &gt;= 1 - delta, where delta = e^(-depth)</p>
+<p><strong>Default configuration:</strong>
+- width = 2048, depth = 5
+- epsilon = 2.718 / 2048 = 0.00133
+- delta = e^(-5) = 0.0067 (99.3% confidence)</p>
+<p><strong>Source:</strong> Theorem 1 in <a href="https://dimacs.rutgers.edu/~graham/pubs/papers/cm-full.pdf">Cormode &amp; Muthukrishnan, 2005</a></p>
+<p><strong>Boundary conditions:</strong>
+- CMS does not underestimate for accepted positive updates
+- CMS <strong>may overestimate</strong> by up to epsilon * N
+- Overestimation increases with total event count N
+- Works for any item type (strings, integers)
+- Hash quality matters — we use murmur3 finalizer with deterministic seeds
+- Counters are signed 64-bit values. An update or merge that would overflow is
+  rejected transactionally.</p>
+<p><strong>Memory:</strong> width * depth * 8 bytes. Default: 2048 * 5 * 8 = 81,920 bytes = 80 KB.</p>
+<p><strong>Merge:</strong> Cell-wise addition. Preserves epsilon/delta guarantees exactly.</p>
+<hr />
+<h2 id="combined-memory-budget">Combined Memory Budget</h2>
+<table>
+<thead>
+<tr>
+<th>Sketch</th>
+<th>Bound or formula</th>
+<th>Default payload</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DDSketch</td>
+<td>At most 2 × 1,024 occupied bucket entries</td>
+<td>Depends on occupied buckets and backend</td>
+</tr>
+<tr>
+<td>HyperLogLog</td>
+<td><code>2^p</code> register bytes</td>
+<td>1 KiB</td>
+</tr>
+<tr>
+<td>Count-Min Sketch</td>
+<td><code>width × depth × 8</code> counter bytes</td>
+<td>80 KiB</td>
+</tr>
+</tbody>
+</table>
+<p><code>memory_breakdown()</code> reports SketchLog's backend-specific estimate. Memory is
+bounded by configuration and occupied DDSketch buckets, not by the number of
+accepted events. Process RSS also includes interpreter/runtime, allocator,
+server, and SDK overhead that this method does not report.</p>
+<hr />
+<h2 id="merge-safety">Merge Safety</h2>
+<p>Within matching configurations and representable counter/bucket limits, the
+three merge operations are:
+- <strong>Commutative:</strong> merge(A, B) = merge(B, A)
+- <strong>Associative:</strong> merge(merge(A, B), C) = merge(A, merge(B, C))
+- <strong>Accuracy-preserving:</strong> merged result has same error bounds as single-stream</p>
+<p>This means you can safely:
+- Merge across distributed workers
+- Merge in any order
+- Chain merges repeatedly</p>
+<p><strong>Requirement:</strong> All instances must have identical configuration
+(alpha, precision, width, depth). Mismatched configs raise <code>ValueError</code>.
+Capacity or counter overflow raises without mutating the destination.</p>
+<hr />
+<h2 id="merge-algebra-commutative-monoid">Merge Algebra (Commutative Monoid)</h2>
+<p>The underlying bucket addition and register maximum operations have the usual
+commutative-monoid algebra. The concrete API is a <strong>checked partial operation</strong>:
+configuration mismatch, occupied-bucket capacity, or integer overflow can
+reject a merge.</p>
+<p><strong>Definition:</strong> Let <code>S</code> be the set of all StreamLog instances with identical
+configuration. Define <code>⊕</code> as the merge operation. Then:</p>
+<p>For merges that remain in the representable domain:</p>
+<ol>
+<li><strong>Associativity:</strong> <code>(A ⊕ B) ⊕ C = A ⊕ (B ⊕ C)</code></li>
+<li><strong>Commutativity:</strong> <code>A ⊕ B = B ⊕ A</code></li>
+<li><strong>Identity:</strong> An empty StreamLog <code>ε</code> satisfies <code>A ⊕ ε = A</code></li>
+</ol>
+<p><strong>Per-sketch proof:</strong></p>
+<ul>
+<li>
+<p><strong>DDSketch:</strong> Bucket-wise addition is commutative and associative over integers.
+  Min/max tracking uses min/max, which are commutative and associative.
+  Proven in Theorem 2 of Masson et al., 2019.</p>
+</li>
+<li>
+<p><strong>HyperLogLog:</strong> Register-wise max is commutative and associative.
+  <code>max(max(a, b), c) = max(a, max(b, c))</code>. Standard HLL merge property.</p>
+</li>
+<li>
+<p><strong>Count-Min Sketch:</strong> Cell-wise addition inherits commutativity and
+  associativity from integer addition. Total count is additive.</p>
+</li>
+</ul>
+<p><strong>Why this matters:</strong> A distributed system may reduce compatible, representable
+states in any order. It must still surface and handle rejected merges; the
+implementation never wraps counters or silently drops excess buckets.</p>
+<p>Property and integration tests exercise identity, associativity,
+commutativity, cross-backend merge, overflow, and capacity rejection. Tests are
+evidence about this implementation, not a mathematical proof.</p>
+<hr />
+<h2 id="known-bias-and-edge-cases">Known Bias and Edge Cases</h2>
+<p>These are the situations where each sketch produces less accurate results.
+Understanding these is essential for production use.</p>
+<h3 id="ddsketch-bias">DDSketch Bias</h3>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Effect</th>
+<th>Severity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Very small values (&lt; 1e-9)</td>
+<td>Bucket index becomes very negative</td>
+<td>Accuracy remains bounded while occupied-bucket capacity remains available</td>
+</tr>
+<tr>
+<td>Zero values</td>
+<td>Stored separately in zero_count, not in logarithmic buckets</td>
+<td>None — exact</td>
+</tr>
+<tr>
+<td>All-duplicate stream</td>
+<td>Single bucket, accuracy depends on bucket boundary</td>
+<td>Low — tested at 100K duplicates, error &lt; 2%</td>
+</tr>
+<tr>
+<td>More than 1,024 occupied buckets per sign</td>
+<td>Update or merge is rejected transactionally</td>
+<td>Increase relative accuracy or partition streams</td>
+</tr>
+<tr>
+<td>Negative latencies</td>
+<td>Stored in separate negative bucket store</td>
+<td>None — handled correctly</td>
+</tr>
+</tbody>
+</table>
+<h3 id="hyperloglog-bias">HyperLogLog Bias</h3>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Effect</th>
+<th>Severity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Very low cardinality (&lt; 2.5m)</td>
+<td>Linear counting correction activates</td>
+<td>Low — bias-corrected</td>
+</tr>
+<tr>
+<td>High cardinality (&gt; 2^32)</td>
+<td>Not applicable with 64-bit hashes (no large range correction needed)</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Hash collisions</td>
+<td>Different items mapping to same register index</td>
+<td>Low — probabilistic, averaged out</td>
+</tr>
+<tr>
+<td>Skewed input (many duplicates)</td>
+<td>Does not affect accuracy — duplicates don't change registers</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Low precision (p=4, 16 registers)</td>
+<td>SE = 1.04/√16 = 26% error</td>
+<td>High — use p≥10</td>
+</tr>
+</tbody>
+</table>
+<h3 id="count-min-sketch-bias">Count-Min Sketch Bias</h3>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Effect</th>
+<th>Severity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Many distinct items vs narrow width</td>
+<td>Overestimation increases</td>
+<td>Medium — use wider table</td>
+</tr>
+<tr>
+<td>Skewed frequency (Zipf)</td>
+<td>Heavy hitters accurate, rare items overestimated</td>
+<td>Expected behavior</td>
+</tr>
+<tr>
+<td>Hash collisions across rows</td>
+<td>Still overestimates (CMS is always ≥ true count)</td>
+<td>By design</td>
+</tr>
+<tr>
+<td>Very large total count N</td>
+<td>Additive error bound εN grows with N</td>
+<td>Expected — increase width to compensate</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key rule:</strong> For accepted positive updates, CMS estimates are never below the
+true count. Tests exercise this invariant with deliberately collision-prone
+tables.</p>
+<hr />
+<h2 id="windowed-correctness">Windowed Correctness</h2>
+<p><code>WindowedStreamLog</code> maintains N rotating sub-sketches (buckets), each covering
+<code>window/N</code> seconds. Correctness properties:</p>
+<h3 id="time-expiry">Time Expiry</h3>
+<p>Events added at time <code>t</code> are guaranteed to expire by time <code>t + window + bucket_duration</code>.
+The maximum staleness is one bucket duration (<code>window/N</code>), not the full window.</p>
+<p><strong>Proof:</strong> When <code>_rotate()</code> advances, it resets the oldest bucket. The oldest
+bucket's age is at most <code>window</code> (N buckets × bucket_duration). After rotation,
+the expired bucket's data is permanently gone.</p>
+<h3 id="memory-bound">Memory Bound</h3>
+<p>Total memory = <code>N × single_sketch_size</code>. This is constant regardless of:
+- Total events processed
+- Burst traffic patterns
+- Distribution changes over time</p>
+<p><strong>Verified:</strong> <code>test_chaos_windowing</code> bounds memory after bursts, expiry, and
+reactivation; deterministic window tests cover idle reset and ring wraparound.</p>
+<h3 id="merge-correctness-across-windows">Merge Correctness Across Windows</h3>
+<p>Queries merge all active (non-expired) buckets into a temporary sketch.
+For compatible states that remain within the checked representable domain,
+merge order does not change the result. Bucket rotation still defines which
+events are active at the instant of the query.</p>
+<h3 id="thread-safety">Thread Safety</h3>
+<p>All write and read operations hold a lock. The lock is per-WindowedStreamLog
+instance, not global. This means:
+- Multiple WindowedStreamLog instances can operate independently
+- A single instance serializes writes correctly under multi-thread access</p>
+<p><strong>Verified:</strong> <code>test_concurrency_profiling</code> covers 1, 2, 4, 8, and 16 writer
+threads; <code>test_thread_safety_built_in</code> covers concurrent windowed writes.</p>
+<hr />
+<h2 id="driftsketch-anomaly-drift-detection">DriftSketch — Anomaly Drift Detection</h2>
+<p><code>DriftSketch</code> is a windowed correlation drift detector built on top of StreamLog.
+It is <strong>not</strong> a causal debugging system.</p>
+<h3 id="what-it-detects">What it detects</h3>
+<table>
+<thead>
+<tr>
+<th>Query</th>
+<th>Answer</th>
+<th>Supported</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"Did redis latency increase?"</td>
+<td>Current vs previous window p99</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>"Did error_rate and redis move together?"</td>
+<td>Drift correlation score</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>"Did redis <em>cause</em> the error spike?"</td>
+<td>Causal attribution</td>
+<td>No</td>
+</tr>
+<tr>
+<td>"What was the request path for error X?"</td>
+<td>Trace reconstruction</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-it-guarantees">What it guarantees</h3>
+<ul>
+<li><strong>Drift inputs</strong> use DDSketch percentile estimates with configured relative
+  accuracy. Detection itself remains threshold- and sample-dependent; there is
+  no universal false-positive or false-negative guarantee.</li>
+<li><strong>Correlation scores</strong> measure co-occurrence of drift direction and magnitude.
+  Score of 1.0 = both metrics drifted identically. Score of -1.0 = opposite drift.</li>
+<li><strong>Memory</strong> scales as <code>O(dimensions)</code> with configuration-dependent per-stream
+  memory.</li>
+<li><strong>Thread safety</strong> — all operations are lock-protected.</li>
+</ul>
+<h3 id="what-it-does-not-guarantee">What it does NOT guarantee</h3>
+<ul>
+<li><strong>Causality.</strong> Correlation does not imply causation. Two metrics drifting
+  together does not mean one caused the other.</li>
+<li><strong>Event identity.</strong> Individual events are destroyed. You cannot reconstruct
+  "what happened at 3:42am."</li>
+<li><strong>Trace reconstruction.</strong> No parent-child spans, no request lineage,
+  no correlation IDs.</li>
+<li><strong>Window sensitivity.</strong> Results depend on window size. A 1-minute window
+  catches short spikes; a 1-hour window smooths them out. Choose carefully.</li>
+</ul>
+<h3 id="correct-positioning">Correct positioning</h3>
+<p><strong>What DriftSketch is:</strong>
+- Windowed correlation drift detector over compressed metrics
+- Detects co-occurring metric changes in constant memory</p>
+<p><strong>What DriftSketch is not:</strong>
+- Not a causal debugging system
+- Not a root cause analysis engine
+- Not a tracing replacement</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
