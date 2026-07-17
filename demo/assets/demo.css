@@ -739,19 +739,23 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, .28);
+  border: 1px solid rgba(157, 248, 113, .28);
   border-radius: 34px;
   background:
-    linear-gradient(180deg, rgba(24, 36, 56, .98), rgba(9, 15, 24, .96)),
-    radial-gradient(circle at 72% 20%, rgba(102, 217, 239, .18), transparent 34%);
-  box-shadow: 0 32px 100px rgba(0, 0, 0, .46);
+    linear-gradient(180deg, rgba(20, 42, 36, .98), rgba(7, 16, 12, .97)),
+    radial-gradient(circle at 72% 20%, rgba(157, 248, 113, .2), transparent 34%);
+  box-shadow:
+    0 32px 100px rgba(0, 0, 0, .46),
+    0 0 70px rgba(157, 248, 113, .08);
 }
 
 .hero-product::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(102, 217, 239, .14), transparent 38%, rgba(157, 248, 113, .1));
+  background:
+    radial-gradient(circle at 12% 18%, rgba(157, 248, 113, .18), transparent 34%),
+    linear-gradient(135deg, rgba(102, 217, 239, .09), transparent 38%, rgba(157, 248, 113, .12));
   opacity: .85;
   z-index: -1;
 }
@@ -782,6 +786,69 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
   font-size: .82rem;
 }
 
+.product-brand-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 22px 22px 0;
+  padding: 18px;
+  border: 1px solid rgba(157, 248, 113, .24);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(157, 248, 113, .13), rgba(102, 217, 239, .05)),
+    rgba(2, 8, 14, .38);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+.product-brand-copy {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.brand-orb {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 34% 30%, #ffffff, rgba(255, 255, 255, .08) 22%, transparent 23%),
+    linear-gradient(135deg, var(--accent2), #38ef7d);
+  box-shadow:
+    0 0 0 7px rgba(157, 248, 113, .08),
+    0 0 34px rgba(157, 248, 113, .34);
+}
+
+.product-brand-copy strong {
+  display: block;
+  color: #f5fff2;
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+  letter-spacing: -.04em;
+}
+
+.product-brand-copy small {
+  display: block;
+  margin-top: 4px;
+  color: #bdebb5;
+  font-size: .8rem;
+}
+
+.product-health {
+  flex: 0 0 auto;
+  border: 1px solid rgba(157, 248, 113, .35);
+  border-radius: 999px;
+  padding: .55rem .75rem;
+  color: #eaffdf;
+  background: rgba(157, 248, 113, .1);
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  box-shadow: 0 0 24px rgba(157, 248, 113, .12);
+}
+
 .product-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -791,10 +858,12 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
 
 .product-metric {
   min-height: 132px;
-  border: 1px solid rgba(148, 163, 184, .18);
+  border: 1px solid rgba(157, 248, 113, .18);
   border-radius: 22px;
   padding: 18px;
-  background: rgba(2, 8, 14, .44);
+  background:
+    linear-gradient(180deg, rgba(157, 248, 113, .055), transparent),
+    rgba(2, 8, 14, .48);
 }
 
 .product-metric span {
@@ -808,7 +877,7 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
 .product-metric strong {
   display: block;
   margin: 10px 0 5px;
-  color: var(--text);
+  color: #f6fff3;
   font-family: var(--font-mono);
   font-size: clamp(1.55rem, 3vw, 2.2rem);
   line-height: 1;
@@ -824,17 +893,19 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
   align-items: end;
   gap: 10px;
   padding: 18px;
-  border: 1px solid rgba(148, 163, 184, .18);
+  border: 1px solid rgba(157, 248, 113, .2);
   border-radius: 24px;
-  background: rgba(2, 8, 14, .38);
+  background:
+    linear-gradient(180deg, rgba(157, 248, 113, .06), transparent),
+    rgba(2, 8, 14, .42);
 }
 
 .hero-chart span {
   flex: 1;
   min-width: 18px;
   border-radius: 999px 999px 8px 8px;
-  background: linear-gradient(180deg, var(--accent), rgba(102, 217, 239, .18));
-  box-shadow: 0 0 24px rgba(102, 217, 239, .16);
+  background: linear-gradient(180deg, #b8ff9e, rgba(157, 248, 113, .18));
+  box-shadow: 0 0 24px rgba(157, 248, 113, .18);
 }
 
 .hero-chart span:nth-child(5),
