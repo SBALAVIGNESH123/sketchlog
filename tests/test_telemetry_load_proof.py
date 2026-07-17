@@ -98,6 +98,17 @@ def test_jsonl_fixture_writer_matches_summary_bytes(tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8").count("\n") == 12
 
 
+def test_telemetry_load_proof_metadata_is_share_safe() -> None:
+    proof = _load_telemetry_load_proof()
+
+    metadata = proof.environment_metadata()
+
+    assert "repo_root" not in metadata
+    assert metadata["repo"] == "sketchlog"
+    assert "\\" not in metadata["repo"]
+    assert "/" not in metadata["repo"]
+
+
 def test_memory_telemetry_load_proof_runs_end_to_end(tmp_path: Path) -> None:
     proof = _load_telemetry_load_proof()
     events = proof.generate_telemetry_events(96, seed=31)

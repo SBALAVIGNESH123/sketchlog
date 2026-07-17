@@ -725,7 +725,7 @@ def environment_metadata() -> dict[str, Any]:
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "machine": platform.machine(),
-        "repo": ROOT.name,
+        "repo": storage_proof.REPO_ID,
         "git_commit": git_commit(),
     }
 
