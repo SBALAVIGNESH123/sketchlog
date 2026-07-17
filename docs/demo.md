@@ -1,7 +1,8 @@
 # Hosted Demo and Interactive Playground
 
-SketchLog ships with a zero-dependency interactive playground that lets visitors
-explore core features in any browser with no installation required.
+SketchLog ships with a zero-dependency product evaluation playground that lets
+visitors explore the main workflows in any browser with no installation
+required.
 
 Open the playground:
 [https://sbalavignesh123.github.io/sketchlog/demo/](https://sbalavignesh123.github.io/sketchlog/demo/)
@@ -9,7 +10,38 @@ Open the playground:
 You can also open `demo/index.html` directly in a browser. The playground is a
 single-page static app and does not require a server.
 
-## Features
+## What the playground demonstrates
+
+### Guided product tour
+
+The tour walks through the full launch story:
+
+1. bounded-memory telemetry;
+2. DDSketch percentiles;
+3. HyperLogLog-style cardinality;
+4. Count-Min frequency tracking;
+5. stream writes and reads;
+6. streaming SQL examples;
+7. anomaly comparison;
+8. SLO and canary analysis;
+9. multi-tenant namespace isolation;
+10. Sketch Mesh aggregation;
+11. exporter payloads;
+12. storage durability proof links;
+13. local Docker proof instructions;
+14. GitHub and local-trial call to action.
+
+### Dashboard mode
+
+The dashboard uses deterministic synthetic telemetry to show:
+
+- p50, p95, and p99 latency cards;
+- unique-user and session cardinality concepts;
+- top event/error frequency concepts;
+- anomaly, SLO burn, and canary risk summaries;
+- namespace selection;
+- Sketch Mesh node status cards;
+- latency distribution charts.
 
 ### DDSketch quantile estimation
 
@@ -24,18 +56,47 @@ single-page static app and does not require a server.
 - Read the records back and inspect the log output.
 - Demonstrate the core SketchLog stream abstraction without running a backend.
 
+### Streaming SQL playground
+
+The SQL panel provides copyable examples for:
+
+- service percentile summaries;
+- tenant isolation;
+- top error/event frequency;
+- stable versus canary comparison.
+
+The SQL results are browser-side deterministic fixtures. They are useful for
+understanding the product workflow, not as a replacement for the local proof
+commands.
+
 ### Export payload preview
 
 - Loki: preview the JSON body sent to `/loki/api/v1/push`.
 - Datadog: preview the Metrics API v2 `series` payload.
 - New Relic: preview the Insights Events API payload for US and EU regions.
 
-### Python API cheatsheet
+No exporter request is sent from the browser.
 
-- Copy snippets for basic sketch usage.
-- Copy stream write examples.
-- Copy agent configuration examples.
-- Copy Loki export examples.
+### Real proof section
+
+The playground links browser simulation to reproducible local evidence:
+
+- Docker demo smoke verification;
+- PostgreSQL durability proof stack;
+- unified storage proof for memory, PostgreSQL, and OmniKV;
+- realistic telemetry load proof.
+
+## Browser demo mode versus local proof mode
+
+The hosted playground is static because it runs on GitHub Pages.
+
+| Mode | Where it runs | Purpose |
+| --- | --- | --- |
+| Browser demo mode | In the page with local JavaScript | Safe product tour, dashboard, sketches, streams, SQL examples, and exporter payload previews |
+| Local proof mode | On your machine with Docker/Python | Real service verification, PostgreSQL durability proof, and storage proof commands |
+| Future live backend mode | Optional future hosted API | Could provide a real shared backend later with authentication, rate limiting, and tenant isolation |
+
+The page should not be interpreted as a hosted production SketchLog service.
 
 ## Running locally
 
@@ -49,55 +110,54 @@ Then open <http://localhost:8080>.
 
 You can also open `demo/index.html` directly from the filesystem.
 
+## Reproducible proof commands
+
+Run the full Docker demo:
+
+```bash
+docker compose -f demo/compose.yml up --build --wait
+python demo/smoke.py
+docker compose -f demo/compose.yml down -v
+```
+
+Run the PostgreSQL durability proof:
+
+```bash
+python scripts/postgres_durability_proof.py --start --stop
+```
+
+Run unified storage proofs:
+
+```bash
+python scripts/storage_proof.py --backend memory
+python scripts/storage_proof.py --backend postgres --postgres-start --postgres-stop
+python scripts/storage_proof.py --backend omnikv
+```
+
+Run the realistic telemetry load proof:
+
+```bash
+python scripts/telemetry_load_proof.py --backend omnikv
+```
+
 ## Deploying to GitHub Pages
 
-```yaml
-name: Deploy Demo
-on:
-  push:
-    branches: [main]
-    paths: [demo/**]
+The repository Pages workflow copies the static website, documentation, and
+playground into the public GitHub Pages artifact.
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v4
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: demo/
-      - uses: actions/deploy-pages@v4
-```
+The playground must keep working under:
 
-## Deploying to Netlify
-
-```toml
-[build]
-  publish = "demo/"
-```
-
-No build command is required.
-
-## Deploying to Vercel
-
-```json
-{
-  "outputDirectory": "demo",
-  "routes": [{ "src": "/(.*)", "dest": "/$1" }]
-}
+```text
+https://sbalavignesh123.github.io/sketchlog/demo/
 ```
 
 ## Architecture
 
 | File | Role |
 | --- | --- |
-| `demo/index.html` | Single-page app with navigation, hero, interactive sections, call to action, and footer |
-| `demo/assets/demo.css` | Dark design system, CSS custom properties, and responsive layout |
-| `demo/assets/demo.js` | DDSketch implementation, stream simulation, export preview, and snippets |
+| `demo/index.html` | Single-page app with hero, guided tour, dashboard, sketches, streams, SQL, exporters, proof section, snippets, and CTA |
+| `demo/assets/demo.css` | Dark responsive design system for screenshot-ready launch visuals |
+| `demo/assets/demo.js` | DDSketch implementation, deterministic telemetry fixtures, stream simulation, SQL examples, exporter preview, snippets, and UI behavior |
 
 The playground has zero external dependencies, zero JavaScript frameworks, zero
 build step, and works offline.
@@ -119,6 +179,7 @@ package.
 ## Security
 
 - No external CDN dependencies.
-- No API keys or secrets in the frontend.
+- No frontend credentials.
 - No cookies or tracking.
 - No `eval()` or dynamic code execution.
+- No outbound telemetry from the playground page.
