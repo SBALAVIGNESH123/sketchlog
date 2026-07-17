@@ -23,6 +23,13 @@ monitoring, edge devices, and memory-constrained environments.
 3. **C++ Acceleration**: Wheels include the native backend on supported 64-bit platforms; the Python backend remains available for deterministic operation.
 4. **Drift Detection**: Built-in statistical detection for when metrics meaningfully change over time.
 
+## Storage choices and proof evidence
+
+SketchLog can run in-memory for demos, with PostgreSQL/SQLAlchemy for durable
+server deployments, or with OmniKV for embedded/local durability. See
+[Storage Backends and Proofs](storage-backends.md) for backend positioning,
+setup commands, and reproducible storage/load proof evidence.
+
 ---
 
 ## Installation

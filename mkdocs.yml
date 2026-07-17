@@ -65,6 +65,7 @@ nav:
       - Integrations: integrations.md
       - Export Integrations: exporters.md
       - SketchLog Agent: agent.md
+      - Storage Backends & Proofs: storage-backends.md
       - OmniKV Storage Backend: omnikv-storage.md
       - Cost Savings Calculator: cost-estimate.md
       - Benchmark Lab: bench-lab.md

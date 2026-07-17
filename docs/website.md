@@ -1,39 +1,57 @@
-# Marketing Landing Page
+# Marketing landing page
 
-The SketchLog marketing website lives at `website/` and is a self-contained,
-dependency-free static site.
+The public SketchLog marketing website lives at `website-standalone/` and is a
+self-contained, dependency-free static site deployed to the GitHub Pages root.
+A React/Vite prototype also exists under `website/`, but the production public
+page at `https://sbalavignesh123.github.io/sketchlog/` is built from
+`website-standalone/index.html`.
 
 ## Structure
 
+```text
+website-standalone/
+├── index.html          # Single-page public marketing site
+└── logo.png            # Landing-page logo
 ```
-website/
-├── index.html          # Single-page marketing site
-└── assets/
-    ├── style.css       # All styles (CSS custom properties, responsive)
-    └── app.js          # Minimal vanilla JS (nav, scroll animations)
-```
+
+The GitHub Pages workflow builds MkDocs into `site/docs`, then copies
+`website-standalone/*` into the site root and the interactive playground into
+`site/demo`.
 
 ## Sections
 
 | Section | Anchor | Purpose |
-|---|---|---|
-| Hero | `#hero` | Headline, sub-copy, key stats |
-| Code demo | — | Syntax-highlighted live example |
-| Features | `#features` | Six feature cards |
-| How it works | `#how-it-works` | Four-step pipeline explanation |
-| Integrations | `#integrations` | Prometheus, Datadog, Loki, New Relic, Kubernetes, asyncio |
-| Quickstart | `#quickstart` | pip install + code sample + doc links |
-| FAQ | `#faq` | Six frequently asked questions |
+| --- | --- | --- |
+| Hero | `#top` | Headline, sub-copy, key stats, primary calls to action |
+| Why SketchLog | `#why` | Raw-event storage problem and sketch-based answer |
+| Platform | `#platform` | Core capabilities |
+| Playground | `#playground` | Hosted no-install browser demo |
+| Workflow | `#workflow` | Local demo and server workflow |
+| Storage proof | `#storage-proof` | Backend positioning, proof commands, and deterministic evidence |
+| Positioning | `.comparison` | SketchLog vs traditional raw-event approaches |
+| Integrations | `#integrations` | Prometheus, Grafana, OpenTelemetry, Docker, Kubernetes, WASM, SDKs |
+| Product workflows | — | How sketches drive canary, SLO, anomaly, namespace, and mesh decisions |
 | CTA | — | Final call to action |
-| Footer | — | Nav links, copyright |
+| Footer | — | Docs, GitHub, and security links |
+
+## Storage proof section
+
+The storage proof section is intentionally evidence-based. It should:
+
+- explain that SketchLog stores compact stream summaries, not raw telemetry
+  rows;
+- position in-memory, PostgreSQL, and OmniKV without overclaiming;
+- link to `docs/storage-backends/`, `docs/db-hardening/`, and
+  `docs/omnikv-storage/`;
+- show deterministic proof-fixture numbers as reproducible evidence, not as
+  universal performance guarantees.
 
 ## Local development
 
-Serve the site with any static file server:
+Serve the public landing page with any static file server:
 
 ```bash
-# Python (no install required)
-cd website
+cd website-standalone
 python -m http.server 8000
 # Open http://localhost:8000
 ```
@@ -41,70 +59,71 @@ python -m http.server 8000
 Or with Node:
 
 ```bash
-npx serve website
+npx serve website-standalone
 ```
 
-## Deployment
+## Validate the combined Pages artifact
 
-The site is pure HTML/CSS/JS with no build step required.
-Deploy to any static hosting provider:
-
-### GitHub Pages
+From the repository root:
 
 ```bash
-# From repo root
-git subtree push --prefix website origin gh-pages
+mkdocs build --strict --site-dir site/docs
+cp -r website-standalone/* site/
+mkdir -p site/demo
+cp demo/index.html site/demo/index.html
+cp -r demo/assets site/demo/assets
 ```
 
-### Netlify / Vercel
+The workflow also creates legacy redirects for old pre-`/docs/` links.
 
-Set **publish directory** to `website/` — no build command needed.
+## Netlify / Vercel
 
-### Docker / nginx
+Set the publish directory to `website-standalone/` if deploying only the
+landing page. Use the GitHub Pages workflow when you want the landing page,
+documentation, and playground together.
+
+## Docker / nginx
 
 ```dockerfile
 FROM nginx:alpine
-COPY website/ /usr/share/nginx/html/
+COPY website-standalone/ /usr/share/nginx/html/
 ```
 
 ## Design tokens
 
-All colours and spacing are defined as CSS custom properties in `style.css`:
+The landing page defines its design tokens in the `website-standalone/index.html`
+`<style>` block:
 
 | Variable | Value | Usage |
-|---|---|---|
-| `--brand` | `#6366f1` | Primary indigo |
-| `--brand-dark` | `#4f46e5` | Hover state |
-| `--accent` | `#a78bfa` | Violet highlight text |
-| `--bg` | `#0d0d14` | Page background |
-| `--surface` | `#1e1e30` | Card background |
-| `--text` | `#e2e2f0` | Body text |
-| `--muted` | `#8b8ba8` | Secondary text |
-| `--green` | `#34d399` | Code string colour |
+| --- | --- | --- |
+| `--purple` | `#632ca6` | Primary brand actions |
+| `--violet` | `#8c4de8` | Gradient accent |
+| `--blue` | `#3267d6` | Secondary chart line |
+| `--green` | `#0f8f68` | Healthy status and proof signal |
+| `--soft` | `#f7f5fb` | Soft section background |
+| `--line` | `#e7e1ef` | Borders |
+| `--muted` | `#625b6f` | Secondary text |
 
 ## Accessibility
 
-- All interactive elements are keyboard-accessible.
-- Mobile burger nav is accessible with `aria-label`.
-- Colour contrast ratio ≥ 4.5:1 for body text on all backgrounds.
-- No JavaScript required for core content visibility (JS only adds enhancements).
+- Semantic headings and landmarks are used for main sections.
+- Navigation links jump directly to page sections.
+- Body text uses high-contrast colors on light backgrounds.
+- No JavaScript is required for core content visibility.
 
 ## Performance
 
-- Zero external dependencies (no CDN, no Google Fonts, no analytics).
-- System font stack — instant render, no FOIT.
-- IntersectionObserver used for scroll animations (no scroll event polling).
-- Total page weight (HTML + CSS + JS) < 40 KB uncompressed.
+- Zero external dependencies: no CDN, no web fonts, no analytics.
+- System font stack for instant render.
+- Static HTML/CSS copied directly into the GitHub Pages artifact.
 
 ## Tests
 
 ```bash
 pytest tests/test_website.py -v
+python -m mkdocs build --strict
 ```
 
-Tests verify:
-- All three files exist.
-- Required HTML sections and meta tags are present.
-- No placeholder text (`TODO`, `Lorem ipsum`, etc.).
-- CSS variables, responsive breakpoints, and component selectors are present.
-- JS uses IntersectionObserver, handles nav burger, and avoids `eval`.
+Tests verify required website files, metadata, sections, public links, and the
+storage proof content. MkDocs strict mode catches broken internal documentation
+links.

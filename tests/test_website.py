@@ -5,6 +5,7 @@ ROOT = pathlib.Path(__file__).parent.parent / "website"
 INDEX = ROOT / "index.html"
 STYLE = ROOT / "assets" / "style.css"
 JS    = ROOT / "assets" / "app.js"
+STANDALONE_INDEX = pathlib.Path(__file__).parent.parent / "website-standalone" / "index.html"
 
 
 # ── File existence ─────────────────────────────────────────────────────────────
@@ -188,3 +189,40 @@ def test_js_no_eval(js_src):
 
 def test_js_no_document_write(js_src):
     assert "document.write" not in js_src
+
+
+# Public GitHub Pages landing page source
+
+@pytest.fixture(scope="module")
+def standalone_html_src():
+    return STANDALONE_INDEX.read_text(encoding="utf-8")
+
+
+def test_standalone_public_website_exists():
+    assert STANDALONE_INDEX.exists(), "website-standalone/index.html must exist"
+
+
+def test_standalone_storage_proof_section_present(standalone_html_src):
+    assert 'id="storage-proof"' in standalone_html_src
+    assert "Choose the right backend and reproduce the evidence." in standalone_html_src
+    assert "In-memory" in standalone_html_src
+    assert "PostgreSQL" in standalone_html_src
+    assert "OmniKV embedded" in standalone_html_src
+
+
+def test_standalone_storage_proof_links(standalone_html_src):
+    assert 'href="docs/storage-backends/"' in standalone_html_src
+    assert 'href="docs/db-hardening/"' in standalone_html_src
+    assert 'href="docs/omnikv-storage/"' in standalone_html_src
+
+
+def test_standalone_storage_proof_commands(standalone_html_src):
+    assert "python scripts/storage_proof.py --backend postgres --postgres-start --postgres-stop" in standalone_html_src
+    assert "python scripts/telemetry_load_proof.py --backend omnikv" in standalone_html_src
+    assert "PASS SketchLog telemetry load proof" in standalone_html_src
+
+
+def test_standalone_storage_proof_evidence_is_not_overclaimed(standalone_html_src):
+    assert "not a universal benchmark" in standalone_html_src
+    assert "10.374x" in standalone_html_src
+    assert "90,176 bytes" in standalone_html_src

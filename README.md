@@ -225,10 +225,23 @@ helm upgrade --install sketchlog ./charts/sketchlog \
 SketchLog also includes Kubernetes Operator manifests and documentation for
 declarative cluster management.
 
-### Optional OmniKV-backed storage
+### Storage backends and proof commands
 
-SketchLog can persist compact stream checkpoints and mesh tombstones into an
-OmniKV embedded database when the OmniKV Python/native bridge is installed:
+SketchLog stores compact stream summaries, not raw event rows. Choose the
+backend based on how you run SketchLog:
+
+| Backend | Use it for | Restart behavior |
+| --- | --- | --- |
+| In-memory | demos, tests, local SDK experiments | ephemeral by design |
+| PostgreSQL / SQLAlchemy | shared server deployments | durable stream checkpoints and mesh tombstones |
+| OmniKV embedded | local-first, edge, or embedded durability | durable stream checkpoints and mesh tombstones without a separate SQL service |
+
+See the
+[storage backends and proof guide](https://sbalavignesh123.github.io/sketchlog/docs/storage-backends/)
+for setup steps, tradeoffs, and reproducible evidence.
+
+OmniKV is opt-in. To persist compact stream checkpoints and mesh tombstones into
+an embedded OmniKV database, install the OmniKV Python/native bridge and run:
 
 ```bash
 export SKETCHLOG_STORAGE_BACKEND=omnikv
@@ -284,6 +297,7 @@ Important sections:
 - [Formal guarantees](https://sbalavignesh123.github.io/sketchlog/docs/guarantees/)
 - [Client SDKs](https://sbalavignesh123.github.io/sketchlog/docs/sdks/)
 - [Async Python client](https://sbalavignesh123.github.io/sketchlog/docs/async_client/)
+- [Storage backends and proofs](https://sbalavignesh123.github.io/sketchlog/docs/storage-backends/)
 - [OmniKV storage backend](https://sbalavignesh123.github.io/sketchlog/docs/omnikv-storage/)
 - [Export integrations](https://sbalavignesh123.github.io/sketchlog/docs/exporters/)
 - [Kubernetes Operator](https://sbalavignesh123.github.io/sketchlog/docs/kubernetes-operator/)
