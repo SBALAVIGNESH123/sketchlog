@@ -162,6 +162,19 @@ tombstone status for each selected backend. Use `--backend all
 --allow-missing-optional` when you want one command that records unavailable
 optional backends as skipped instead of failing.
 
+For a larger launch-demo proof with realistic API telemetry, run:
+
+```bash
+python scripts/telemetry_load_proof.py --backend omnikv
+```
+
+The load proof generates deterministic JSONL-style telemetry with timestamps,
+services, routes, statuses, users, regions, tenants, labels, and heavy-tailed
+latencies. It ingests the data through the HTTP API, queries p50/p95/p99 through
+Streaming SQL, verifies cardinality and top event counters, compares compact
+sketch state to raw JSONL bytes, restarts SketchLog, and verifies the recovered
+OmniKV-backed stream.
+
 ## Durability behavior
 
 The backend persists complete compressed `StreamLog` snapshots. On restart,

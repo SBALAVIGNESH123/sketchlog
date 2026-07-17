@@ -256,6 +256,22 @@ The runner emits a human-readable summary and a JSON evidence report covering
 write, query, restart/reopen, delete, and durable tombstone behavior where the
 selected backend supports it.
 
+Run the realistic telemetry load proof when you want evidence with real-ish API
+traffic instead of a tiny toy stream:
+
+```bash
+python scripts/telemetry_load_proof.py --backend memory
+python scripts/telemetry_load_proof.py --backend omnikv
+python scripts/telemetry_load_proof.py --backend postgres --postgres-start --postgres-stop
+```
+
+This proof deterministically generates JSONL-style production telemetry with
+timestamps, services, routes, statuses, users, tenants, regions, labels, and
+heavy-tailed latencies. It ingests the fixture through the HTTP API, verifies
+p50/p95/p99 through Streaming SQL, checks cardinality and top event counters,
+compares compact sketch memory against raw JSONL bytes, and verifies restart
+behavior for durable backends.
+
 ## Documentation
 
 The full documentation is published at

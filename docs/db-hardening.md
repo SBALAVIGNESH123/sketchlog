@@ -262,6 +262,20 @@ The unified runner emits both a readable summary and JSON evidence with timings
 and environment metadata, making it suitable for reproducible screenshots and
 launch-video proof clips.
 
+For a heavier proof based on realistic telemetry rather than a small synthetic
+stream, use the telemetry load proof:
+
+```bash
+python scripts/telemetry_load_proof.py --backend postgres --postgres-start --postgres-stop
+```
+
+It generates deterministic JSONL-style API events with timestamps, services,
+routes, statuses, users, labels, and heavy-tailed latencies. The proof ingests
+them through the public HTTP API, verifies p50/p95/p99 with Streaming SQL,
+checks cardinality and top Count-Min Sketch items, compares compact sketch
+memory to raw JSONL bytes, restarts the service, and verifies PostgreSQL-backed
+state recovery.
+
 ```yaml
 version: "3.9"
 
