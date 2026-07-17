@@ -293,6 +293,8 @@ def run_smoke(
                 144.0,
                 233.0,
                 377.0,
+                610.0,
+                987.0,
             ],
             "uniques": ["user-a", "user-b", "user-c", "user-d"],
             "events": {"ok": 120, "error": 3},
