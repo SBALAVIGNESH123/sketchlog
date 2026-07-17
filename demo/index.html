@@ -25,29 +25,72 @@
   <header class="hero">
     <div class="hero-shell">
       <div class="hero-copy">
-        <span class="badge">Browser demo mode - no install required</span>
-        <h1>Evaluate SketchLog like a product before you run it locally.</h1>
+        <span class="badge">SketchLog v1.2.5 - hosted product evaluation</span>
+        <h1>Bounded-memory telemetry intelligence, proven before install.</h1>
         <p>
-          Walk through bounded-memory telemetry, percentiles, cardinality, frequency,
-          anomalies, SLOs, streaming SQL, exporters, mesh concepts, and storage proof
-          commands from one share-ready playground.
+          See why teams use SketchLog, where it fits beside time-series
+          databases, and how percentiles, cardinality, frequency, Streaming SQL,
+          PostgreSQL durability, and OmniKV embedded storage work together.
         </p>
+        <div class="hero-proof-strip" aria-label="What this playground demonstrates">
+          <span>Browser demo mode</span>
+          <span>Local proof mode</span>
+          <span>TSDB companion</span>
+          <span>OmniKV optional</span>
+        </div>
         <div class="hero-actions">
           <a class="btn btn-primary btn-lg" href="#tour">Start guided tour</a>
           <a class="btn btn-secondary btn-lg" href="#dashboard">Open dashboard</a>
           <a class="btn btn-ghost btn-lg" href="https://github.com/SBALAVIGNESH123/sketchlog" target="_blank" rel="noopener">Star on GitHub</a>
         </div>
       </div>
-      <div class="hero-console" aria-label="Launch proof summary">
-        <div class="console-top">
-          <span></span><span></span><span></span>
-          <strong>launch-proof.txt</strong>
+      <div class="hero-product" aria-label="SketchLog product preview">
+        <div class="product-top">
+          <span class="product-dot"></span>
+          <span class="product-dot"></span>
+          <span class="product-dot"></span>
+          <strong>production / checkout / latency</strong>
         </div>
-        <pre><code>PASS browser playground: static, offline-safe
-PASS dashboard: percentiles + cardinality + frequency
-PASS SQL examples: copyable, deterministic sample data
-PASS storage proof: memory, PostgreSQL, OmniKV paths documented
-PASS launch video surface: screenshot-ready</code></pre>
+        <div class="product-grid">
+          <div class="product-metric">
+            <span>p99 latency</span>
+            <strong>610 ms</strong>
+            <small>DDSketch, bounded memory</small>
+          </div>
+          <div class="product-metric">
+            <span>unique users</span>
+            <strong>18.4k</strong>
+            <small>HyperLogLog-style estimate</small>
+          </div>
+          <div class="product-metric warn">
+            <span>SLO burn</span>
+            <strong>2.1x</strong>
+            <small>canary risk elevated</small>
+          </div>
+          <div class="product-metric">
+            <span>top event</span>
+            <strong>timeout</strong>
+            <small>Count-Min-style counter</small>
+          </div>
+        </div>
+        <div class="hero-chart" aria-label="Tail latency distribution">
+          <span style="height:22%"></span>
+          <span style="height:30%"></span>
+          <span style="height:38%"></span>
+          <span style="height:54%"></span>
+          <span style="height:72%"></span>
+          <span style="height:88%"></span>
+          <span style="height:62%"></span>
+          <span style="height:46%"></span>
+        </div>
+        <div class="hero-query">
+          <code>SELECT service, p99(latency_ms), approx_count_distinct(user_id)<br>FROM checkout_latency GROUP BY service</code>
+        </div>
+        <div class="storage-rail" aria-label="Storage modes">
+          <span>Memory demos</span>
+          <span>PostgreSQL durable</span>
+          <span>OmniKV embedded</span>
+        </div>
       </div>
     </div>
   </header>
