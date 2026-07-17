@@ -94,6 +94,62 @@ class TestDemoHTML:
         assert "api_key" not in self.html.lower()
         assert "secret" not in self.html.lower()
 
+    def test_guided_product_tour_present(self):
+        assert 'id="tour"' in self.html
+        assert "Fourteen steps through the SketchLog workflow" in self.html
+        assert "Start guided tour" in self.html
+
+    def test_dashboard_mode_present(self):
+        assert 'id="dashboard"' in self.html
+        for token in [
+            "Monster dashboard mode",
+            "dash-p50",
+            "dash-p95",
+            "dash-p99",
+            "dash-users",
+            "dash-top-event",
+            "dash-anomaly",
+            "dash-slo",
+            "dash-canary",
+            "mesh-nodes",
+        ]:
+            assert token in self.html
+
+    def test_sql_playground_present(self):
+        assert 'id="sql-demo"' in self.html
+        for token in [
+            "Streaming SQL playground",
+            "sql-query",
+            "sql-run-btn",
+            "sql-copy-btn",
+            "Service percentiles",
+            "Tenant isolation",
+            "Top errors",
+            "Canary comparison",
+        ]:
+            assert token in self.html
+
+    def test_proof_section_present(self):
+        assert 'id="proofs"' in self.html
+        for token in [
+            "Docker demo smoke",
+            "PostgreSQL durability",
+            "Unified storage proof",
+            "Telemetry load proof",
+            "scripts/storage_proof.py --backend omnikv",
+            "scripts/telemetry_load_proof.py --backend omnikv",
+        ]:
+            assert token in self.html
+
+    def test_browser_mode_boundary_present(self):
+        for token in [
+            "Browser demo mode",
+            "Local proof mode",
+            "Future live backend mode",
+            "No private production service is implied here",
+        ]:
+            assert token in self.html
+
 
 class TestDemoCSS:
     def setup_method(self):
@@ -115,6 +171,17 @@ class TestDemoCSS:
 
     def test_hero_styles(self):
         assert ".hero" in self.css
+
+    def test_new_product_hub_styles(self):
+        for token in [
+            ".tour-layout",
+            ".dashboard-grid",
+            ".metric-card",
+            ".sql-layout",
+            ".proof-card",
+            ".mode-card",
+        ]:
+            assert token in self.css
 
     def test_panel_styles(self):
         assert ".panel" in self.css
@@ -181,6 +248,25 @@ class TestDemoJS:
         assert "agent" in self.js
         assert "loki" in self.js
 
+    def test_guided_tour_logic(self):
+        assert "TOUR_STEPS" in self.js
+        assert "renderTour" in self.js
+        assert "Bounded-memory telemetry problem" in self.js
+        assert "Storage durability proof links" in self.js
+
+    def test_dashboard_logic(self):
+        assert "SCENARIOS" in self.js
+        assert "updateDashboard" in self.js
+        assert "dash-p99" in self.js
+        assert "mesh-nodes" in self.js
+
+    def test_sql_logic(self):
+        assert "SQL_EXAMPLES" in self.js
+        assert "approx_count_distinct" in self.js
+        assert "count_min_count" in self.js
+        assert "setSqlExample" in self.js
+        assert "renderSqlResults" in self.js
+
     def test_tab_switching(self):
         assert "tab-btn" in self.js
         assert "classList" in self.js
@@ -211,4 +297,16 @@ class TestDemoDoc:
 
     def test_features_documented(self):
         for feature in ["DDSketch", "Stream", "Export"]:
+            assert feature in self.md
+
+    def test_product_hub_documented(self):
+        for feature in [
+            "Guided product tour",
+            "Dashboard mode",
+            "Streaming SQL playground",
+            "Browser demo mode",
+            "Local proof mode",
+            "PostgreSQL durability proof",
+            "OmniKV",
+        ]:
             assert feature in self.md

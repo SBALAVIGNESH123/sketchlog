@@ -45,6 +45,11 @@ operational features continue to mature.
 Open the hosted playground:
 [https://sbalavignesh123.github.io/sketchlog/demo/](https://sbalavignesh123.github.io/sketchlog/demo/)
 
+The hosted playground is now a product evaluation hub: guided tour, synthetic
+dashboard, DDSketch percentiles, cardinality/frequency concepts, streaming SQL
+examples, stream operations, exporter payload previews, and proof commands for
+Docker, PostgreSQL, and OmniKV-backed storage paths.
+
 Run the deterministic product demo and its end-to-end verifier:
 
 ```bash
