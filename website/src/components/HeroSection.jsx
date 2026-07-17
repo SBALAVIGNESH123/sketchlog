@@ -3,7 +3,7 @@ export function HeroSection() {
     <section className="hero-section section animate-fade-in-up">
       <div className="container">
         <div className="hero-content">
-          <div className="badge">v1.2.4</div>
+          <div className="badge">v1.2.5</div>
           <h1>
             Bounded-memory metrics with <span className="text-gradient-primary">explicit guarantees</span>.
           </h1>
