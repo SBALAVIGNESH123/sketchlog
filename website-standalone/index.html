@@ -225,6 +225,30 @@
     td:first-child { font-weight: 850; color: #261a33; }
     td { color: var(--muted); }
 
+    .proof {
+      background:
+        radial-gradient(circle at 18% 20%, rgba(15,143,104,.09), transparent 26%),
+        linear-gradient(180deg, #ffffff 0%, #fbf9ff 100%);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .proof-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .proof-card { padding: 24px; border: 1px solid #e7def1; border-radius: 22px; background: #fff; box-shadow: 0 12px 28px rgba(36,18,58,.05); }
+    .proof-card b { display: block; font-size: 18px; margin-bottom: 8px; color: #261a33; }
+    .proof-card span { color: var(--muted); font-size: 14px; }
+    .proof-panel {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: .95fr 1.05fr;
+      gap: 22px;
+      align-items: stretch;
+    }
+    .proof-numbers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .proof-number { padding: 18px; border: 1px solid #e7def1; border-radius: 18px; background: #fff; }
+    .proof-number label { display: block; color: var(--muted); font-size: 12px; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; }
+    .proof-number strong { display: block; margin-top: 7px; color: var(--purple-dark); font-size: 24px; letter-spacing: -.04em; }
+    .proof-note { margin-top: 16px; color: var(--muted); font-size: 14px; }
+
     .cta { padding: 92px 0; background: linear-gradient(135deg, #241236, #5f2ba2); color: #fff; }
     .cta-box { display: grid; grid-template-columns: 1.15fr .85fr; gap: 34px; align-items: center; }
     .cta h2 { color: #fff; }
@@ -236,8 +260,8 @@
     .footer-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; font-size: 14px; }
 
     @media (max-width: 980px) {
-      .hero-grid, .split, .cta-box { grid-template-columns: 1fr; }
-      .problem-grid, .cap-grid, .workflow-grid { grid-template-columns: 1fr 1fr; }
+      .hero-grid, .split, .proof-panel, .cta-box { grid-template-columns: 1fr; }
+      .problem-grid, .cap-grid, .workflow-grid, .proof-grid { grid-template-columns: 1fr 1fr; }
       .logo-wall { grid-template-columns: repeat(3, 1fr); }
       .trust-strip { grid-template-columns: 1fr 1fr; }
       .navlinks { display: none; }
@@ -246,7 +270,7 @@
     @media (max-width: 640px) {
       .container { width: min(100% - 28px, 1180px); }
       .hero-grid { padding: 56px 0; }
-      .problem-grid, .cap-grid, .workflow-grid, .metrics-row, .pipeline, .trust-strip, .logo-wall { grid-template-columns: 1fr; }
+      .problem-grid, .cap-grid, .workflow-grid, .metrics-row, .pipeline, .trust-strip, .proof-grid, .proof-numbers, .logo-wall { grid-template-columns: 1fr; }
       .nav-actions .secondary { display: none; }
       h1 { font-size: 46px; }
       section { padding: 62px 0; }
@@ -266,6 +290,7 @@
         <a href="#platform">Platform</a>
         <a href="#playground">Playground</a>
         <a href="#workflow">Workflow</a>
+        <a href="#storage-proof">Storage proof</a>
         <a href="#integrations">Integrations</a>
         <a href="docs/">Docs</a>
       </nav>
@@ -435,6 +460,49 @@ curl http://localhost:8000/metrics</pre>
       </div>
     </section>
 
+    <section class="proof" id="storage-proof">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-kicker">Storage proof</div>
+          <h2>Choose the right backend and reproduce the evidence.</h2>
+          <p>SketchLog stores compact stream summaries instead of raw telemetry rows. The proof suite shows how each backend behaves across write, query, restart, and recovery paths.</p>
+        </div>
+        <div class="proof-grid">
+          <div class="proof-card"><b>In-memory</b><span>Best for demos, unit tests, notebooks, and fast local experiments. State is intentionally ephemeral after restart.</span></div>
+          <div class="proof-card"><b>PostgreSQL</b><span>Recommended durable path for shared server deployments that already operate SQL backups, monitoring, and access controls.</span></div>
+          <div class="proof-card"><b>OmniKV embedded</b><span>Optional local-first durability for edge, embedded, or single-node deployments without a separate SQL service.</span></div>
+        </div>
+        <div class="proof-panel">
+          <div>
+            <div class="proof-numbers" aria-label="Deterministic storage proof results">
+              <div class="proof-number"><label>Fixture</label><strong>2,500 events</strong></div>
+              <div class="proof-number"><label>Raw JSONL</label><strong>935,441 bytes</strong></div>
+              <div class="proof-number"><label>Compact state</label><strong>90,176 bytes</strong></div>
+              <div class="proof-number"><label>Ratio</label><strong>10.374x</strong></div>
+              <div class="proof-number"><label>p95 estimate</label><strong>242.289 ms</strong></div>
+              <div class="proof-number"><label>Restart</label><strong>Verified</strong></div>
+            </div>
+            <p class="proof-note">These are deterministic proof-fixture numbers, not a universal benchmark. They demonstrate bounded-memory behavior, Streaming SQL aggregates, cardinality, top counters, and durable recovery where configured.</p>
+          </div>
+          <div class="code-card">
+<pre><span class="comment"># backend correctness proof</span>
+python scripts/storage_proof.py --backend memory
+python scripts/storage_proof.py --backend postgres --postgres-start --postgres-stop
+python scripts/storage_proof.py --backend omnikv
+
+<span class="comment"># realistic telemetry load proof</span>
+python scripts/telemetry_load_proof.py --backend omnikv
+<span class="ok">PASS SketchLog telemetry load proof</span></pre>
+          </div>
+        </div>
+        <div class="hero-actions" style="justify-content:center;margin-top:34px;">
+          <a class="btn primary" href="docs/storage-backends/">Read storage proof guide</a>
+          <a class="btn secondary" href="docs/db-hardening/">PostgreSQL hardening</a>
+          <a class="btn secondary" href="docs/omnikv-storage/">OmniKV backend</a>
+        </div>
+      </div>
+    </section>
+
     <section class="comparison">
       <div class="container">
         <div class="section-head">
@@ -534,7 +602,7 @@ curl -X POST http://localhost:8000/v1/canary/analyze \
   <footer>
     <div class="container footer-row">
       <div><strong>SketchLog</strong> &mdash; lightweight observability for high-volume streams.</div>
-      <div><a href="docs/">Docs</a> &middot; <a href="https://github.com/SBALAVIGNESH123/sketchlog">GitHub</a> &middot; <a href="docs/security/">Security</a></div>
+      <div><a href="docs/">Docs</a> &middot; <a href="https://github.com/SBALAVIGNESH123/sketchlog">GitHub</a> &middot; <a href="docs/threat_model/">Security</a></div>
     </div>
   </footer>
 </body>
