@@ -22,6 +22,7 @@ from typing import Any, TextIO
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ID = "sketchlog"
 PYTHON_DIR = ROOT / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
@@ -508,7 +509,7 @@ def environment_metadata() -> dict[str, Any]:
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "machine": platform.machine(),
-        "repo": ROOT.name,
+        "repo": REPO_ID,
         "git_commit": git_commit(),
     }
 
