@@ -38,8 +38,8 @@
   }
 
   function assertPositiveInteger(name, value) {
-    if (!Number.isInteger(value) || value < 1) {
-      throw new Error(`${name} must be a positive integer`);
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw new Error(`${name} must be a positive safe integer`);
     }
   }
 
@@ -47,6 +47,21 @@
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`${name} must be a positive number`);
     }
+  }
+
+  function assertSafeInteger(name, value) {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`${name} must be a finite safe integer`);
+    }
+  }
+
+  function roundPositiveHalfUp(name, value) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`${name} must be a finite non-negative number`);
+    }
+    const rounded = Math.floor(value + 0.5);
+    assertSafeInteger(name, rounded);
+    return rounded;
   }
 
   function validateInput(input) {
@@ -77,21 +92,32 @@
       * input.avgEventBytes
       * input.retentionDays
     );
-    const compressedRawBytes = Math.round(rawTotalBytes / input.rawCompressionRatio);
+    assertSafeInteger('rawTotalBytes', rawTotalBytes);
+    const compressedRawBytes = roundPositiveHalfUp(
+      'compressedRawBytes',
+      rawTotalBytes / input.rawCompressionRatio,
+    );
     const sketchBucketsPerStream = Math.max(
       1,
       Math.ceil(2.0 / input.sketchAccuracy),
     );
+    assertSafeInteger('sketchBucketsPerStream', sketchBucketsPerStream);
     const sketchBytesPerLatencyStreamPerDay = (
       (sketchBucketsPerStream * BYTES_PER_SKETCH_BUCKET
         + SKETCH_FIXED_OVERHEAD_BYTES)
       * HOURLY_WINDOWS_PER_DAY
+    );
+    assertSafeInteger(
+      'sketchBytesPerLatencyStreamPerDay',
+      sketchBytesPerLatencyStreamPerDay,
     );
     const latencyStreams = Math.max(
       1,
       Math.round(input.streamCount * LATENCY_STREAM_FRACTION),
     );
     const counterStreams = Math.max(0, input.streamCount - latencyStreams);
+    assertSafeInteger('latencyStreams', latencyStreams);
+    assertSafeInteger('counterStreams', counterStreams);
     const sketchTotalBytes = (
       (
         latencyStreams * sketchBytesPerLatencyStreamPerDay
@@ -100,14 +126,21 @@
       * input.namespaceCount
       * input.retentionDays
     );
-    const backendAdjustedBytes = Math.round(sketchTotalBytes * backend.multiplier);
+    assertSafeInteger('sketchTotalBytes', sketchTotalBytes);
+    const backendAdjustedBytes = roundPositiveHalfUp(
+      'backendAdjustedBytes',
+      sketchTotalBytes * backend.multiplier,
+    );
     const savingsBytes = compressedRawBytes - backendAdjustedBytes;
+    assertSafeInteger('savingsBytes', savingsBytes);
     const savingsPercent = compressedRawBytes > 0
       ? Math.round((savingsBytes / compressedRawBytes) * 10000) / 100
       : 0;
     const eventsPerSecond = input.eventsPerDay / 86400;
     const totalStreams = input.streamCount * input.namespaceCount;
-    const hotMemoryBytes = Math.round(
+    assertSafeInteger('totalStreams', totalStreams);
+    const hotMemoryBytes = roundPositiveHalfUp(
+      'hotMemoryBytes',
       input.namespaceCount * (
         latencyStreams * (sketchBucketsPerStream * 8 + 512)
         + counterStreams * 256
@@ -195,6 +228,14 @@
     target.innerHTML = result.caveats.map((caveat) => `<li>${caveat}</li>`).join('');
   }
 
+  function updateSavingsCardStatus(result) {
+    const value = root.document?.getElementById('cost-savings-percent');
+    const card = value?.closest('.cost-result-card');
+    if (!card) return;
+    card.classList.remove('ok', 'warn', 'danger');
+    card.classList.add(result.savings.isPositive ? 'ok' : 'warn');
+  }
+
   function readEstimatorInput() {
     return {
       eventsPerDay: numberFromInput('cost-events-per-day', Number.parseInt),
@@ -213,6 +254,7 @@
     try {
       const result = estimateSketchlogCost(readEstimatorInput());
       if (error) error.textContent = '';
+      updateSavingsCardStatus(result);
       setText('cost-raw-total', result.rawTelemetry.humanUncompressed);
       setText('cost-compressed-raw', result.rawTelemetry.humanCompressed);
       setText('cost-compact-total', result.sketchlogSummary.humanCompact);

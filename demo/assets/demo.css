@@ -615,7 +615,7 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
   text-transform: uppercase;
 }
 
-.cost-result-card strong {
+.cost-result-card .stat-value {
   display: block;
   margin-top: 8px;
   color: var(--text);
@@ -629,10 +629,10 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
   background: rgba(157, 248, 113, .07);
 }
 
-.cost-result-card.highlight strong { color: var(--accent2); }
-.cost-result-card.status.ok strong { color: var(--accent2); }
-.cost-result-card.status.warn strong { color: var(--warn); }
-.cost-result-card.status.danger strong { color: var(--danger); }
+.cost-result-card.highlight .stat-value { color: var(--accent2); }
+.cost-result-card.status.ok .stat-value { color: var(--accent2); }
+.cost-result-card.status.warn .stat-value { color: var(--warn); }
+.cost-result-card.status.danger .stat-value { color: var(--danger); }
 .cost-result-card small {
   display: block;
   margin-top: 6px;

@@ -225,6 +225,21 @@ class TestEstimateComputation:
             result.sketch_total_bytes * _STORAGE_BACKEND_MULTIPLIERS["postgres"]
         )
 
+    def test_compressed_raw_bytes_use_positive_half_up_rounding(self) -> None:
+        cfg = _config(
+            events_per_day=3,
+            avg_event_bytes=1,
+            retention_days=1,
+            raw_compression_ratio=2.0,
+        )
+        result = estimate(cfg)
+        assert result.raw_total_bytes == 3
+        assert result.compressed_raw_total_bytes == 2
+        assert result.savings_bytes == (
+            result.compressed_raw_total_bytes
+            - result.backend_adjusted_sketch_total_bytes
+        )
+
     def test_sketch_buckets_match_model(self) -> None:
         """sketch_buckets = ceil(2 / epsilon)."""
         accuracy = 0.01

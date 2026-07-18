@@ -372,6 +372,75 @@ console.log(JSON.stringify(result));
             expected.hot_memory_bytes
         )
 
+    def test_node_estimator_rejects_unsafe_derived_totals(self):
+        script = """
+const estimator = require('./demo/assets/estimator.js');
+try {
+  estimator.estimateSketchlogCost({
+    eventsPerDay: Number.MAX_SAFE_INTEGER,
+    avgEventBytes: 2,
+    retentionDays: 1,
+    sketchAccuracy: 0.01,
+    streamCount: 1,
+    namespaceCount: 1,
+    rawCompressionRatio: 1,
+    backend: 'memory',
+  });
+  console.log('unexpected-success');
+} catch (err) {
+  console.log(err.message);
+}
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        assert "rawTotalBytes" in completed.stdout
+        assert "safe integer" in completed.stdout
+
+    def test_node_estimator_matches_python_for_half_up_rounding(self):
+        script = """
+const estimator = require('./demo/assets/estimator.js');
+const result = estimator.estimateSketchlogCost({
+  eventsPerDay: 3,
+  avgEventBytes: 1,
+  retentionDays: 1,
+  sketchAccuracy: 0.5,
+  streamCount: 1,
+  namespaceCount: 1,
+  rawCompressionRatio: 2,
+  backend: 'memory',
+});
+console.log(JSON.stringify(result));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        result = json.loads(completed.stdout)
+        expected = estimate(CostEstimateConfig(
+            events_per_day=3,
+            avg_event_bytes=1,
+            retention_days=1,
+            sketch_accuracy=0.5,
+            stream_count=1,
+            namespace_count=1,
+            raw_compression_ratio=2.0,
+            storage_backend="memory",
+        ))
+        assert result["rawTelemetry"]["compressedBytes"] == 2
+        assert expected.compressed_raw_total_bytes == 2
+        assert result["rawTelemetry"]["compressedBytes"] == (
+            expected.compressed_raw_total_bytes
+        )
+        assert result["savings"]["bytes"] == expected.savings_bytes
+
 
 class TestDemoDoc:
     def setup_method(self):

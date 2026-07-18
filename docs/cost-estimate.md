@@ -143,15 +143,15 @@ Important JSON sections:
     "compressed_bytes": 3840000000
   },
   "sketchlog_summary": {
-    "total_bytes": 147456000,
-    "backend_adjusted_bytes": 169574400,
+    "total_bytes": 359616000,
+    "backend_adjusted_bytes": 413558400,
     "storage_backend": "omnikv",
     "backend_overhead_multiplier": 1.15,
     "total_streams": 250
   },
   "operational_footprint": {
     "events_per_second": 11.5741,
-    "hot_memory_bytes": 322800
+    "hot_memory_bytes": 342400
   }
 }
 ```
@@ -191,8 +191,12 @@ descriptive message.
 
 ```text
 raw_total = events_per_day * avg_event_bytes * retention_days
-compressed_raw_total = raw_total / raw_compression_ratio
+compressed_raw_total = round_half_up(raw_total / raw_compression_ratio)
 ```
+
+`round_half_up` is an explicit positive-half rounding policy shared by the
+Python estimator and browser playground, so `.5` byte totals are rounded up in
+both runtimes.
 
 ### DDSketch latency streams
 
@@ -219,7 +223,7 @@ day for running totals and metadata.
 ### Backend-adjusted SketchLog footprint
 
 ```text
-backend_adjusted = compact_sketch_total * backend_multiplier
+backend_adjusted = round_half_up(compact_sketch_total * backend_multiplier)
 ```
 
 This is the number to use when comparing SketchLog against a compressed raw

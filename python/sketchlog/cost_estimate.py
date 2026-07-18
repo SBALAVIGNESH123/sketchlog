@@ -350,6 +350,19 @@ class CostEstimateResult:
 # Computation
 # ---------------------------------------------------------------------------
 
+def _round_positive_half_up(value: float) -> int:
+    """Round a non-negative finite float with an explicit half-up policy.
+
+    Python's built-in ``round`` uses bankers rounding, while JavaScript's
+    ``Math.round`` rounds positive half values up. The estimator publishes the
+    same model through Python and browser JavaScript, so byte totals use this
+    helper whenever a positive fractional planning value becomes an integer.
+    """
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"value must be a finite non-negative number; got {value!r}")
+    return math.floor(value + 0.5)
+
+
 def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     """Compute a :class:`CostEstimateResult` from a validated config.
 
@@ -358,7 +371,7 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     **Raw telemetry**::
 
         raw_total = events_per_day x avg_event_bytes x retention_days
-        compressed_raw_total = raw_total / raw_compression_ratio
+        compressed_raw_total = round_half_up(raw_total / raw_compression_ratio)
 
     **SketchLog latency/quantile streams**
 
@@ -416,7 +429,9 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
         * config.avg_event_bytes
         * config.retention_days
     )
-    compressed_raw_total: int = round(raw_total / config.raw_compression_ratio)
+    compressed_raw_total: int = _round_positive_half_up(
+        raw_total / config.raw_compression_ratio
+    )
 
     # --- sketch model --------------------------------------------------------
     sketch_buckets: int = max(1, math.ceil(2.0 / config.sketch_accuracy))
@@ -443,7 +458,7 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     backend_overhead_multiplier: float = _STORAGE_BACKEND_MULTIPLIERS[
         config.storage_backend
     ]
-    backend_adjusted_sketch_total: int = round(
+    backend_adjusted_sketch_total: int = _round_positive_half_up(
         sketch_total * backend_overhead_multiplier
     )
 
