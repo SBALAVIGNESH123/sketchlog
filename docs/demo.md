@@ -17,19 +17,65 @@ single-page static app and does not require a server.
 The tour walks through the full launch story:
 
 1. bounded-memory telemetry;
-2. DDSketch percentiles;
-3. HyperLogLog-style cardinality;
-4. Count-Min frequency tracking;
-5. stream writes and reads;
-6. streaming SQL examples;
-7. anomaly comparison;
-8. SLO and canary analysis;
-9. multi-tenant namespace isolation;
-10. Sketch Mesh aggregation;
-11. exporter payloads;
-12. storage durability proof links;
-13. local Docker proof instructions;
-14. GitHub and local-trial call to action.
+2. Cost and footprint estimator;
+3. DDSketch percentiles;
+4. HyperLogLog-style cardinality;
+5. Count-Min frequency tracking;
+6. stream writes and reads;
+7. streaming SQL examples;
+8. anomaly comparison;
+9. SLO and canary analysis;
+10. multi-tenant namespace isolation;
+11. Sketch Mesh aggregation;
+12. exporter payloads;
+13. storage durability proof links;
+14. local Docker proof instructions;
+15. GitHub and local-trial call to action.
+
+### Cost and footprint estimator
+
+The estimator is a browser-facing version of the real
+`sketchlog-cost-estimate` CLI/API model. It helps operators compare raw-event
+retention against compact SketchLog summaries before deployment.
+
+The playground estimator supports:
+
+- events per day;
+- average raw event size;
+- retention period;
+- sketch accuracy;
+- streams per namespace;
+- namespace or tenant count;
+- raw-store compression ratio;
+- storage backend profile: memory, PostgreSQL, or OmniKV.
+
+It returns:
+
+- raw uncompressed telemetry size;
+- compressed raw-store baseline;
+- compact SketchLog summary footprint;
+- backend-adjusted footprint;
+- hot-memory estimate;
+- savings versus compressed raw telemetry;
+- caveats and model details.
+
+The same feature is also available from the Python package:
+
+```bash
+sketchlog-cost-estimate \
+  --events-per-day 1000000 \
+  --avg-event-bytes 512 \
+  --retention-days 30 \
+  --sketch-accuracy 0.01 \
+  --streams 50 \
+  --namespaces 5 \
+  --raw-compression-ratio 4 \
+  --storage-backend omnikv
+```
+
+See the
+[cost and footprint estimator guide](cost-estimate.md)
+for the full model, JSON output, and validation commands.
 
 ### Dashboard mode
 
@@ -158,6 +204,7 @@ https://sbalavignesh123.github.io/sketchlog/demo/
 | `demo/index.html` | Single-page app with hero, guided tour, dashboard, sketches, streams, SQL, exporters, proof section, snippets, and CTA |
 | `demo/assets/demo.css` | Dark responsive design system for screenshot-ready launch visuals |
 | `demo/assets/demo.js` | DDSketch implementation, deterministic telemetry fixtures, stream simulation, SQL examples, exporter preview, snippets, and UI behavior |
+| `demo/assets/estimator.js` | Browser implementation of the cost and footprint estimator aligned with the Python CLI/API model |
 
 The playground has zero external dependencies, zero JavaScript frameworks, zero
 build step, and works offline.

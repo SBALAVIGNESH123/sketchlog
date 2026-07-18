@@ -39,6 +39,41 @@ _LATENCY_STREAM_FRACTION: float = 0.6
 #: Storage per event/counter stream per day (running totals + metadata only).
 _COUNTER_STREAM_BYTES_PER_DAY: int = 64
 
+#: Default raw-store compression ratio. 1.0 means no compression.
+_RAW_COMPRESSION_RATIO_DEFAULT: float = 1.0
+
+#: Default persistence backend used by the estimator.
+_STORAGE_BACKEND_DEFAULT: str = "memory"
+
+#: Operational storage headroom for each backend.  These are intentionally
+#: conservative planning multipliers, not billing guarantees.
+_STORAGE_BACKEND_MULTIPLIERS: dict[str, float] = {
+    "memory": 1.0,
+    "postgres": 1.25,
+    "omnikv": 1.15,
+}
+
+#: Human-readable backend labels.
+_STORAGE_BACKEND_LABELS: dict[str, str] = {
+    "memory": "In-memory",
+    "postgres": "PostgreSQL durable",
+    "omnikv": "OmniKV embedded",
+}
+
+#: Backend notes emitted in reports and JSON for operators.
+_STORAGE_BACKEND_NOTES: dict[str, str] = {
+    "memory": "Volatile hot-path state for demos, tests, and short-lived evaluations.",
+    "postgres": "Adds planning headroom for rows, indexes, WAL, and SQL metadata.",
+    "omnikv": "Adds planning headroom for embedded key/value metadata and compaction.",
+}
+
+#: Hot memory model: each active latency stream keeps bucket counters plus a
+#: fixed metadata envelope while the process is running.
+_HOT_LATENCY_STREAM_FIXED_BYTES: int = 512
+
+#: Hot memory model for active event/counter streams.
+_HOT_COUNTER_STREAM_BYTES: int = 256
+
 #: Decimal precision for percentage fields.
 _PCT_DECIMALS: int = 2
 
@@ -68,6 +103,12 @@ class CostEstimateConfig:
         Total streams across all namespaces = stream_count * namespace_count.
     namespace_count:
         Number of SketchLog namespaces.
+    raw_compression_ratio:
+        Compression ratio for a raw-event store baseline. ``1.0`` means
+        uncompressed raw telemetry. ``4.0`` models a 4x compressed raw store.
+    storage_backend:
+        Persistence backend profile used for operational footprint planning.
+        Supported values are ``memory``, ``postgres``, and ``omnikv``.
     """
 
     events_per_day: int
@@ -76,6 +117,8 @@ class CostEstimateConfig:
     sketch_accuracy: float
     stream_count: int
     namespace_count: int
+    raw_compression_ratio: float = _RAW_COMPRESSION_RATIO_DEFAULT
+    storage_backend: str = _STORAGE_BACKEND_DEFAULT
 
     def __post_init__(self) -> None:  # noqa: C901
         errors: list[str] = []
@@ -122,6 +165,30 @@ class CostEstimateConfig:
         elif self.namespace_count < 1:
             errors.append("namespace_count must be a positive integer (>= 1)")
 
+        if isinstance(self.raw_compression_ratio, bool):
+            errors.append("raw_compression_ratio must be a float, not bool")
+        elif not isinstance(self.raw_compression_ratio, (int, float)):
+            errors.append(
+                "raw_compression_ratio must be a float; "
+                f"got {type(self.raw_compression_ratio).__name__}"
+            )
+        else:
+            _ratio = float(self.raw_compression_ratio)
+            if not math.isfinite(_ratio) or _ratio < 1.0:
+                errors.append(
+                    "raw_compression_ratio must be a finite float >= 1.0; "
+                    f"got {self.raw_compression_ratio!r}"
+                )
+
+        if not isinstance(self.storage_backend, str):
+            errors.append("storage_backend must be a string")
+        elif self.storage_backend not in _STORAGE_BACKEND_MULTIPLIERS:
+            allowed = ", ".join(sorted(_STORAGE_BACKEND_MULTIPLIERS))
+            errors.append(
+                f"storage_backend must be one of: {allowed}; "
+                f"got {self.storage_backend!r}"
+            )
+
         if errors:
             raise ValueError("; ".join(errors))
 
@@ -143,13 +210,21 @@ class CostEstimateResult:
 
     # Raw telemetry totals
     raw_total_bytes: int
+    compressed_raw_total_bytes: int
 
     # SketchLog totals
     sketch_total_bytes: int
+    backend_adjusted_sketch_total_bytes: int
+    backend_overhead_multiplier: float
 
     # Derived savings; negative means SketchLog uses more storage than raw
     savings_bytes: int
     savings_fraction: float  # negative if sketch > raw
+
+    # Operational footprint
+    hot_memory_bytes: int
+    events_per_second: float
+    total_stream_count: int
 
     # Per-stream breakdown
     latency_stream_count: int
@@ -176,20 +251,36 @@ class CostEstimateResult:
                 "sketch_accuracy": self.config.sketch_accuracy,
                 "stream_count": self.config.stream_count,
                 "namespace_count": self.config.namespace_count,
+                "raw_compression_ratio": self.config.raw_compression_ratio,
+                "storage_backend": self.config.storage_backend,
             },
             "raw_telemetry": {
                 "total_bytes": self.raw_total_bytes,
+                "compressed_bytes": self.compressed_raw_total_bytes,
                 "human": _fmt_bytes(self.raw_total_bytes),
+                "human_compressed": _fmt_bytes(self.compressed_raw_total_bytes),
             },
             "sketchlog_summary": {
                 "total_bytes": self.sketch_total_bytes,
+                "backend_adjusted_bytes": self.backend_adjusted_sketch_total_bytes,
                 "human": _fmt_bytes(self.sketch_total_bytes),
+                "human_backend_adjusted": _fmt_bytes(self.backend_adjusted_sketch_total_bytes),
+                "storage_backend": self.config.storage_backend,
+                "storage_backend_label": _STORAGE_BACKEND_LABELS[self.config.storage_backend],
+                "backend_overhead_multiplier": self.backend_overhead_multiplier,
+                "backend_note": _STORAGE_BACKEND_NOTES[self.config.storage_backend],
+                "total_streams": self.total_stream_count,
                 "latency_streams": self.latency_stream_count,
                 "counter_streams": self.counter_stream_count,
                 "sketch_buckets_per_stream": self.sketch_buckets_per_stream,
                 "sketch_bytes_per_latency_stream_per_day": (
                     self.sketch_bytes_per_latency_stream_per_day
                 ),
+            },
+            "operational_footprint": {
+                "events_per_second": round(self.events_per_second, 4),
+                "hot_memory_bytes": self.hot_memory_bytes,
+                "human_hot_memory": _fmt_bytes(self.hot_memory_bytes),
             },
             "savings": {
                 "bytes": self.savings_bytes,
@@ -218,12 +309,24 @@ class CostEstimateResult:
             "  (relative error)",
             f"    Streams (per ns)    : {self.config.stream_count:>15,}",
             f"    Namespaces          : {self.config.namespace_count:>15,}",
+            f"    Raw compression     : {self.config.raw_compression_ratio:>15.2f}x",
+            f"    Storage backend     : "
+            f"{_STORAGE_BACKEND_LABELS[self.config.storage_backend]:>15}",
             "",
             "  Storage comparison",
             f"    Raw telemetry total : {_fmt_bytes(self.raw_total_bytes):>15}",
-            f"    SketchLog total     : {_fmt_bytes(self.sketch_total_bytes):>15}",
+            f"    Compressed raw      : {_fmt_bytes(self.compressed_raw_total_bytes):>15}",
+            f"    SketchLog compact   : {_fmt_bytes(self.sketch_total_bytes):>15}",
+            f"    Backend-adjusted    : "
+            f"{_fmt_bytes(self.backend_adjusted_sketch_total_bytes):>15}",
             f"    Savings             : {_fmt_bytes(abs(self.savings_bytes)):>15}"
             f"  ({self.savings_percent():.2f} %)",
+            "",
+            "  Operational footprint",
+            f"    Ingest rate         : {self.events_per_second:>15,.2f} events/s",
+            f"    Total streams       : {self.total_stream_count:>15,}",
+            f"    Hot memory estimate : {_fmt_bytes(self.hot_memory_bytes):>15}",
+            f"    Backend note        : {_STORAGE_BACKEND_NOTES[self.config.storage_backend]}",
             "",
             "  Sketch model details",
             f"    Latency streams     : {self.latency_stream_count:>15,}"
@@ -255,6 +358,7 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     **Raw telemetry**::
 
         raw_total = events_per_day x avg_event_bytes x retention_days
+        compressed_raw_total = raw_total / raw_compression_ratio
 
     **SketchLog latency/quantile streams**
 
@@ -283,9 +387,14 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     where ``latency_streams`` and ``counter_streams`` are per-namespace counts
     derived from ``stream_count``.
 
+    **Backend planning total**::
+
+        backend_adjusted_sketch_total =
+            sketch_total x storage_backend_multiplier
+
     **Savings**::
 
-        savings = raw_total - sketch_total
+        savings = compressed_raw_total - backend_adjusted_sketch_total
 
     A negative value means SketchLog uses *more* storage than raw for this
     configuration (only possible at very low event volumes or very high
@@ -307,6 +416,7 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
         * config.avg_event_bytes
         * config.retention_days
     )
+    compressed_raw_total: int = round(raw_total / config.raw_compression_ratio)
 
     # --- sketch model --------------------------------------------------------
     sketch_buckets: int = max(1, math.ceil(2.0 / config.sketch_accuracy))
@@ -330,27 +440,48 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
         * config.namespace_count
         * config.retention_days
     )
+    backend_overhead_multiplier: float = _STORAGE_BACKEND_MULTIPLIERS[
+        config.storage_backend
+    ]
+    backend_adjusted_sketch_total: int = round(
+        sketch_total * backend_overhead_multiplier
+    )
+
+    # Hot memory is intentionally a separate planning number from persisted
+    # storage. It estimates the active in-process footprint for the current
+    # stream set before compaction/export/persistence concerns are applied.
+    hot_memory_bytes: int = round(
+        config.namespace_count
+        * (
+            latency_streams
+            * (sketch_buckets * 8 + _HOT_LATENCY_STREAM_FIXED_BYTES)
+            + counter_streams * _HOT_COUNTER_STREAM_BYTES
+        )
+    )
+    events_per_second: float = config.events_per_day / 86_400.0
+    total_stream_count: int = config.stream_count * config.namespace_count
 
     # --- savings -------------------------------------------------------------
     # Not clamped: a negative value correctly signals that SketchLog uses more
     # storage than raw for this configuration (e.g. very low event volume with
     # many streams).
-    savings: int = raw_total - sketch_total
-    savings_fraction: float = savings / raw_total if raw_total > 0 else 0.0
+    savings: int = compressed_raw_total - backend_adjusted_sketch_total
+    savings_fraction: float = (
+        savings / compressed_raw_total if compressed_raw_total > 0 else 0.0
+    )
 
     caveats: tuple[str, ...] = (
         "All figures are estimates. Actual savings depend on your workload, "
         "event shape, and cardinality.",
-        "Raw telemetry compression (e.g. gzip ~3-5x) is NOT applied to the raw "
-        "figure. Divide the raw total by your compression ratio for a fairer "
-        "comparison.",
+        "Raw telemetry compression is user-selected. Use --raw-compression-ratio "
+        "to compare against your current raw store more fairly.",
         f"The model assumes {int(_LATENCY_STREAM_FRACTION * 100)} % latency/quantile streams "
         f"and {int((1.0 - _LATENCY_STREAM_FRACTION) * 100)} % event/counter streams. "
         "Adjust --streams if your split differs significantly.",
         "Sketch bucket counts follow ceil(2/epsilon) (DDSketch worst-case range ratio). "
         "Your actual sketch implementation may differ.",
-        "Memory (hot-path) savings will differ from storage (cold-path) savings; "
-        "this calculator estimates storage.",
+        "Hot memory and persisted storage are separate planning figures. Validate "
+        "real workloads with the proof commands before capacity decisions.",
         "Sketch accuracy (epsilon) is the relative error guarantee on any quantile query "
         "(e.g. 0.01 = at most 1 % relative error at p50, p95, p99, etc.).",
     )
@@ -358,9 +489,15 @@ def estimate(config: CostEstimateConfig) -> CostEstimateResult:
     return CostEstimateResult(
         config=config,
         raw_total_bytes=raw_total,
+        compressed_raw_total_bytes=compressed_raw_total,
         sketch_total_bytes=sketch_total,
+        backend_adjusted_sketch_total_bytes=backend_adjusted_sketch_total,
+        backend_overhead_multiplier=backend_overhead_multiplier,
         savings_bytes=savings,
         savings_fraction=savings_fraction,
+        hot_memory_bytes=hot_memory_bytes,
+        events_per_second=events_per_second,
+        total_stream_count=total_stream_count,
         latency_stream_count=latency_streams,
         counter_stream_count=counter_streams,
         sketch_bytes_per_latency_stream_per_day=sketch_bytes_per_latency_stream_per_day,
@@ -403,7 +540,7 @@ examples:
 
   sketchlog-cost-estimate --events-per-day 5000000 --avg-event-bytes 256 \\
       --retention-days 90 --sketch-accuracy 0.005 --streams 200 --namespaces 10 \\
-      --json
+      --raw-compression-ratio 4 --storage-backend postgres --json
 """,
     )
     parser.add_argument(
@@ -453,6 +590,25 @@ examples:
         help="Number of SketchLog namespaces.",
     )
     parser.add_argument(
+        "--raw-compression-ratio",
+        type=float,
+        default=_RAW_COMPRESSION_RATIO_DEFAULT,
+        metavar="RATIO",
+        help=(
+            "Compression ratio for the raw-event baseline, e.g. 4 for a 4x "
+            "compressed raw store. Defaults to 1.0."
+        ),
+    )
+    parser.add_argument(
+        "--storage-backend",
+        choices=sorted(_STORAGE_BACKEND_MULTIPLIERS),
+        default=_STORAGE_BACKEND_DEFAULT,
+        help=(
+            "Backend planning profile for the SketchLog footprint. "
+            "Defaults to memory."
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         default=False,
@@ -486,6 +642,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             sketch_accuracy=args.sketch_accuracy,
             stream_count=args.streams,
             namespace_count=args.namespaces,
+            raw_compression_ratio=args.raw_compression_ratio,
+            storage_backend=args.storage_backend,
         )
     except ValueError as exc:
         print(f"error: invalid input \u2014 {exc}", file=sys.stderr)

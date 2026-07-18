@@ -110,6 +110,7 @@ class DDSketch {
 
 const TOUR_STEPS = [
   ['Bounded-memory telemetry problem', 'Raw telemetry grows without mercy. SketchLog keeps useful analytics in fixed-size summaries so teams can ask production questions without storing every event forever.', ['bounded memory', 'observability', 'cost control']],
+  ['Cost and footprint estimator', 'Plan events per day, raw compression, retention, sketch accuracy, namespaces, and storage backend before deployment. The browser model mirrors the Python CLI and API.', ['capacity planning', 'PostgreSQL', 'OmniKV']],
   ['DDSketch percentiles', 'Latency streams keep p50, p95, and p99 estimates with configurable relative accuracy. This is the core pattern behind fast tail-latency visibility.', ['p95', 'p99', 'relative accuracy']],
   ['HyperLogLog-style cardinality', 'Unique users, sessions, tenants, or trace IDs can be estimated without storing every identifier in memory.', ['cardinality', 'unique users', 'HLL']],
   ['Count-Min frequency tracking', 'Track top event types, error codes, endpoints, and noisy tenants with approximate counters suitable for high-volume streams.', ['top events', 'frequency', 'CMS']],
