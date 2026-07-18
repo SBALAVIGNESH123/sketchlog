@@ -17,12 +17,12 @@ import pytest
 
 from sketchlog.cost_estimate import (
     CostEstimateConfig,
-    CostEstimateResult,
     _BYTES_PER_SKETCH_BUCKET,
-    _COUNTER_STREAM_BYTES_PER_DAY,
     _HOURLY_WINDOWS_PER_DAY,
-    _LATENCY_STREAM_FRACTION,
+    _HOT_COUNTER_STREAM_BYTES,
+    _HOT_LATENCY_STREAM_FIXED_BYTES,
     _SKETCH_FIXED_OVERHEAD_BYTES,
+    _STORAGE_BACKEND_MULTIPLIERS,
     _fmt_bytes,
     estimate,
     main,
@@ -55,6 +55,11 @@ class TestCostEstimateConfigValidation:
 
     def test_valid_baseline_does_not_raise(self) -> None:
         _config()  # should not raise
+
+    def test_default_backend_and_compression_are_backward_compatible(self) -> None:
+        cfg = _config()
+        assert cfg.raw_compression_ratio == 1.0
+        assert cfg.storage_backend == "memory"
 
     # events_per_day
     @pytest.mark.parametrize("value", [0, -1, -1_000_000])
@@ -118,6 +123,33 @@ class TestCostEstimateConfigValidation:
         with pytest.raises(ValueError, match="namespace_count"):
             _config(namespace_count=value)
 
+    # raw_compression_ratio
+    @pytest.mark.parametrize("value", [0.0, 0.5, -1.0, float("inf"), float("nan")])
+    def test_raw_compression_ratio_invalid_raises(self, value: float) -> None:
+        with pytest.raises(ValueError, match="raw_compression_ratio"):
+            _config(raw_compression_ratio=value)
+
+    def test_raw_compression_ratio_bool_raises(self) -> None:
+        with pytest.raises(ValueError, match="raw_compression_ratio"):
+            _config(raw_compression_ratio=True)  # type: ignore[arg-type]
+
+    def test_raw_compression_ratio_string_raises(self) -> None:
+        with pytest.raises(ValueError, match="raw_compression_ratio"):
+            _config(raw_compression_ratio="4")  # type: ignore[arg-type]
+
+    # storage_backend
+    @pytest.mark.parametrize("backend", sorted(_STORAGE_BACKEND_MULTIPLIERS))
+    def test_supported_storage_backends_valid(self, backend: str) -> None:
+        _config(storage_backend=backend)
+
+    def test_unknown_storage_backend_raises(self) -> None:
+        with pytest.raises(ValueError, match="storage_backend"):
+            _config(storage_backend="rocksdb")
+
+    def test_storage_backend_non_string_raises(self) -> None:
+        with pytest.raises(ValueError, match="storage_backend"):
+            _config(storage_backend=123)  # type: ignore[arg-type]
+
     def test_multiple_errors_aggregated(self) -> None:
         """All validation errors should surface in one raise, not one at a time."""
         with pytest.raises(ValueError) as exc_info:
@@ -128,6 +160,8 @@ class TestCostEstimateConfigValidation:
                 sketch_accuracy=2.0,
                 stream_count=-1,
                 namespace_count=-1,
+                raw_compression_ratio=0.5,
+                storage_backend="missing",
             )
         msg = str(exc_info.value)
         assert "events_per_day" in msg
@@ -136,6 +170,8 @@ class TestCostEstimateConfigValidation:
         assert "sketch_accuracy" in msg
         assert "stream_count" in msg
         assert "namespace_count" in msg
+        assert "raw_compression_ratio" in msg
+        assert "storage_backend" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +210,36 @@ class TestEstimateComputation:
         expected = result.raw_total_bytes - result.sketch_total_bytes
         assert result.savings_bytes == expected
 
+    def test_savings_uses_compressed_raw_and_backend_adjusted_total(self) -> None:
+        cfg = _config(raw_compression_ratio=4.0, storage_backend="postgres")
+        result = estimate(cfg)
+        expected = (
+            result.compressed_raw_total_bytes
+            - result.backend_adjusted_sketch_total_bytes
+        )
+        assert result.savings_bytes == expected
+        assert result.compressed_raw_total_bytes == round(
+            result.raw_total_bytes / 4.0
+        )
+        assert result.backend_adjusted_sketch_total_bytes == round(
+            result.sketch_total_bytes * _STORAGE_BACKEND_MULTIPLIERS["postgres"]
+        )
+
+    def test_compressed_raw_bytes_use_positive_half_up_rounding(self) -> None:
+        cfg = _config(
+            events_per_day=3,
+            avg_event_bytes=1,
+            retention_days=1,
+            raw_compression_ratio=2.0,
+        )
+        result = estimate(cfg)
+        assert result.raw_total_bytes == 3
+        assert result.compressed_raw_total_bytes == 2
+        assert result.savings_bytes == (
+            result.compressed_raw_total_bytes
+            - result.backend_adjusted_sketch_total_bytes
+        )
+
     def test_sketch_buckets_match_model(self) -> None:
         """sketch_buckets = ceil(2 / epsilon)."""
         accuracy = 0.01
@@ -207,6 +273,29 @@ class TestEstimateComputation:
             * _HOURLY_WINDOWS_PER_DAY
         )
         assert result.sketch_bytes_per_latency_stream_per_day == expected
+
+    def test_hot_memory_formula_is_separate_from_storage(self) -> None:
+        cfg = _config(stream_count=10, namespace_count=3, sketch_accuracy=0.01)
+        result = estimate(cfg)
+        expected = round(
+            cfg.namespace_count
+            * (
+                result.latency_stream_count
+                * (
+                    result.sketch_buckets_per_stream * 8
+                    + _HOT_LATENCY_STREAM_FIXED_BYTES
+                )
+                + result.counter_stream_count * _HOT_COUNTER_STREAM_BYTES
+            )
+        )
+        assert result.hot_memory_bytes == expected
+        assert result.hot_memory_bytes < result.sketch_total_bytes
+
+    def test_events_per_second_and_total_streams(self) -> None:
+        cfg = _config(events_per_day=86_400, stream_count=12, namespace_count=4)
+        result = estimate(cfg)
+        assert result.events_per_second == 1.0
+        assert result.total_stream_count == 48
 
     def test_high_accuracy_produces_larger_sketch(self) -> None:
         """Lower epsilon -> more buckets -> larger sketch."""
@@ -278,7 +367,12 @@ class TestToDictSchema:
         result = estimate(_config())
         d = result.to_dict()
         assert set(d.keys()) == {
-            "inputs", "raw_telemetry", "sketchlog_summary", "savings", "caveats"
+            "inputs",
+            "raw_telemetry",
+            "sketchlog_summary",
+            "operational_footprint",
+            "savings",
+            "caveats",
         }
 
     def test_inputs_keys(self) -> None:
@@ -286,7 +380,26 @@ class TestToDictSchema:
         assert set(result.to_dict()["inputs"].keys()) == {
             "events_per_day", "avg_event_bytes", "retention_days",
             "sketch_accuracy", "stream_count", "namespace_count",
+            "raw_compression_ratio", "storage_backend",
         }
+
+    def test_raw_telemetry_contains_compressed_baseline(self) -> None:
+        d = estimate(_config(raw_compression_ratio=4.0)).to_dict()["raw_telemetry"]
+        assert d["compressed_bytes"] == d["total_bytes"] // 4
+        assert "human_compressed" in d
+
+    def test_sketchlog_summary_contains_backend_metadata(self) -> None:
+        d = estimate(_config(storage_backend="omnikv")).to_dict()["sketchlog_summary"]
+        assert d["storage_backend"] == "omnikv"
+        assert d["backend_adjusted_bytes"] >= d["total_bytes"]
+        assert d["backend_overhead_multiplier"] == _STORAGE_BACKEND_MULTIPLIERS["omnikv"]
+        assert d["total_streams"] == 250
+
+    def test_operational_footprint_keys(self) -> None:
+        d = estimate(_config()).to_dict()["operational_footprint"]
+        assert "events_per_second" in d
+        assert "hot_memory_bytes" in d
+        assert "human_hot_memory" in d
 
     def test_savings_keys(self) -> None:
         d = estimate(_config()).to_dict()["savings"]
@@ -335,7 +448,15 @@ class TestRenderText:
     def test_contains_raw_and_sketch_labels(self) -> None:
         text = estimate(_config()).render_text()
         assert "Raw telemetry total" in text
-        assert "SketchLog total" in text
+        assert "Compressed raw" in text
+        assert "SketchLog compact" in text
+        assert "Backend-adjusted" in text
+
+    def test_contains_operational_footprint(self) -> None:
+        text = estimate(_config()).render_text()
+        assert "Operational footprint" in text
+        assert "Ingest rate" in text
+        assert "Hot memory estimate" in text
 
     def test_contains_caveats_section(self) -> None:
         text = estimate(_config()).render_text()
@@ -343,7 +464,15 @@ class TestRenderText:
 
     def test_contains_all_input_labels(self) -> None:
         text = estimate(_config()).render_text()
-        for label in ("Events per day", "Avg event size", "Retention", "Streams", "Namespaces"):
+        for label in (
+            "Events per day",
+            "Avg event size",
+            "Retention",
+            "Streams",
+            "Namespaces",
+            "Raw compression",
+            "Storage backend",
+        ):
             assert label in text
 
     def test_is_string(self) -> None:
@@ -407,6 +536,24 @@ class TestCLI:
         parsed = json.loads(out)
         assert "savings" in parsed
 
+    def test_json_flag_includes_backend_and_compression(self, capsys: pytest.CaptureFixture) -> None:
+        main([
+            *self._VALID_ARGS,
+            "--raw-compression-ratio", "4",
+            "--storage-backend", "postgres",
+            "--json",
+        ])
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        assert parsed["inputs"]["raw_compression_ratio"] == 4.0
+        assert parsed["inputs"]["storage_backend"] == "postgres"
+        assert parsed["raw_telemetry"]["compressed_bytes"] == round(
+            parsed["raw_telemetry"]["total_bytes"] / 4.0
+        )
+        assert parsed["sketchlog_summary"]["backend_adjusted_bytes"] > (
+            parsed["sketchlog_summary"]["total_bytes"]
+        )
+
     def test_json_output_no_text_header(self, capsys: pytest.CaptureFixture) -> None:
         main([*self._VALID_ARGS, "--json"])
         out = capsys.readouterr().out
@@ -438,6 +585,20 @@ class TestCLI:
         ]
         rc = main(bad)
         assert rc == 2
+
+    def test_invalid_raw_compression_ratio_returns_2(
+        self,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        rc = main([*self._VALID_ARGS, "--raw-compression-ratio", "0.5"])
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "raw_compression_ratio" in err
+
+    def test_invalid_storage_backend_is_argparse_error(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main([*self._VALID_ARGS, "--storage-backend", "missing"])
+        assert exc_info.value.code == 2
 
     def test_help_exits_zero(self) -> None:
         with pytest.raises(SystemExit) as exc_info:

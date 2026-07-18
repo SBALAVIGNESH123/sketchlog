@@ -2,8 +2,11 @@
 Tests for #234 — Hosted demo and interactive playground.
 All checks are structural/content — no network calls.
 """
-import re
+import json
+import subprocess
 from pathlib import Path
+
+from sketchlog.cost_estimate import CostEstimateConfig, estimate
 
 ROOT = Path(__file__).parent.parent
 
@@ -69,6 +72,7 @@ class TestDemoHTML:
 
     def test_js_link(self):
         assert "demo.js" in self.html
+        assert "estimator.js" in self.html
 
     def test_interactive_ids(self):
         for id_ in ["sketch-add-btn", "sketch-reset-btn", "stream-write-btn",
@@ -96,7 +100,7 @@ class TestDemoHTML:
 
     def test_guided_product_tour_present(self):
         assert 'id="tour"' in self.html
-        assert "Fourteen steps through the SketchLog workflow" in self.html
+        assert "Fifteen steps through the SketchLog workflow" in self.html
         assert "Start guided tour" in self.html
 
     def test_dashboard_mode_present(self):
@@ -150,6 +154,19 @@ class TestDemoHTML:
         ]:
             assert token in self.html
 
+    def test_cost_estimator_present(self):
+        assert 'id="cost-estimator"' in self.html
+        for token in [
+            "Cost and footprint estimator",
+            "cost-events-per-day",
+            "cost-compression",
+            "cost-backend",
+            "cost-backend-total",
+            "cost-hot-memory",
+            "Read estimator docs",
+        ]:
+            assert token in self.html
+
 
 class TestDemoCSS:
     def setup_method(self):
@@ -180,6 +197,9 @@ class TestDemoCSS:
             ".sql-layout",
             ".proof-card",
             ".mode-card",
+            ".estimator-layout",
+            ".cost-result-grid",
+            ".cost-result-card",
         ]:
             assert token in self.css
 
@@ -252,6 +272,7 @@ class TestDemoJS:
         assert "TOUR_STEPS" in self.js
         assert "renderTour" in self.js
         assert "Bounded-memory telemetry problem" in self.js
+        assert "Cost and footprint estimator" in self.js
         assert "Storage durability proof links" in self.js
 
     def test_dashboard_logic(self):
@@ -279,6 +300,148 @@ class TestDemoJS:
         assert "document.write(" not in self.js
 
 
+class TestDemoEstimatorJS:
+    def setup_method(self):
+        self.js = read("demo/assets/estimator.js")
+
+    def test_file_exists(self):
+        assert (ROOT / "demo/assets/estimator.js").exists()
+
+    def test_use_strict(self):
+        assert "'use strict'" in self.js
+
+    def test_estimator_api_present(self):
+        for token in [
+            "estimateSketchlogCost",
+            "BACKEND_PROFILES",
+            "bindCostEstimator",
+            "rawCompressionRatio",
+            "backendAdjustedBytes",
+            "hotMemoryBytes",
+        ]:
+            assert token in self.js
+
+    def test_no_eval(self):
+        assert "eval(" not in self.js
+
+    def test_node_estimator_matches_expected_shape(self):
+        script = """
+const estimator = require('./demo/assets/estimator.js');
+const result = estimator.estimateSketchlogCost({
+  eventsPerDay: 1000000,
+  avgEventBytes: 512,
+  retentionDays: 30,
+  sketchAccuracy: 0.01,
+  streamCount: 50,
+  namespaceCount: 5,
+  rawCompressionRatio: 4,
+  backend: 'omnikv',
+});
+console.log(JSON.stringify(result));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        result = json.loads(completed.stdout)
+        expected = estimate(CostEstimateConfig(
+            events_per_day=1_000_000,
+            avg_event_bytes=512,
+            retention_days=30,
+            sketch_accuracy=0.01,
+            stream_count=50,
+            namespace_count=5,
+            raw_compression_ratio=4.0,
+            storage_backend="omnikv",
+        ))
+        assert result["backend"]["id"] == "omnikv"
+        assert result["rawTelemetry"]["uncompressedBytes"] == expected.raw_total_bytes
+        assert result["rawTelemetry"]["compressedBytes"] == (
+            expected.compressed_raw_total_bytes
+        )
+        assert result["sketchlogSummary"]["compactBytes"] == (
+            expected.sketch_total_bytes
+        )
+        assert result["sketchlogSummary"]["backendAdjustedBytes"] == (
+            expected.backend_adjusted_sketch_total_bytes
+        )
+        assert result["operationalFootprint"]["hotMemoryBytes"] == (
+            expected.hot_memory_bytes
+        )
+
+    def test_node_estimator_rejects_unsafe_derived_totals(self):
+        script = """
+const estimator = require('./demo/assets/estimator.js');
+try {
+  estimator.estimateSketchlogCost({
+    eventsPerDay: Number.MAX_SAFE_INTEGER,
+    avgEventBytes: 2,
+    retentionDays: 1,
+    sketchAccuracy: 0.01,
+    streamCount: 1,
+    namespaceCount: 1,
+    rawCompressionRatio: 1,
+    backend: 'memory',
+  });
+  console.log('unexpected-success');
+} catch (err) {
+  console.log(err.message);
+}
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        assert "rawTotalBytes" in completed.stdout
+        assert "safe integer" in completed.stdout
+
+    def test_node_estimator_matches_python_for_half_up_rounding(self):
+        script = """
+const estimator = require('./demo/assets/estimator.js');
+const result = estimator.estimateSketchlogCost({
+  eventsPerDay: 3,
+  avgEventBytes: 1,
+  retentionDays: 1,
+  sketchAccuracy: 0.5,
+  streamCount: 1,
+  namespaceCount: 1,
+  rawCompressionRatio: 2,
+  backend: 'memory',
+});
+console.log(JSON.stringify(result));
+"""
+        completed = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        result = json.loads(completed.stdout)
+        expected = estimate(CostEstimateConfig(
+            events_per_day=3,
+            avg_event_bytes=1,
+            retention_days=1,
+            sketch_accuracy=0.5,
+            stream_count=1,
+            namespace_count=1,
+            raw_compression_ratio=2.0,
+            storage_backend="memory",
+        ))
+        assert result["rawTelemetry"]["compressedBytes"] == 2
+        assert expected.compressed_raw_total_bytes == 2
+        assert result["rawTelemetry"]["compressedBytes"] == (
+            expected.compressed_raw_total_bytes
+        )
+        assert result["savings"]["bytes"] == expected.savings_bytes
+
+
 class TestDemoDoc:
     def setup_method(self):
         self.md = read("docs/demo.md")
@@ -303,6 +466,7 @@ class TestDemoDoc:
         for feature in [
             "Guided product tour",
             "Dashboard mode",
+            "Cost and footprint estimator",
             "Streaming SQL playground",
             "Browser demo mode",
             "Local proof mode",

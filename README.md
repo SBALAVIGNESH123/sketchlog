@@ -43,6 +43,10 @@ telemetry summaries instead of storing every raw event forever.
 - **Flexible durability**: run ephemeral in memory, durable with PostgreSQL for
   server deployments, or embedded with OmniKV for local-first, edge, or
   single-node deployments.
+- **Capacity planning before deployment**: estimate raw telemetry volume,
+  compressed raw-store baseline, SketchLog compact summaries, backend-adjusted
+  footprint, and hot-memory needs from the CLI, Python API, or hosted
+  playground.
 - **Proof-first evaluation**: use the hosted playground, Docker smoke verifier,
   PostgreSQL durability proof, OmniKV storage proof, telemetry load proof, and
   public CI gates before trusting it with real workloads.
@@ -60,9 +64,10 @@ Open the hosted playground:
 [https://sbalavignesh123.github.io/sketchlog/demo/](https://sbalavignesh123.github.io/sketchlog/demo/)
 
 The hosted playground is now a product evaluation hub: guided tour, synthetic
-dashboard, DDSketch percentiles, cardinality/frequency concepts, streaming SQL
-examples, stream operations, exporter payload previews, and proof commands for
-Docker, PostgreSQL, and OmniKV-backed storage paths.
+dashboard, cost and footprint estimator, DDSketch percentiles,
+cardinality/frequency concepts, streaming SQL examples, stream operations,
+exporter payload previews, and proof commands for Docker, PostgreSQL, and
+OmniKV-backed storage paths.
 
 Run the deterministic product demo and its end-to-end verifier:
 
@@ -90,7 +95,7 @@ ports, cleanup, verification, and recording guidance.
 | Integrations | Prometheus, OpenTelemetry, OpenTelemetry Collector component, Loki, Datadog, New Relic |
 | Clients | Python embedded API, Python async client, TypeScript client, Go HTTP client, native Go sketches |
 | Deployment | Docker image, Docker Compose demo, Helm chart, Kubernetes Operator manifests |
-| Operations | Doctor checks, alert manager, rate limiting, TLS/mTLS helpers, DB hardening, benchmark lab |
+| Operations | Cost and footprint estimator, doctor checks, alert manager, rate limiting, TLS/mTLS helpers, DB hardening, benchmark lab |
 | Runtime targets | Python, C++, TypeScript, Go, WebAssembly, Linux eBPF collector |
 | Storage | In-memory, PostgreSQL/SQLAlchemy, optional OmniKV embedded backend |
 
@@ -153,6 +158,20 @@ Install the Go client:
 
 ```bash
 go get github.com/SBALAVIGNESH123/sketchlog/clients/go@v1.2.5
+```
+
+Estimate a deployment footprint before shipping it:
+
+```bash
+sketchlog-cost-estimate \
+  --events-per-day 1000000 \
+  --avg-event-bytes 512 \
+  --retention-days 30 \
+  --sketch-accuracy 0.01 \
+  --streams 50 \
+  --namespaces 5 \
+  --raw-compression-ratio 4 \
+  --storage-backend omnikv
 ```
 
 ## Quickstart
@@ -317,6 +336,7 @@ Important sections:
 - [Formal guarantees](https://sbalavignesh123.github.io/sketchlog/docs/guarantees/)
 - [Client SDKs](https://sbalavignesh123.github.io/sketchlog/docs/sdks/)
 - [Async Python client](https://sbalavignesh123.github.io/sketchlog/docs/async_client/)
+- [Cost and footprint estimator](https://sbalavignesh123.github.io/sketchlog/docs/cost-estimate/)
 - [Storage backends and proofs](https://sbalavignesh123.github.io/sketchlog/docs/storage-backends/)
 - [OmniKV storage backend](https://sbalavignesh123.github.io/sketchlog/docs/omnikv-storage/)
 - [Export integrations](https://sbalavignesh123.github.io/sketchlog/docs/exporters/)

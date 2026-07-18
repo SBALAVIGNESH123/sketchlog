@@ -13,6 +13,7 @@
   <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-links">Menu</button>
   <div class="nav-links" id="nav-links">
     <a href="#tour">Tour</a>
+    <a href="#cost-estimator">Estimator</a>
     <a href="#dashboard">Dashboard</a>
     <a href="#sketch-demo">Sketches</a>
     <a href="#sql-demo">SQL</a>
@@ -34,6 +35,7 @@
         </p>
         <div class="hero-proof-strip" aria-label="What this playground demonstrates">
           <span>Browser demo mode</span>
+          <span>Cost estimator</span>
           <span>Local proof mode</span>
           <span>TSDB companion</span>
           <span>OmniKV optional</span>
@@ -132,17 +134,121 @@
     </div>
   </section>
 
+  <section id="cost-estimator" class="section">
+    <div class="container">
+      <div class="section-heading">
+        <span class="section-kicker">Cost and footprint estimator</span>
+        <h2>Plan the memory and storage tradeoff before you deploy.</h2>
+        <p>
+          Estimate raw telemetry storage versus compact SketchLog summaries
+          using the same documented model as the Python
+          <code>sketchlog-cost-estimate</code> CLI. This calculator runs
+          entirely in the browser and sends nothing anywhere.
+        </p>
+      </div>
+
+      <div class="estimator-layout">
+        <form id="cost-estimator-form" class="panel estimator-controls">
+          <div class="panel-title">
+            <h3>Workload inputs</h3>
+            <span>offline planning model</span>
+          </div>
+          <div class="estimator-form-grid">
+            <label for="cost-events-per-day">
+              Events per day
+              <input id="cost-events-per-day" type="number" min="1" step="1000" value="10000000">
+            </label>
+            <label for="cost-event-bytes">
+              Average raw event bytes
+              <input id="cost-event-bytes" type="number" min="1" step="16" value="768">
+            </label>
+            <label for="cost-retention-days">
+              Retention days
+              <input id="cost-retention-days" type="number" min="1" step="1" value="30">
+            </label>
+            <label for="cost-accuracy">
+              DDSketch relative accuracy
+              <input id="cost-accuracy" type="number" min="0.001" max="0.5" step="0.001" value="0.01">
+            </label>
+            <label for="cost-streams">
+              Streams per namespace
+              <input id="cost-streams" type="number" min="1" step="1" value="120">
+            </label>
+            <label for="cost-namespaces">
+              Namespaces / tenants
+              <input id="cost-namespaces" type="number" min="1" step="1" value="8">
+            </label>
+            <label for="cost-compression">
+              Raw compression ratio
+              <input id="cost-compression" type="number" min="1" step="0.25" value="3">
+            </label>
+            <label for="cost-backend">
+              Storage backend
+              <select id="cost-backend">
+                <option value="memory">In-memory evaluation</option>
+                <option value="postgres" selected>PostgreSQL durable</option>
+                <option value="omnikv">OmniKV embedded</option>
+              </select>
+            </label>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" type="submit">Recalculate estimate</button>
+            <a class="btn btn-ghost" href="https://sbalavignesh123.github.io/sketchlog/docs/cost-estimate/">Read estimator docs</a>
+          </div>
+          <p id="cost-estimator-error" class="form-error" role="alert" aria-live="polite"></p>
+        </form>
+
+        <article class="panel estimator-results" aria-live="polite">
+          <div class="panel-title">
+            <h3>Estimated impact</h3>
+            <span>raw events vs compact summaries</span>
+          </div>
+          <div class="cost-result-grid">
+            <div class="cost-result-card">
+              <span class="stat-label">Raw total</span>
+              <span class="stat-value" id="cost-raw-total">-</span>
+            </div>
+            <div class="cost-result-card">
+              <span class="stat-label">Compressed raw</span>
+              <span class="stat-value" id="cost-compressed-raw">-</span>
+            </div>
+            <div class="cost-result-card highlight">
+              <span class="stat-label">Compact summaries</span>
+              <span class="stat-value" id="cost-compact-total">-</span>
+            </div>
+            <div class="cost-result-card highlight">
+              <span class="stat-label">Backend planning total</span>
+              <span class="stat-value" id="cost-backend-total">-</span>
+            </div>
+            <div class="cost-result-card">
+              <span class="stat-label">Hot memory estimate</span>
+              <span class="stat-value" id="cost-hot-memory">-</span>
+            </div>
+            <div class="cost-result-card status ok">
+              <span class="stat-label">Estimated savings</span>
+              <span class="stat-value" id="cost-savings-percent">-</span>
+              <small id="cost-savings-detail">-</small>
+            </div>
+          </div>
+          <p id="cost-backend-note" class="estimator-note"></p>
+          <div id="cost-breakdown" class="result-table estimator-breakdown"></div>
+          <ul id="cost-caveats" class="estimator-caveats"></ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <section id="tour" class="section">
     <div class="container">
       <div class="section-heading">
         <span class="section-kicker">Guided product tour</span>
-        <h2>Fourteen steps through the SketchLog workflow.</h2>
+        <h2>Fifteen steps through the SketchLog workflow.</h2>
         <p>Use this as your launch-video spine: problem, sketches, streams, SQL, operations, proofs, then the call to action.</p>
       </div>
       <div class="tour-layout">
         <ol class="tour-list" id="tour-list" aria-label="SketchLog guided tour steps"></ol>
         <article class="tour-detail" id="tour-detail" aria-live="polite">
-          <span class="tour-count" id="tour-count">Step 1 of 14</span>
+          <span class="tour-count" id="tour-count">Step 1 of 15</span>
           <h3 id="tour-title"></h3>
           <p id="tour-body"></p>
           <div class="tour-tags" id="tour-tags"></div>
@@ -479,6 +585,7 @@ python scripts/storage_proof.py --backend omnikv</code></pre>
   </div>
 </footer>
 
+<script src="assets/estimator.js"></script>
 <script src="assets/demo.js"></script>
 </body>
 </html>

@@ -554,6 +554,114 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
   text-transform: uppercase;
 }
 
+.estimator-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, .9fr) minmax(0, 1.1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.estimator-controls,
+.estimator-results {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(23, 34, 53, .92), rgba(12, 18, 28, .92));
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .18);
+}
+
+.estimator-controls { padding: 20px; }
+.estimator-results { padding: 20px; }
+
+.estimator-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.estimator-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.estimator-form-grid input,
+.estimator-form-grid select {
+  min-height: 42px;
+}
+
+.cost-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cost-result-card {
+  min-height: 118px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  background: rgba(0, 0, 0, .2);
+}
+
+.cost-result-card span {
+  display: block;
+  color: var(--text-dim);
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.cost-result-card .stat-value {
+  display: block;
+  margin-top: 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: clamp(1.2rem, 3vw, 1.75rem);
+  line-height: 1.1;
+}
+
+.cost-result-card.highlight {
+  border-color: rgba(157, 248, 113, .42);
+  background: rgba(157, 248, 113, .07);
+}
+
+.cost-result-card.highlight .stat-value { color: var(--accent2); }
+.cost-result-card.status.ok .stat-value { color: var(--accent2); }
+.cost-result-card.status.warn .stat-value { color: var(--warn); }
+.cost-result-card.status.danger .stat-value { color: var(--danger); }
+.cost-result-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
+.form-error {
+  min-height: 1.25rem;
+  margin-top: 12px;
+  color: var(--danger);
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.estimator-note {
+  margin: 10px 0 16px;
+  color: var(--text-muted);
+  font-size: .86rem;
+}
+
+.estimator-breakdown { margin-top: 14px; }
+
+.estimator-caveats {
+  margin: 14px 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-size: .86rem;
+}
+
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
@@ -630,7 +738,7 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
 }
 
 @media (max-width: 940px) {
-  .hero-shell, .tour-layout, .dashboard-lower, .playground-grid, .sql-layout, .mode-grid, .proof-grid {
+  .hero-shell, .tour-layout, .dashboard-lower, .playground-grid, .sql-layout, .mode-grid, .proof-grid, .estimator-layout {
     grid-template-columns: 1fr;
   }
 
@@ -657,7 +765,7 @@ input[type="range"] { width: min(460px, 100%); accent-color: var(--accent); }
   }
 
   .nav-links.open { display: flex; }
-  .dashboard-grid, .stat-grid { grid-template-columns: 1fr; }
+  .dashboard-grid, .stat-grid, .estimator-form-grid, .cost-result-grid { grid-template-columns: 1fr; }
   .param-row { grid-template-columns: 1fr; }
   .panel-title { align-items: start; flex-direction: column; }
 }
